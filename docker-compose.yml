@@ -1,0 +1,41 @@
+services:  
+  postgres:
+    image: postgres:latest
+    container_name: market_postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql 
+    networks:
+      - market-net
+
+  redis:
+    image: redis:latest
+    container_name: market_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - market-net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: market_rabbitmq
+    ports:
+      - "5672:5672"    # پورت ارتباطی با اپلیکیشن
+      - "15672:15672"  # پنل وب مدیریت (http://localhost:15672)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - market-net
+
+volumes:
+  pgdata:
+
+networks:
+  market-net:
+    driver: bridge

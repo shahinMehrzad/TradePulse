@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Application/Application.csproj" />
+    <Project Path="src/BackgroundWorker/BackgroundWorker.csproj" Id="572c236c-12fb-4159-be46-93e4a797c812" />
+    <Project Path="src/Domain/Domain.csproj" />
+    <Project Path="src/Infrastructure/Infrastructure.csproj" />
+    <Project Path="src/WebApi/WebApi.csproj" Id="0ecfd164-6919-43e1-a0da-1fec39623ad9" />
+    <Project Path="src/WebRazor/WebRazor.csproj" Id="34be690c-bbfc-49f5-819e-7a0d6613816c" />
+  </Folder>
+</Solution>
