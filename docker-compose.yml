@@ -3,13 +3,13 @@ services:
     image: postgres:latest
     container_name: market_postgres
     environment:
-      POSTGRES_DB: postgres
+      POSTGRES_DB: mydb
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql 
+      - docker_pgdata:/var/lib/postgresql
     networks:
       - market-net
 
@@ -34,7 +34,8 @@ services:
       - market-net
 
 volumes:
-  pgdata:
+  docker_pgdata:
+    external: true
 
 networks:
   market-net:
