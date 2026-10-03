@@ -129,7 +129,6 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                     return;
                 await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retry)), ct); // exponential backoff
                 continue;
-
             }
 
             retry = 0;
