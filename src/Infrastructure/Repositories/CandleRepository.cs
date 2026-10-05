@@ -2,7 +2,6 @@
 using Domain.Entities;
 using Domain.Repositories;
 using Npgsql;
-using System.Data;
 
 namespace Infrastructure.Repositories;
 
