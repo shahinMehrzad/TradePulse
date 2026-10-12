@@ -24,6 +24,7 @@ Highlights of the collection path:
 - **Self-healing data:** a daily `LAG()`-based gap detector refills missing candles. Database errors are never mistaken for an empty table.
 - **Boundary-aligned scheduling:** one loop per timeframe wakes just after each candle closes.
 - **Non-blocking liquidation pipeline:** the WebSocket callback only enqueues into a bounded `Channel<T>`; a single writer drains it in batches.
+- **Live candles over WebSocket:** closed klines are stored the moment they close (the callback enqueues, one writer batches). The REST loop still runs at every boundary as the watchdog, and a socket reconnect triggers an immediate REST sync plus gap repair. Live candles are only accepted for a table after its first REST sync, so they can never hide missing history.
 - **Config-driven:** adding a symbol or timeframe is an `appsettings.json` change, no code.
 
 
@@ -37,6 +38,8 @@ The worker serves `GET /health` (JSON, `503` when anything is unhealthy) and `GE
 | `binance-futures-rest`, `binance-spot-rest` | A probe pings the REST APIs every 30 s, independent of candle schedules. Failures escalate from degraded to unhealthy after 3 in a row. |
 | `binance-futures-websocket` | A busy probe stream (mark price) is open and flowing. Silence for 60 s or a disconnect longer than 2 min is unhealthy. |
 | `binance-liquidation-stream` | The real liquidation subscription is connected. Liquidations are bursty, so a long silence (default 60 min) only degrades. |
+| `binance-candle-stream-futures`, `binance-candle-stream-spot` | The live candle subscription is connected and receiving (5 min of silence degrades). Turn the stream off with `LiveCandles: false`. |
+| `candle-freshness` | The newest stored candle of every table is not behind the clock (1 candle behind is degraded, 3 or more unhealthy; a table that is still moving during backfill is healthy). |
 | `candle-requests`, `funding-rate-requests`, `open-interest-requests` | Consecutive failures of the collectors' own API requests. |
 
 Only components that are actually configured get a check. Status changes are also written to the log, so a healthy worker stays quiet and a problem is visible without polling the endpoint.
@@ -95,7 +98,6 @@ dotnet test --solution DotNetTradePulse.slnx
 
 Planned, not built yet:
 
-- WebSocket candle streaming with REST catch-up as the safety net after any disconnect.
 - Event publishing (`CandleClosed`) through **RabbitMQ** using an outbox, and **Redis** for latest-candle caching.
 - Read API for candles (streaming, hybrid caching, CSV/Parquet export) and a data-health dashboard.
 - Re-checking recent candles for exchange-side revisions.

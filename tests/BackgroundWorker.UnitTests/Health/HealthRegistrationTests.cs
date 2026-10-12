@@ -54,8 +54,8 @@ public class HealthRegistrationTests
         Assert.Equal(
             new[]
             {
-                "binance-futures-rest", "binance-futures-websocket", "binance-liquidation-stream", "binance-spot-rest",
-                "candle-requests", "database", "funding-rate-requests", "open-interest-requests",
+                "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket", "binance-liquidation-stream", "binance-spot-rest",
+                "candle-freshness", "candle-requests", "database", "funding-rate-requests", "open-interest-requests",
             },
             report.Entries.Keys.Order());
     }
@@ -72,7 +72,7 @@ public class HealthRegistrationTests
         }));
 
         Assert.Equal(
-            new[] { "binance-futures-rest", "binance-futures-websocket", "candle-requests", "database" },
+            new[] { "binance-candle-stream-futures", "binance-futures-rest", "binance-futures-websocket", "candle-freshness", "candle-requests", "database" },
             checks.Order());
     }
 
