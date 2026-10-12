@@ -2,6 +2,7 @@
 using Binance.Net.Clients;
 using Binance.Net.Enums;
 using Binance.Net.Interfaces.Clients;
+using CryptoExchange.Net.SharedApis;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
@@ -16,9 +17,11 @@ namespace BackgroundWorker;
 public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         ILogger<BinanceCandleWorker> logger,
         IOptions<BinanceExchangeConfigurations> binanceConfigurations,
-        IBinanceRestClient binanceRestClient) : BackgroundService
+        IBinanceRestClient binanceRestClient,
+        IBinanceSocketClient binanceSocketClient) : BackgroundService
 {
     private readonly IBinanceRestClient _binanceClient = binanceRestClient;
+    private readonly IBinanceSocketClient _binanceSocketClient = binanceSocketClient;
     private readonly BinanceExchangeConfigurations _binanceConfigurations = binanceConfigurations.Value;
     private const int MaxKlineLimit = 1000;
     private const int MaxParallelSymbols = 4;
@@ -30,9 +33,13 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         [MarketTypeEnum.Spot] = new BinanceWeightLimiter(binanceConfigurations.Value.MaxLimit),
     };
     private static readonly TimeSpan CloseOffset = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan GapCheckPeriod = TimeSpan.FromHours(24);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        //var fundingResult = await _binanceClient.UsdFuturesApi.ExchangeData.GetFundingRatesAsync("BTCUSDT");
+        //var openInterestResult = await _binanceClient.UsdFuturesApi.ExchangeData.GetOpenInterestAsync("BTCUSDT");
+        
         var groups = _binanceConfigurations.Symbols.Values
             .GroupBy(s => (int)s.Interval)
             .ToList();
@@ -52,10 +59,19 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         try
         {
             await SyncAllSymbolsAsync(symbols, ct);
+            await RepairGapsAsync(symbols, ct);
+            var lastGapCheck = DateTime.UtcNow;
+
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(GetDelayUntilNextClose(interval), ct);
                 await SyncAllSymbolsAsync(symbols, ct);
+
+                if (DateTime.UtcNow - lastGapCheck >= GapCheckPeriod)
+                {
+                    await RepairGapsAsync(symbols, ct);
+                    lastGapCheck = DateTime.UtcNow;
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -99,34 +115,95 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
         var tableName = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
         var intervalSpan = TimeSpan.FromSeconds((int)symbol.Interval);
+
+        // A failure here must surface: treating it as "table is empty" would re-download the whole history.
         var lastOpen = await repository.GetLatestOpenDataTime(tableName, ct);
+        var from = lastOpen is null ? symbol.StartDate : lastOpen.Value.UtcDateTime + intervalSpan;
 
-        var from = lastOpen == DateTimeOffset.MinValue ? symbol.StartDate : lastOpen.UtcDateTime + intervalSpan;
+        await FetchRangeAsync(symbol, repository, tableName, from, to: null, ct);
+    }
 
+    private async Task RepairGapsAsync(List<BinanceSymbolConfigurations> symbols, CancellationToken ct)
+    {
+        await Parallel.ForEachAsync(
+            symbols,
+            new ParallelOptions { MaxDegreeOfParallelism = MaxParallelSymbols, CancellationToken = ct },
+            async (symbol, token) =>
+            {
+                try
+                {
+                    await RepairSymbolGapsAsync(symbol, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Gap repair failed for {Symbol}", symbol.Name);
+                }
+            });
+    }
+
+    private async Task RepairSymbolGapsAsync(BinanceSymbolConfigurations symbol, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<ICandleRepository>();
+
+        var tableName = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
+        var intervalSpan = TimeSpan.FromSeconds((int)symbol.Interval);
+
+        var gaps = await repository.GetGapsAsync(tableName, intervalSpan, ct);
+        foreach (var gap in gaps)
+        {
+            var inserted = await FetchRangeAsync(symbol, repository, tableName,
+                gap.FirstMissingOpenTime, gap.LastMissingOpenTime, ct);
+
+            // Binance itself has no candle for some periods (maintenance, no trades); those stay open and are retried next run.
+            if (inserted == 0)
+                logger.LogInformation("Gap {From:u} .. {To:u} in {Table} could not be filled (likely missing on exchange)",
+                    gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName);
+            else
+                logger.LogWarning("Repaired gap {From:u} .. {To:u} in {Table}: {Count} candles",
+                    gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName, inserted);
+        }
+    }
+
+    /// <summary>
+    /// Downloads closed candles starting at <paramref name="from"/> (and up to <paramref name="to"/> when given,
+    /// inclusive open time) and stores them. Returns the number of newly inserted rows.
+    /// </summary>
+    private async Task<int> FetchRangeAsync(
+        BinanceSymbolConfigurations symbol, ICandleRepository repository, string tableName,
+        DateTime from, DateTime? to, CancellationToken ct)
+    {
+        var intervalSpan = TimeSpan.FromSeconds((int)symbol.Interval);
         var limiter = _limiters[symbol.MarketType];
         var weight = GetKlineWeight(symbol.MarketType, MaxKlineLimit);
         var retry = 0;
+        var totalInserted = 0;
 
         while (!ct.IsCancellationRequested)
         {
-            if (from + intervalSpan > DateTime.UtcNow)
-                return;
+            if (from + intervalSpan > DateTime.UtcNow || (to is not null && from > to))
+                return totalInserted;
 
             await limiter.AcquireAsync(weight, ct);
 
+            // Binance treats endTime as inclusive on open time.
             var result = symbol.MarketType == MarketTypeEnum.Futures
                 ? await _binanceClient.UsdFuturesApi.ExchangeData.GetKlinesAsync(
                     symbol.Name.ToString(), (KlineInterval)symbol.Interval,
-                    startTime: from, limit: MaxKlineLimit, ct: ct)
+                    startTime: from, endTime: to, limit: MaxKlineLimit, ct: ct)
                 : await _binanceClient.SpotApi.ExchangeData.GetKlinesAsync(
                     symbol.Name.ToString(), (KlineInterval)symbol.Interval,
-                    startTime: from, limit: MaxKlineLimit, ct: ct);
+                    startTime: from, endTime: to, limit: MaxKlineLimit, ct: ct);
 
             if (!result.Success)
             {
                 logger.LogWarning("Kline request failed for {Symbol}: {Error}", symbol.Name, result.Error);
                 if (++retry > MaxRetries)
-                    return;
+                    return totalInserted;
                 await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retry)), ct); // exponential backoff
                 continue;
             }
@@ -134,12 +211,12 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             retry = 0;
             var data = result.Data.ToList();
             if (data.Count == 0)
-                return;
+                return totalInserted;
 
             var now = DateTime.UtcNow;
             var closed = data.Where(k => k.CloseTime < now).ToList();
             if (closed.Count == 0)
-                return;
+                return totalInserted;
 
             var candles = closed.Select(k => new Candle(
                 openTime: k.OpenTime,
@@ -154,14 +231,16 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 takerBuyBaseVolume: k.TakerBuyBaseVolume,
                 takerBuyQuoteVolume: k.TakerBuyQuoteVolume)).ToList();
 
-            await repository.BulkInsert(tableName, candles, ct);
+            totalInserted += await repository.BulkInsert(tableName, candles, ct);
             logger.LogDebug("Inserted {Count} candles for {Symbol}", candles.Count, symbol.Name);
 
             from = closed[^1].OpenTime + intervalSpan;
 
             if (data.Count < MaxKlineLimit)
-                return;
+                return totalInserted;
         }
+
+        return totalInserted;
     }
 
     private static int GetKlineWeight(MarketTypeEnum market, int limit)
