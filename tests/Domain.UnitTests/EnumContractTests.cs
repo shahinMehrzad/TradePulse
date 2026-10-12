@@ -22,6 +22,10 @@ public class EnumContractTests
             ("BTCUSDT", 1), ("XAUUSDT", 2), ("ETHUSDT", 3), ("SOLUSDT", 4),
             ("XRPUSDT", 5), ("BNBUSDT", 6), ("SUIUSDT", 7), ("ADAUSDT", 8));
 
+    [Fact]
+    public void OrderSideValuesAreStable() =>
+        AssertContract<OrderSideEnum>(("Buy", 1), ("Sell", 2));
+
     private static void AssertContract<TEnum>(params (string Name, int Value)[] expected) where TEnum : struct, Enum
     {
         var actual = Enum.GetValues<TEnum>()

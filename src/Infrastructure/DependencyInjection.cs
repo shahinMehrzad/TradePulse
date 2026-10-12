@@ -1,7 +1,9 @@
-﻿using Domain.Repositories;
+﻿using Domain.Entities;
+using Domain.Repositories;
 using Infrastructure.Configurations;
 using Infrastructure.DbContext;
 using Infrastructure.Repositories;
+using Infrastructure.Repositories.TimeSeries;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -17,9 +19,13 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
         services.AddScoped<ICandleRepository>(provider => new CandleRepository(connectionString));
+        services.AddScoped<IMarketDataRepository<FundingRate>>(_ => new TimeSeriesRepository<FundingRate>(connectionString, new FundingRateTable()));
+        services.AddScoped<IMarketDataRepository<OpenInterest>>(_ => new TimeSeriesRepository<OpenInterest>(connectionString, new OpenInterestTable()));
+        services.AddScoped<IMarketDataRepository<Liquidation>>(_ => new TimeSeriesRepository<Liquidation>(connectionString, new LiquidationTable()));
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
         services.Configure<BinanceExchangeConfigurations>(configuration.GetSection(nameof(BinanceExchangeConfigurations)));
+        services.Configure<BinanceFuturesDataConfigurations>(configuration.GetSection(nameof(BinanceFuturesDataConfigurations)));
         services.Configure<JwtConfigurations>(configuration.GetSection(nameof(JwtConfigurations)));
 
         services.AddBinance();

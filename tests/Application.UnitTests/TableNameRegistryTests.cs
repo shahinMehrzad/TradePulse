@@ -74,6 +74,64 @@ public partial class TableNameRegistryTests
         Assert.Equal("timeframe", ex.ParamName);
     }
 
+    [Theory]
+    [InlineData(SymbolEnum.BTCUSDT, "binance_futures_btcusdt_fundingrate")]
+    [InlineData(SymbolEnum.ETHUSDT, "binance_futures_ethusdt_fundingrate")]
+    public void BuildsTheFundingRateTableName(SymbolEnum symbol, string expected) =>
+        Assert.Equal(expected, TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, symbol));
+
+    [Theory]
+    [InlineData(SymbolEnum.BTCUSDT, TimeFrameEnum._1H, "binance_futures_btcusdt_1h_openinterest")]
+    [InlineData(SymbolEnum.SOLUSDT, TimeFrameEnum._15M, "binance_futures_solusdt_15m_openinterest")]
+    public void BuildsTheOpenInterestTableName(SymbolEnum symbol, TimeFrameEnum timeFrame, string expected) =>
+        Assert.Equal(expected, TableNameRegistry.GetOpenInterestTableName(ExchangeEnum.Binance, symbol, timeFrame));
+
+    [Theory]
+    [InlineData(SymbolEnum.BTCUSDT, "binance_futures_btcusdt_liquidation")]
+    [InlineData(SymbolEnum.XRPUSDT, "binance_futures_xrpusdt_liquidation")]
+    public void BuildsTheLiquidationTableName(SymbolEnum symbol, string expected) =>
+        Assert.Equal(expected, TableNameRegistry.GetLiquidationTableName(ExchangeEnum.Binance, symbol));
+
+    [Fact]
+    public void NamesNeverCollideAcrossDataKinds()
+    {
+        var all = AllCombinations().Concat(AllMarketDataNames()).ToList();
+
+        Assert.Equal(all.Count, all.Distinct().Count());
+    }
+
+    [Fact]
+    public void MarketDataNamesAreSafeUnquotedPostgresIdentifiers()
+    {
+        // pk_ and ix_ constraint/index names are derived from the table name and must fit as well.
+        foreach (var name in AllMarketDataNames())
+        {
+            Assert.Matches(SafeIdentifier(), name);
+            Assert.True(("pk_" + name).Length <= 63, $"pk_{name} is longer than 63 characters");
+            Assert.True(("ix_" + name + "_event_time").Length <= 63, $"ix_{name}_event_time is longer than 63 characters");
+        }
+    }
+
+    [Fact]
+    public void MarketDataTablesRejectUndefinedValues()
+    {
+        Assert.Throws<ArgumentException>(() => TableNameRegistry.GetFundingRateTableName((ExchangeEnum)99, SymbolEnum.BTCUSDT));
+        Assert.Throws<ArgumentException>(() => TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, (SymbolEnum)999));
+        Assert.Throws<ArgumentException>(() => TableNameRegistry.GetLiquidationTableName(ExchangeEnum.Binance, (SymbolEnum)999));
+        Assert.Throws<ArgumentException>(() =>
+            TableNameRegistry.GetOpenInterestTableName(ExchangeEnum.Binance, SymbolEnum.BTCUSDT, (TimeFrameEnum)12345));
+    }
+
+    private static IEnumerable<string> AllMarketDataNames() =>
+        from exchange in Enum.GetValues<ExchangeEnum>()
+        from symbol in Enum.GetValues<SymbolEnum>()
+        from name in new[]
+        {
+            TableNameRegistry.GetFundingRateTableName(exchange, symbol),
+            TableNameRegistry.GetLiquidationTableName(exchange, symbol),
+        }.Concat(Enum.GetValues<TimeFrameEnum>().Select(t => TableNameRegistry.GetOpenInterestTableName(exchange, symbol, t)))
+        select name;
+
     private static IEnumerable<string> AllCombinations() =>
         from exchange in Enum.GetValues<ExchangeEnum>()
         from market in Enum.GetValues<MarketTypeEnum>()

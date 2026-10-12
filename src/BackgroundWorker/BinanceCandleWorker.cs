@@ -1,4 +1,5 @@
-﻿using Application.Services;
+using Application.Services;
+using BackgroundWorker.Health;
 using Binance.Net.Clients;
 using Binance.Net.Enums;
 using Binance.Net.Interfaces.Clients;
@@ -18,7 +19,9 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         ILogger<BinanceCandleWorker> logger,
         IOptions<BinanceExchangeConfigurations> binanceConfigurations,
         IBinanceRestClient binanceRestClient,
-        IBinanceSocketClient binanceSocketClient) : BackgroundService
+        IBinanceSocketClient binanceSocketClient,
+        BinanceRateLimiters rateLimiters,
+        WorkerHealthState health) : BackgroundService
 {
     private readonly IBinanceRestClient _binanceClient = binanceRestClient;
     private readonly IBinanceSocketClient _binanceSocketClient = binanceSocketClient;
@@ -27,18 +30,10 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
     private const int MaxParallelSymbols = 4;
     private const int MaxRetries = 5;
 
-    private readonly Dictionary<MarketTypeEnum, BinanceWeightLimiter> _limiters = new()
-    {
-        [MarketTypeEnum.Futures] = new BinanceWeightLimiter(binanceConfigurations.Value.MaxLimit),
-        [MarketTypeEnum.Spot] = new BinanceWeightLimiter(binanceConfigurations.Value.MaxLimit),
-    };
-    private static readonly TimeSpan CloseOffset = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan GapCheckPeriod = TimeSpan.FromHours(24);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        //var fundingResult = await _binanceClient.UsdFuturesApi.ExchangeData.GetFundingRatesAsync("BTCUSDT");
-        //var openInterestResult = await _binanceClient.UsdFuturesApi.ExchangeData.GetOpenInterestAsync("BTCUSDT");
         
         var groups = _binanceConfigurations.Symbols.Values
             .GroupBy(s => (int)s.Interval)
@@ -64,7 +59,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
             while (!ct.IsCancellationRequested)
             {
-                await Task.Delay(GetDelayUntilNextClose(interval), ct);
+                await Task.Delay(MarketClock.GetDelayUntilNextBoundary(interval, MarketClock.CloseOffset, DateTime.UtcNow), ct);
                 await SyncAllSymbolsAsync(symbols, ct);
 
                 if (DateTime.UtcNow - lastGapCheck >= GapCheckPeriod)
@@ -77,13 +72,6 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {            
         }
-    }
-
-    private static TimeSpan GetDelayUntilNextClose(TimeSpan interval)
-    {
-        var now = DateTime.UtcNow;
-        var nextBoundary = new DateTime((now.Ticks / interval.Ticks + 1) * interval.Ticks, DateTimeKind.Utc);
-        return nextBoundary + CloseOffset - now;
     }
 
     private async Task SyncAllSymbolsAsync(List<BinanceSymbolConfigurations> symbols, CancellationToken ct)
@@ -178,7 +166,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         DateTime from, DateTime? to, CancellationToken ct)
     {
         var intervalSpan = TimeSpan.FromSeconds((int)symbol.Interval);
-        var limiter = _limiters[symbol.MarketType];
+        var limiter = rateLimiters.For(symbol.MarketType);
         var weight = GetKlineWeight(symbol.MarketType, MaxKlineLimit);
         var retry = 0;
         var totalInserted = 0;
@@ -201,6 +189,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
             if (!result.Success)
             {
+                health.RecordFailure(HealthComponents.CandleRequests, result.Error?.Message);
                 logger.LogWarning("Kline request failed for {Symbol}: {Error}", symbol.Name, result.Error);
                 if (++retry > MaxRetries)
                     return totalInserted;
@@ -208,6 +197,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 continue;
             }
 
+            health.RecordSuccess(HealthComponents.CandleRequests);
             retry = 0;
             var data = result.Data.ToList();
             if (data.Count == 0)
