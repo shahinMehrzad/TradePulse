@@ -47,7 +47,26 @@ public static class HealthRegistration
             checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.SpotRest, HealthComponents.SpotRest);
 
         if (exchange.Symbols.Count > 0)
+        {
             checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.CandleRequests, HealthComponents.CandleRequests);
+
+            // Data-level check: connections can be fine while candles stop being stored.
+            services.AddSingleton<CandleFreshnessMonitor>();
+
+            if (exchange.LiveCandles)
+            {
+                // Kline streams also push updates for the still-open candle, so even a quiet interval is never silent for long.
+                var streamOptions = new WebSocketHealthOptions(StartupGrace, UnhealthyAfterDisconnected,
+                    MaxSilence: TimeSpan.FromMinutes(5), SilenceStatus: HealthStatus.Degraded);
+
+                if (exchange.Symbols.Values.Any(s => s.MarketType == MarketTypeEnum.Futures))
+                    checks.AddTypeActivatedCheck<WebSocketHealthCheck>(HealthComponents.CandleStreamFutures, HealthComponents.CandleStreamFutures, streamOptions);
+                if (exchange.Symbols.Values.Any(s => s.MarketType == MarketTypeEnum.Spot))
+                    checks.AddTypeActivatedCheck<WebSocketHealthCheck>(HealthComponents.CandleStreamSpot, HealthComponents.CandleStreamSpot, streamOptions);
+            }
+
+            checks.AddTypeActivatedCheck<CandleFreshnessHealthCheck>(HealthComponents.CandleFreshness);
+        }
 
         if (futuresData.FundingRates.Count > 0)
             checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.FundingRateRequests, HealthComponents.FundingRateRequests);

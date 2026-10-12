@@ -1,0 +1,240 @@
+using System.Threading.Channels;
+using Application.Services;
+using BackgroundWorker.Health;
+using Binance.Net.Enums;
+using Binance.Net.Interfaces;
+using Binance.Net.Interfaces.Clients;
+using CryptoExchange.Net.Objects.Sockets;
+using Domain.Entities;
+using Domain.Enums;
+using Domain.Repositories;
+using Infrastructure.Configurations;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+namespace BackgroundWorker;
+
+/// <summary>
+/// Stores closed candles straight from the kline WebSocket, moments after they close, instead of waiting for the REST
+/// loop (<see cref="BinanceCandleWorker"/>). The REST loop stays on as the safety net: it still runs at every boundary
+/// and, after a socket reconnect, is asked to resync immediately (<see cref="CandleSyncCoordinator"/>).
+/// <para>
+/// The socket callback only enqueues into a bounded <see cref="Channel{T}"/>; one writer drains it in batches, so the
+/// socket never waits on the database. Live candles are dropped for a table until its first REST sync has finished,
+/// because a live candle in a table that is not caught up would hide the missing history from the resume logic.
+/// </para>
+/// </summary>
+public class BinanceLiveCandleWorker(
+    IServiceScopeFactory scopeFactory,
+    ILogger<BinanceLiveCandleWorker> logger,
+    IOptions<BinanceExchangeConfigurations> configurations,
+    IBinanceSocketClient socketClient,
+    CandleSyncCoordinator coordinator,
+    WorkerHealthState health) : BackgroundService
+{
+    private const int QueueCapacity = 10_000;
+    private const int MaxBatchSize = 500;
+    private static readonly TimeSpan BatchWindow = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ShutdownFlushTimeout = TimeSpan.FromSeconds(5);
+
+    private Channel<(string Table, Candle Row)> _queue = null!;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var settings = configurations.Value;
+        if (!settings.LiveCandles || settings.Symbols.Count == 0)
+        {
+            logger.LogInformation("Live candle stream is disabled or has no symbols; REST sync only.");
+            return;
+        }
+
+        _queue = Channel.CreateBounded<(string, Candle)>(
+            new BoundedChannelOptions(QueueCapacity) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite },
+            // A dropped candle is not lost: the REST loop fetches it at the boundary.
+            _ => logger.LogError("Live candle queue is full; a candle was dropped (REST will fetch it)"));
+
+        // One subscription per market and interval, each covering all of its symbols.
+        var streams = settings.Symbols.Values
+            .GroupBy(s => (s.MarketType, s.Interval))
+            .Select(g => new CandleStream(g.Key.MarketType, g.Key.Interval,
+                g.DistinctBy(s => s.Name).ToDictionary(
+                    s => s.Name.ToString(),
+                    s => TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, s.MarketType, s.Name, s.Interval),
+                    StringComparer.OrdinalIgnoreCase)))
+            .ToList();
+
+        try
+        {
+            var subscriptions = await Task.WhenAll(streams.Select(s => SubscribeAsync(s, stoppingToken)));
+            try
+            {
+                await WriteBatchesAsync(stoppingToken);
+            }
+            finally
+            {
+                foreach (var subscription in subscriptions)
+                    await socketClient.UnsubscribeAsync(subscription);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            await FlushRemainingAsync();
+        }
+    }
+
+    private sealed record CandleStream(MarketTypeEnum Market, TimeFrameEnum Interval, Dictionary<string, string> TablesBySymbol)
+    {
+        public string Component => Market == MarketTypeEnum.Futures ? HealthComponents.CandleStreamFutures : HealthComponents.CandleStreamSpot;
+    }
+
+    private async Task<UpdateSubscription> SubscribeAsync(CandleStream stream, CancellationToken ct)
+    {
+        var symbols = stream.TablesBySymbol.Keys.ToList();
+        var interval = (KlineInterval)stream.Interval;
+        void OnMessage(DataEvent<IBinanceStreamKlineData> message) => OnKline(stream, message.Data);
+
+        while (true)
+        {
+            var result = stream.Market == MarketTypeEnum.Futures
+                ? await socketClient.UsdFuturesApi.ExchangeData.SubscribeToKlineUpdatesAsync(symbols, interval, OnMessage, ct: ct)
+                : await socketClient.SpotApi.ExchangeData.SubscribeToKlineUpdatesAsync(symbols, interval, OnMessage, ct);
+
+            if (result.Success)
+            {
+                var subscription = result.Data;
+                subscription.ConnectionLost += () =>
+                {
+                    health.SetConnected(stream.Component, false);
+                    logger.LogWarning("Candle stream {Market} {Interval} lost, reconnecting", stream.Market, stream.Interval);
+                };
+                subscription.ConnectionRestored += offlineFor =>
+                {
+                    health.SetConnected(stream.Component, true);
+                    logger.LogInformation("Candle stream {Market} {Interval} restored after {Offline}; requesting resync",
+                        stream.Market, stream.Interval, offlineFor);
+                    coordinator.RequestResync();
+                };
+                health.SetConnected(stream.Component, true);
+                logger.LogInformation("Subscribed to {Interval} candles for {Market}: {Symbols}",
+                    stream.Interval, stream.Market, string.Join(", ", symbols));
+                return subscription;
+            }
+
+            health.SetConnected(stream.Component, false);
+            logger.LogWarning("Candle stream subscription failed ({Market} {Interval}): {Error}. Retrying in {Delay}",
+                stream.Market, stream.Interval, result.Error, RetryDelay);
+            await Task.Delay(RetryDelay, ct);
+        }
+    }
+
+    /// <summary>Socket callback: must stay cheap and must never block.</summary>
+    private void OnKline(CandleStream stream, IBinanceStreamKlineData message)
+    {
+        // Every message, closed or not, proves the stream is alive.
+        health.RecordMessage(stream.Component);
+
+        var kline = message.Data;
+        if (!kline.Final || !stream.TablesBySymbol.TryGetValue(message.Symbol, out var table))
+            return;
+
+        var row = new Candle(
+            openTime: kline.OpenTime,
+            openPrice: kline.OpenPrice,
+            highPrice: kline.HighPrice,
+            lowPrice: kline.LowPrice,
+            closePrice: kline.ClosePrice,
+            volume: kline.Volume,
+            closeTime: kline.CloseTime,
+            quoteAssetVolume: kline.QuoteVolume,
+            numberOfTrades: kline.TradeCount,
+            takerBuyBaseVolume: kline.TakerBuyBaseVolume,
+            takerBuyQuoteVolume: kline.TakerBuyQuoteVolume);
+
+        _queue.Writer.TryWrite((table, row));
+    }
+
+    private async Task WriteBatchesAsync(CancellationToken ct)
+    {
+        var batch = new List<(string Table, Candle Row)>(MaxBatchSize);
+
+        while (await _queue.Reader.WaitToReadAsync(ct))
+        {
+            // Many symbols close at the same instant; gather them into one COPY per table.
+            await Task.Delay(BatchWindow, ct);
+
+            batch.Clear();
+            while (batch.Count < MaxBatchSize && _queue.Reader.TryRead(out var item))
+                batch.Add(item);
+
+            await InsertWithRetryAsync(batch, ct);
+        }
+    }
+
+    private async Task InsertWithRetryAsync(List<(string Table, Candle Row)> batch, CancellationToken ct)
+    {
+        while (true)
+        {
+            try
+            {
+                await InsertAsync(batch, ct);
+                return;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Keep the batch and try again; the queue absorbs new candles meanwhile. REST would also cover them.
+                logger.LogError(ex, "Failed to store {Count} live candles, retrying in {Delay}", batch.Count, RetryDelay);
+                await Task.Delay(RetryDelay, ct);
+            }
+        }
+    }
+
+    private async Task InsertAsync(List<(string Table, Candle Row)> batch, CancellationToken ct)
+    {
+        if (batch.Count == 0)
+            return;
+
+        using var scope = scopeFactory.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<ICandleRepository>();
+
+        foreach (var group in batch.GroupBy(b => b.Table))
+        {
+            if (!coordinator.IsReady(group.Key))
+            {
+                logger.LogDebug("Skipping live candles for {Table}: initial sync not finished, REST will fetch them", group.Key);
+                continue;
+            }
+
+            var inserted = await repository.BulkInsert(group.Key, group.Select(g => g.Row).ToList(), ct);
+            logger.LogDebug("Inserted {Count} live candles into {Table}", inserted, group.Key);
+        }
+    }
+
+    private async Task FlushRemainingAsync()
+    {
+        if (_queue is null)
+            return;
+
+        var rest = new List<(string Table, Candle Row)>();
+        while (_queue.Reader.TryRead(out var item))
+            rest.Add(item);
+
+        if (rest.Count == 0)
+            return;
+
+        using var timeout = new CancellationTokenSource(ShutdownFlushTimeout);
+        try
+        {
+            await InsertAsync(rest, timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not store {Count} queued live candles during shutdown", rest.Count);
+        }
+    }
+}

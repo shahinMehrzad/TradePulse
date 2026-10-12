@@ -34,9 +34,11 @@ var host = builder.ConfigureServices((context, services) =>
 
     services.AddTransient<DatabaseSeeder>();
     services.AddSingleton<BinanceRateLimiters>();
+    services.AddSingleton<CandleSyncCoordinator>();
     services.AddWorkerHealth(context.Configuration);
 
     services.AddHostedService<BinanceCandleWorker>();
+    services.AddHostedService<BinanceLiveCandleWorker>();
     services.AddHostedService<BinanceFundingRateWorker>();
     services.AddHostedService<BinanceOpenInterestWorker>();
     services.AddHostedService<BinanceLiquidationWorker>();

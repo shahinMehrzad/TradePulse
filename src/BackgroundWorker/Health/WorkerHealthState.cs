@@ -8,6 +8,9 @@ public static class HealthComponents
     public const string FuturesWebSocket = "binance-futures-websocket";
     public const string LiquidationStream = "binance-liquidation-stream";
     public const string CandleRequests = "candle-requests";
+    public const string CandleStreamFutures = "binance-candle-stream-futures";
+    public const string CandleStreamSpot = "binance-candle-stream-spot";
+    public const string CandleFreshness = "candle-freshness";
     public const string FundingRateRequests = "funding-rate-requests";
     public const string OpenInterestRequests = "open-interest-requests";
 }
