@@ -3,6 +3,7 @@ using Domain.Entities;
 using Domain.Repositories;
 using Domain.ValueObjects;
 using Npgsql;
+using static Infrastructure.Repositories.TimeSeries.Timestamps;
 
 namespace Infrastructure.Repositories;
 
@@ -134,7 +135,7 @@ public class CandleRepository(string connectionString) : ICandleRepository
         var latest = await connection.ExecuteScalarAsync<DateTime?>(
             new CommandDefinition($"SELECT max(open_time) FROM {tableName}", cancellationToken: cancellationToken));
 
-        return latest is null ? null : new DateTimeOffset(DateTime.SpecifyKind(latest.Value, DateTimeKind.Utc));
+        return latest is null ? null : new DateTimeOffset(FromTimestamp(latest.Value));
     }
 
     public async Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, CancellationToken cancellationToken)
@@ -154,14 +155,10 @@ public class CandleRepository(string connectionString) : ICandleRepository
 
         return rows
             .Select(r => new CandleGap(
-                DateTime.SpecifyKind(r.PrevOpen + interval, DateTimeKind.Utc),
-                DateTime.SpecifyKind(r.NextOpen - interval, DateTimeKind.Utc)))
+                FromTimestamp(r.PrevOpen + interval),
+                FromTimestamp(r.NextOpen - interval)))
             .ToList();
     }
-
-    // Columns are `timestamp` (no zone) and always hold UTC. Npgsql rejects Kind=Utc for that type,
-    // so strip the kind instead of letting the driver convert through the session time zone.
-    private static DateTime ToTimestamp(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
 
     private sealed record GapRow(DateTime PrevOpen, DateTime NextOpen);
 }
