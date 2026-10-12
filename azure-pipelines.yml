@@ -17,3 +17,6 @@ variables:
 steps:
 - script: dotnet build --configuration $(buildConfiguration)
   displayName: 'dotnet build $(buildConfiguration)'
+
+- script: dotnet test --solution DotNetTradePulse.slnx --configuration $(buildConfiguration) --no-build
+  displayName: 'dotnet test $(buildConfiguration)'

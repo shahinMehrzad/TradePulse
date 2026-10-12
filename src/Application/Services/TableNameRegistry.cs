@@ -7,7 +7,7 @@ namespace Application.Services
         public static string GetCandleTableName(ExchangeEnum exchange, MarketTypeEnum marketType, SymbolEnum symbol, TimeFrameEnum timeframe)
         {
             if (!Enum.IsDefined<ExchangeEnum>(exchange))
-                throw new ArgumentException("Invalid Market type.", nameof(marketType));
+                throw new ArgumentException("Invalid Exchange.", nameof(exchange));
 
             if (!Enum.IsDefined<MarketTypeEnum>(marketType))
                 throw new ArgumentException("Invalid Market type.", nameof(marketType));
