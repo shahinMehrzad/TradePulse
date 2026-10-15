@@ -1,6 +1,9 @@
-﻿using Application;
+using Application;
 using BackgroundWorker;
+using BackgroundWorker.Health;
 using Infrastructure;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -12,14 +15,33 @@ var configuration = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json")
     .Build();
 
+var health = configuration.GetSection("Health").Get<HealthConfigurations>() ?? new HealthConfigurations();
+
+if (health.Enabled)
+{
+    // Small Kestrel host that only serves /health, so orchestrators and humans can ask whether the worker is OK.
+    builder.ConfigureWebHost(web => web
+        .UseKestrel()
+        .UseUrls(health.Url)
+        .ConfigureServices(services => services.AddRouting())
+        .Configure(app => app.UseHealthEndpoints()));
+}
+
 var host = builder.ConfigureServices((context, services) =>
 {
     services.AddApplicationServices();
     services.AddInfrastructureServices(context.Configuration);
 
     services.AddTransient<DatabaseSeeder>();
+    services.AddSingleton<BinanceRateLimiters>();
+    services.AddSingleton<CandleSyncCoordinator>();
+    services.AddWorkerHealth(context.Configuration);
 
     services.AddHostedService<BinanceCandleWorker>();
+    services.AddHostedService<BinanceLiveCandleWorker>();
+    services.AddHostedService<BinanceFundingRateWorker>();
+    services.AddHostedService<BinanceOpenInterestWorker>();
+    services.AddHostedService<BinanceLiquidationWorker>();
 }).Build();
 
 

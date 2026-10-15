@@ -1,8 +1,9 @@
 ﻿using Dapper;
 using Domain.Entities;
 using Domain.Repositories;
+using Domain.ValueObjects;
 using Npgsql;
-using System.Data;
+using static Infrastructure.Repositories.TimeSeries.Timestamps;
 
 namespace Infrastructure.Repositories;
 
@@ -19,22 +20,22 @@ public class CandleRepository(string connectionString) : ICandleRepository
         try
         {
             var tempTableName = $"temp_candles_{Guid.NewGuid():N}";
-            using (var tempTableCommand = new NpgsqlCommand($"CREATE TEMP TABLE {tempTableName} (LIKE {tableName} INCLUDING ALL) ON COMMIT DROP;", connection, transaction))
+
+            await using (var tempTableCommand = new NpgsqlCommand(
+            $"CREATE TEMP TABLE {tempTableName} (LIKE {tableName}) ON COMMIT DROP;", connection, transaction))
             {
                 await tempTableCommand.ExecuteNonQueryAsync(cancellationToken);
             }
 
+            await using (var writer = await connection.BeginBinaryImportAsync(
+        $"COPY {tempTableName} (open_time, close_time, open_price, high_price, low_price, close_price, volume, quote_asset_volume, number_of_trades, taker_buy_base_volume, taker_buy_quote_volume) FROM STDIN (FORMAT BINARY)",
+            cancellationToken))
             {
-                await using var writer = await connection.BeginBinaryImportAsync(
-                    $"COPY {tableName} (open_time, close_time, open_price, high_price, low_price, close_price, volume, quote_asset_volume, number_of_trades, taker_buy_base_volume, taker_buy_quote_volume) FROM STDIN (FORMAT BINARY)",
-                    cancellationToken);
-
                 foreach (var candle in candles)
                 {
                     await writer.StartRowAsync(cancellationToken);
-
-                    await writer.WriteAsync(DateTime.SpecifyKind(candle.TimeRange.OpenTime, DateTimeKind.Utc), NpgsqlTypes.NpgsqlDbType.TimestampTz, cancellationToken);
-                    await writer.WriteAsync(DateTime.SpecifyKind(candle.TimeRange.CloseTime, DateTimeKind.Utc), NpgsqlTypes.NpgsqlDbType.TimestampTz, cancellationToken);
+                    await writer.WriteAsync(ToTimestamp(candle.TimeRange.OpenTime), NpgsqlTypes.NpgsqlDbType.Timestamp, cancellationToken);
+                    await writer.WriteAsync(ToTimestamp(candle.TimeRange.CloseTime), NpgsqlTypes.NpgsqlDbType.Timestamp, cancellationToken);
                     await writer.WriteAsync(candle.Open.Value, NpgsqlTypes.NpgsqlDbType.Numeric, cancellationToken);
                     await writer.WriteAsync(candle.High.Value, NpgsqlTypes.NpgsqlDbType.Numeric, cancellationToken);
                     await writer.WriteAsync(candle.Low.Value, NpgsqlTypes.NpgsqlDbType.Numeric, cancellationToken);
@@ -45,13 +46,14 @@ public class CandleRepository(string connectionString) : ICandleRepository
                     await writer.WriteAsync(candle.TakerBuyBaseVolume, NpgsqlTypes.NpgsqlDbType.Numeric, cancellationToken);
                     await writer.WriteAsync(candle.TakerBuyQuoteVolume, NpgsqlTypes.NpgsqlDbType.Numeric, cancellationToken);
                 }
-
                 await writer.CompleteAsync(cancellationToken);
             }
 
-            var mergeCommand = new NpgsqlCommand($@" INSERT INTO {tableName} 
-                SELECT * FROM {tempTableName}
-                ON CONFLICT (open_time) DO NOTHING;", connection, transaction);
+            await using var mergeCommand = new NpgsqlCommand($@"
+            INSERT INTO {tableName} (open_time, close_time, open_price, high_price, low_price, close_price, volume, quote_asset_volume, number_of_trades, taker_buy_base_volume, taker_buy_quote_volume)
+            SELECT open_time, close_time, open_price, high_price, low_price, close_price, volume, quote_asset_volume, number_of_trades, taker_buy_base_volume, taker_buy_quote_volume
+            FROM {tempTableName}
+            ON CONFLICT (open_time) DO NOTHING;", connection, transaction);
 
             int insertedCount = await mergeCommand.ExecuteNonQueryAsync(cancellationToken);
 
@@ -87,12 +89,12 @@ public class CandleRepository(string connectionString) : ICandleRepository
         if (from.HasValue)
         {
             sql += " AND open_time >= @From ";
-            parameters.Add("From", from.Value);
+            parameters.Add("From", ToTimestamp(from.Value));
         }
         if (to.HasValue)
         {
             sql += " AND open_time <= @To ";
-            parameters.Add("To", to.Value);
+            parameters.Add("To", ToTimestamp(to.Value));
         }
         sql += " ORDER BY open_time ASC;";
 
@@ -127,18 +129,36 @@ public class CandleRepository(string connectionString) : ICandleRepository
         await connection.ExecuteAsync(createTableSql);
     }
 
-    public async Task<DateTimeOffset> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken)
+    public async Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken)
     {
-        try
-        {
-            using var connection = new NpgsqlConnection(_connectionString);
-            var sql = $@"SELECT open_time AS CloseTime  FROM {tableName} order by CloseTime desc  limit 1";
-            return DateTime.SpecifyKind(await connection.QueryFirstAsync<DateTime>(sql), DateTimeKind.Utc);
-            
-        }
-        catch (Exception)
-        {
-            return DateTimeOffset.MinValue;
-        }
+        await using var connection = new NpgsqlConnection(_connectionString);
+        var latest = await connection.ExecuteScalarAsync<DateTime?>(
+            new CommandDefinition($"SELECT max(open_time) FROM {tableName}", cancellationToken: cancellationToken));
+
+        return latest is null ? null : new DateTimeOffset(FromTimestamp(latest.Value));
     }
+
+    public async Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        var sql = $@"
+            SELECT prev_open AS PrevOpen, open_time AS NextOpen
+            FROM (
+                SELECT open_time, LAG(open_time) OVER (ORDER BY open_time) AS prev_open
+                FROM {tableName}
+            ) t
+            WHERE open_time - prev_open > @IntervalSeconds * interval '1 second'
+            ORDER BY open_time;";
+
+        var rows = await connection.QueryAsync<GapRow>(
+            new CommandDefinition(sql, new { IntervalSeconds = (int)interval.TotalSeconds }, cancellationToken: cancellationToken));
+
+        return rows
+            .Select(r => new CandleGap(
+                FromTimestamp(r.PrevOpen + interval),
+                FromTimestamp(r.NextOpen - interval)))
+            .ToList();
+    }
+
+    private sealed record GapRow(DateTime PrevOpen, DateTime NextOpen);
 }

@@ -3,7 +3,7 @@ using Application.Services;
 using Domain.Entities;
 using Domain.Repositories;
 
-namespace Application.Commands;
+namespace Application.Commands.Candles;
 
 public class SaveCandlesCommandHandler(ICandleRepository candleRepository) : ICommandHandler<SaveCandlesCommand, int>
 {
