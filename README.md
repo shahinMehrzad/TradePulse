@@ -1,5 +1,7 @@
 # 📈 TradePulse: Market Data Collector & Analytics Platform
 
+[![CI](https://github.com/shahinMehrzad/TradePulse/actions/workflows/ci.yml/badge.svg)](https://github.com/shahinMehrzad/TradePulse/actions/workflows/ci.yml)
+
 A .NET 10 / C# 14 project with two purposes: a **reference for how I structure and write code**, and a **real market-data collector** that feeds my own machine-learning trading research.
 
 It continuously collects Binance market data into PostgreSQL, built for speed and reliability on the collection path, with a Clean Architecture around it.
@@ -60,7 +62,7 @@ Domain  ←  Application  ←  Infrastructure  ←  BackgroundWorker / WebApi / 
 ### Quality
 
 - **Unit tests** (xunit v3): value objects, command handling, rate limiter and health checks (with `FakeTimeProvider`), scheduling, the real health endpoint on Kestrel, table definitions and **contract tests** that fail if an enum value, table name or `appsettings.json` entry drifts from what other services expect.
-- **CI:** Azure Pipelines builds and tests every push and pull request.
+- **CI:** GitHub Actions and Azure Pipelines both build and test every push and pull request.
 
 ## 🧩 Design decisions
 
