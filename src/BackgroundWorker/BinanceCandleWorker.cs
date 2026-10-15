@@ -177,7 +177,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         var tableName = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
         var intervalSpan = TimeSpan.FromSeconds((int)symbol.Interval);
 
-        var gaps = await repository.GetGapsAsync(tableName, intervalSpan, ct);
+        var gaps = await repository.GetGapsAsync(tableName, intervalSpan, symbol.StartDate, ct);
         foreach (var gap in gaps)
         {
             var (inserted, _) = await FetchRangeAsync(symbol, repository, tableName,

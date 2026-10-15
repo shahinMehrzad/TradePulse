@@ -36,7 +36,7 @@ public class CandleFreshnessTests
         public Task<IEnumerable<Candle>> GetHistoryAsync(string tableName, DateTime? from, DateTime? to, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<int> BulkInsert(string tableName, IEnumerable<Candle> candles, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task EnsureTableExistsAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private (CandleFreshnessMonitor Monitor, CandleFreshnessHealthCheck Check) Build()

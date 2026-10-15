@@ -16,8 +16,9 @@ namespace Domain.Repositories
         Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Finds holes between stored candles (missing candles before the first row are not detected).
+        /// Finds holes between stored candles. When <paramref name="expectedStart"/> is given and the first stored candle
+        /// is at least one interval later, the missing run before it is reported as the first gap.
         /// </summary>
-        Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, CancellationToken cancellationToken);
+        Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken);
     }
 }
