@@ -7,4 +7,7 @@
     <Project Path="src/WebApi/WebApi.csproj" Id="0ecfd164-6919-43e1-a0da-1fec39623ad9" />
     <Project Path="src/WebRazor/WebRazor.csproj" Id="34be690c-bbfc-49f5-819e-7a0d6613816c" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/UnitTests/UnitTests.csproj" />
+  </Folder>
 </Solution>
