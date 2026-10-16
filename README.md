@@ -116,7 +116,7 @@ Planned, not built yet:
 - Candle read API extras (hybrid caching, streaming, CSV/Parquet export) and a data-health dashboard.
 - Re-checking recent candles for exchange-side revisions.
 - More exchanges and symbols behind a common collector abstraction.
-- Integration tests with Testcontainers, BenchmarkDotNet results, OpenTelemetry.
+- BenchmarkDotNet results, OpenTelemetry.
 
 ## 📄 License
 
