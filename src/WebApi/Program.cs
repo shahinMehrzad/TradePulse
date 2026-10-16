@@ -1,5 +1,6 @@
 using Infrastructure;
 using Application;
+using WebApi.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
@@ -26,5 +27,6 @@ app.UseAuthorization();
 
 
 app.MapControllers();
+app.MapCandleEndpoints();
 
 app.Run();
