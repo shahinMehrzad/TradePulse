@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Domain.Repositories;
 using Infrastructure.Repositories;
 using Npgsql;
 
@@ -210,5 +211,61 @@ public class CandleRepositoryTests(PostgresFixture postgres)
         await _repository.EnsureTableExistsAsync(table, Ct);
 
         Assert.Empty(await _repository.GetGapsAsync(table, Hour, Start, Ct));
+    }
+
+    [Fact]
+    public async Task LatestReturnsTheNewestWindowOldestFirst()
+    {
+        var table = NewTable();
+        await _repository.EnsureTableExistsAsync(table, Ct);
+        await _repository.BulkInsert(table, Series(100), Ct);
+
+        var window = await _repository.GetLatestAsync(table, 78, null, Ct);
+
+        Assert.Equal(78, window.Count);
+        Assert.Equal(Start + 22 * Hour, window[0].TimeRange.OpenTime);
+        Assert.Equal(Start + 99 * Hour, window[^1].TimeRange.OpenTime);
+        Assert.Equal(DateTimeKind.Utc, window[0].TimeRange.OpenTime.Kind);
+    }
+
+    [Fact]
+    public async Task LatestUpToATimeIncludesThatCandleAndNothingNewer()
+    {
+        var table = NewTable();
+        await _repository.EnsureTableExistsAsync(table, Ct);
+        await _repository.BulkInsert(table, Series(100), Ct);
+
+        var window = await _repository.GetLatestAsync(table, 5, Start + 50 * Hour, Ct);
+
+        Assert.Equal([46, 47, 48, 49, 50], window.Select(c => (int)(c.TimeRange.OpenTime - Start).TotalHours));
+    }
+
+    [Fact]
+    public async Task LatestOnASmallTableReturnsWhatExists()
+    {
+        var table = NewTable();
+        await _repository.EnsureTableExistsAsync(table, Ct);
+        await _repository.BulkInsert(table, Series(3), Ct);
+
+        Assert.Equal(3, (await _repository.GetLatestAsync(table, 78, null, Ct)).Count);
+    }
+
+    [Fact]
+    public async Task PageIsLimitedOrderedAndFiltered()
+    {
+        var table = NewTable();
+        await _repository.EnsureTableExistsAsync(table, Ct);
+        await _repository.BulkInsert(table, Series(50).Reverse(), Ct);
+
+        var page = await _repository.GetPageAsync(table, Start + 10 * Hour, Start + 40 * Hour, 4, Ct);
+
+        Assert.Equal([10, 11, 12, 13], page.Select(c => (int)(c.TimeRange.OpenTime - Start).TotalHours));
+    }
+
+    [Fact]
+    public async Task ReadsOfAMissingTableReportNotFound()
+    {
+        await Assert.ThrowsAsync<CandleSeriesNotFoundException>(() => _repository.GetPageAsync(NewTable(), null, null, 10, Ct));
+        await Assert.ThrowsAsync<CandleSeriesNotFoundException>(() => _repository.GetLatestAsync(NewTable(), 10, null, Ct));
     }
 }

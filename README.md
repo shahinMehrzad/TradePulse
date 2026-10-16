@@ -6,7 +6,7 @@ A .NET 10 / C# 14 project with two purposes: a **reference for how I structure a
 
 It continuously collects Binance market data into PostgreSQL, built for speed and reliability on the collection path, with a Clean Architecture around it.
 
-> **Status:** the data collector is the focus and is working. The Web API currently only provides authentication; the UI, messaging and caching pieces are planned (see the [roadmap](#-roadmap)). Everything listed under "Implemented" exists in the code today.
+> **Status:** the data collector is the focus and is working. The Web API provides authentication and a read-only candle endpoint; the UI, messaging and caching pieces are planned (see the [roadmap](#-roadmap)). Everything listed under "Implemented" exists in the code today.
 
 ## ✅ Implemented
 
@@ -57,11 +57,23 @@ Domain  ←  Application  ←  Infrastructure  ←  BackgroundWorker / WebApi / 
 - **Domain:** entities, value objects (`Price`, `TimeRange`), enums, repository interfaces.
 - **Application:** a small hand-written CQRS layer (`ICommandHandler`, `ICommandDispatcher`, handlers discovered by reflection), and the `TableNameRegistry`.
 - **Infrastructure:** Dapper and Npgsql for market data, EF Core with ASP.NET Identity for authentication.
-- **WebApi:** JWT login and refresh tokens. **WebRazor:** placeholder UI.
+- **WebApi:** JWT login and refresh tokens, and the candle read API below. **WebRazor:** placeholder UI.
+
+### Candle read API (`WebApi`)
+
+Read-only access to the stored closed candles; the route names the series and the table name is derived from the parsed enums only.
+
+| Request | Returns |
+|---|---|
+| `GET /api/candles/binance/futures/btcusdt/4h?from=&to=&limit=` | Candles in a range, oldest first, one page (default 500, max 1000). Follow `nextFrom` for the next page. |
+| `GET /api/candles/binance/futures/btcusdt/4h/latest?limit=78&to=` | The newest N candles up to an optional time, oldest first: the lookback window an indicator such as Ichimoku needs. |
+
+Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 with the offending parameter, a series the collector never created is a 404. The endpoints talk to `ICandleReader`, so a caching decorator can be added without touching them.
 
 ### Quality
 
 - **Unit tests** (xunit v3): value objects, command handling, rate limiter and health checks (with `FakeTimeProvider`), scheduling, the real health endpoint on Kestrel, table definitions and **contract tests** that fail if an enum value, table name or `appsettings.json` entry drifts from what other services expect.
+- **Integration tests** (Testcontainers, real Postgres, needs Docker): the repositories' SQL, idempotent inserts, rollback, gap detection and the read queries.
 - **CI:** GitHub Actions and Azure Pipelines both build and test every push and pull request.
 
 ## 🧩 Design decisions
@@ -101,7 +113,7 @@ dotnet test --solution DotNetTradePulse.slnx
 Planned, not built yet:
 
 - Event publishing (`CandleClosed`) through **RabbitMQ** using an outbox, and **Redis** for latest-candle caching.
-- Read API for candles (streaming, hybrid caching, CSV/Parquet export) and a data-health dashboard.
+- Candle read API extras (hybrid caching, streaming, CSV/Parquet export) and a data-health dashboard.
 - Re-checking recent candles for exchange-side revisions.
 - More exchanges and symbols behind a common collector abstraction.
 - BenchmarkDotNet results, OpenTelemetry.

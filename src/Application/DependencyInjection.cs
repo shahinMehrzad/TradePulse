@@ -1,4 +1,5 @@
 ﻿using Application.Interfaces;
+using Application.Queries.Candles;
 using Application.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -21,6 +22,7 @@ public static class DependencyInjection
         }
 
         services.AddScoped<ICommandDispatcher, CommandDispatcher>();
+        services.AddScoped<ICandleReader, CandleReader>();
 
         return services;
     }

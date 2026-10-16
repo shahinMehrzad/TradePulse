@@ -69,43 +69,84 @@ public class CandleRepository(string connectionString) : ICandleRepository
 
     public async Task<IEnumerable<Candle>> GetHistoryAsync(string tableName, DateTime? from, DateTime? to, CancellationToken cancellationToken)
     {
-        using var connection = new NpgsqlConnection(_connectionString);
-        var sql = $@"
-                SELECT
-                    open_time AS OpenTime,
-                    open_price AS Open,
-                    high_price AS High,
-                    low_price AS Low,
-                    close_price AS Close,
-                    volume AS Volume,
-                    close_time AS CloseTime,
-                    quote_asset_volume AS QuoteAssetVolume,
-                    number_of_trades AS NumberOfTrades,
-                    taker_buy_base_volume AS TakerBuyBaseVolume,
-                    taker_buy_quote_volume AS TakerBuyQuoteVolume
-                FROM {tableName} WHERE 1 = 1 ";
+        var (where, parameters) = TimeFilter(from, to);
 
+        return await QueryCandlesAsync(tableName, $"{SelectCandles(tableName)}{where} ORDER BY open_time ASC;", parameters, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Candle>> GetPageAsync(string tableName, DateTime? from, DateTime? to, int limit, CancellationToken cancellationToken)
+    {
+        var (where, parameters) = TimeFilter(from, to);
+        parameters.Add("Limit", limit);
+
+        return await QueryCandlesAsync(tableName, $"{SelectCandles(tableName)}{where} ORDER BY open_time ASC LIMIT @Limit;", parameters, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Candle>> GetLatestAsync(string tableName, int limit, DateTime? upTo, CancellationToken cancellationToken)
+    {
+        var (where, parameters) = TimeFilter(null, upTo);
+        parameters.Add("Limit", limit);
+
+        // Newest-first so the primary key is walked backwards and stops after `limit` rows; flipped to ascending below.
+        var candles = await QueryCandlesAsync(tableName, $"{SelectCandles(tableName)}{where} ORDER BY open_time DESC LIMIT @Limit;", parameters, cancellationToken);
+        candles.Reverse();
+        return candles;
+    }
+
+    // Only the bounds that are present become predicates: a null parameter has no type for Postgres to infer,
+    // and a plain range predicate keeps the primary key usable.
+    private static (string Where, DynamicParameters Parameters) TimeFilter(DateTime? from, DateTime? to)
+    {
         var parameters = new DynamicParameters();
-        if (from.HasValue)
-        {
-            sql += " AND open_time >= @From ";
-            parameters.Add("From", ToTimestamp(from.Value));
-        }
-        if (to.HasValue)
-        {
-            sql += " AND open_time <= @To ";
-            parameters.Add("To", ToTimestamp(to.Value));
-        }
-        sql += " ORDER BY open_time ASC;";
+        var conditions = new List<string>(2);
 
-        // Dapper cannot fill Candle.TimeRange (a struct) from flat columns, so map through a row type.
-        var rows = await connection.QueryAsync<CandleRow>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken));
+        if (from is { } f)
+        {
+            conditions.Add("open_time >= @From");
+            parameters.Add("From", ToTimestamp(f));
+        }
+        if (to is { } t)
+        {
+            conditions.Add("open_time <= @To");
+            parameters.Add("To", ToTimestamp(t));
+        }
 
-        var candles = rows.Select(r => new Candle(
+        return (conditions.Count == 0 ? "" : " WHERE " + string.Join(" AND ", conditions), parameters);
+    }
+
+    private static string SelectCandles(string tableName) => $@"
+        SELECT
+            open_time AS OpenTime,
+            open_price AS Open,
+            high_price AS High,
+            low_price AS Low,
+            close_price AS Close,
+            volume AS Volume,
+            close_time AS CloseTime,
+            quote_asset_volume AS QuoteAssetVolume,
+            number_of_trades AS NumberOfTrades,
+            taker_buy_base_volume AS TakerBuyBaseVolume,
+            taker_buy_quote_volume AS TakerBuyQuoteVolume
+        FROM {tableName}";
+
+    private async Task<List<Candle>> QueryCandlesAsync(string tableName, string sql, DynamicParameters parameters, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+
+        IEnumerable<CandleRow> rows;
+        try
+        {
+            // Dapper cannot fill Candle.TimeRange (a struct) from flat columns, so map through a row type.
+            rows = await connection.QueryAsync<CandleRow>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken));
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            throw new CandleSeriesNotFoundException(tableName, ex);
+        }
+
+        return rows.Select(r => new Candle(
             FromTimestamp(r.OpenTime), r.Open, r.High, r.Low, r.Close, r.Volume,
             FromTimestamp(r.CloseTime), r.QuoteAssetVolume, r.NumberOfTrades, r.TakerBuyBaseVolume, r.TakerBuyQuoteVolume)).ToList();
-
-        return candles;
     }
 
     public async Task EnsureTableExistsAsync(string tableName, CancellationToken cancellationToken)
