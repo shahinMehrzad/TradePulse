@@ -69,25 +69,7 @@ public class CandleRepository(string connectionString) : ICandleRepository
 
     public async Task<IEnumerable<Candle>> GetHistoryAsync(string tableName, DateTime? from, DateTime? to, CancellationToken cancellationToken)
     {
-<<<<<<< Updated upstream
-        using var connection = new NpgsqlConnection(_connectionString);
-        var sql = $@"
-                SELECT 
-                    open_time AS OpenTime,
-                    open_price AS Open,
-                    high_price AS High,
-                    low_price AS Low,
-                    close_price AS Close,
-                    volume AS Volume,
-                    close_time AS CloseTime,
-                    quote_asset_volume AS QuoteAssetVolume,
-                    number_of_trades AS NumberOfTrades,
-                    taker_buy_base_volume AS TakerBuyBaseVolume,
-                    taker_buy_quote_volume AS TakerBuyQuoteVolume
-                FROM {tableName} WHERE 1 = 1 ";
-=======
         var (where, parameters) = TimeFilter(from, to);
->>>>>>> Stashed changes
 
         return await QueryCandlesAsync(tableName, $"{SelectCandles(tableName)}{where} ORDER BY open_time ASC;", parameters, cancellationToken);
     }
@@ -118,11 +100,6 @@ public class CandleRepository(string connectionString) : ICandleRepository
         var parameters = new DynamicParameters();
         var conditions = new List<string>(2);
 
-<<<<<<< Updated upstream
-        var candles = await connection.QueryAsync<Candle>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken));
-
-        return candles;
-=======
         if (from is { } f)
         {
             conditions.Add("open_time >= @From");
@@ -170,7 +147,6 @@ public class CandleRepository(string connectionString) : ICandleRepository
         return rows.Select(r => new Candle(
             FromTimestamp(r.OpenTime), r.Open, r.High, r.Low, r.Close, r.Volume,
             FromTimestamp(r.CloseTime), r.QuoteAssetVolume, r.NumberOfTrades, r.TakerBuyBaseVolume, r.TakerBuyQuoteVolume)).ToList();
->>>>>>> Stashed changes
     }
 
     public async Task EnsureTableExistsAsync(string tableName, CancellationToken cancellationToken)
@@ -208,7 +184,7 @@ public class CandleRepository(string connectionString) : ICandleRepository
         return latest is null ? null : new DateTimeOffset(FromTimestamp(latest.Value));
     }
 
-    public async Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         var sql = $@"
@@ -223,12 +199,28 @@ public class CandleRepository(string connectionString) : ICandleRepository
         var rows = await connection.QueryAsync<GapRow>(
             new CommandDefinition(sql, new { IntervalSeconds = (int)interval.TotalSeconds }, cancellationToken: cancellationToken));
 
-        return rows
+        var gaps = rows
             .Select(r => new CandleGap(
                 FromTimestamp(r.PrevOpen + interval),
                 FromTimestamp(r.NextOpen - interval)))
             .ToList();
+
+        if (expectedStart?.ToUniversalTime() is { } start) // config dates may bind as Local kind
+        {
+            var first = await connection.ExecuteScalarAsync<DateTime?>(
+                new CommandDefinition($"SELECT min(open_time) FROM {tableName}", cancellationToken: cancellationToken));
+
+            // An empty table is the sync loop's job; here only a hole in front of existing data counts.
+            if (first is { } firstOpen && firstOpen - ToTimestamp(start) >= interval)
+                gaps.Insert(0, new CandleGap(start, FromTimestamp(firstOpen - interval)));
+        }
+
+        return gaps;
     }
+
+    private sealed record CandleRow(
+        DateTime OpenTime, decimal Open, decimal High, decimal Low, decimal Close, decimal Volume,
+        DateTime CloseTime, decimal QuoteAssetVolume, long NumberOfTrades, decimal TakerBuyBaseVolume, decimal TakerBuyQuoteVolume);
 
     private sealed record GapRow(DateTime PrevOpen, DateTime NextOpen);
 }

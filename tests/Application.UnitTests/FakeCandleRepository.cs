@@ -28,9 +28,6 @@ internal sealed class FakeCandleRepository : ICandleRepository
     public Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
-<<<<<<< Updated upstream
-    public Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, CancellationToken cancellationToken) =>
-=======
     public Task<IReadOnlyList<Candle>> GetPageAsync(string tableName, DateTime? from, DateTime? to, int limit, CancellationToken cancellationToken)
     {
         LastRead = (tableName, from, to, limit);
@@ -44,6 +41,5 @@ internal sealed class FakeCandleRepository : ICandleRepository
     }
 
     public Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken) =>
->>>>>>> Stashed changes
         throw new NotSupportedException();
 }
