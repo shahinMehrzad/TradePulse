@@ -1,5 +1,6 @@
-using Infrastructure;
 using Application;
+using Infrastructure;
+using WebApi.Authentication;
 using WebApi.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +20,7 @@ if (builder.Configuration.GetValue("CandleCache:Enabled", true))
     builder.Services.AddCandleCaching(builder.Configuration);
 }
 
+builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
@@ -41,3 +43,6 @@ app.MapControllers();
 app.MapCandleEndpoints();
 
 app.Run();
+
+// Lets WebApplicationFactory<Program> reach the entry point from the integration tests.
+public partial class Program;

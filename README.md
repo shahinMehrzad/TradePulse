@@ -61,20 +61,39 @@ Domain  ←  Application  ←  Infrastructure  ←  BackgroundWorker / WebApi / 
 
 ### Candle read API (`WebApi`)
 
-Read-only access to the stored closed candles; the route names the series and the table name is derived from the parsed enums only.
+Read-only access to the stored closed candles; the route names the series and the table name is derived from the parsed enums only. **Requires a bearer token** (`POST /api/auth/login`, then `Authorization: Bearer <accessToken>`).
 
 | Request | Returns |
 |---|---|
 | `GET /api/candles/binance/futures/btcusdt/4h?from=&to=&limit=` | Candles in a range, oldest first, one page (default 500, max 1000). Follow `nextFrom` for the next page. |
 | `GET /api/candles/binance/futures/btcusdt/4h/latest?limit=78&to=` | The newest N candles up to an optional time, oldest first: the lookback window an indicator such as Ichimoku needs. |
 
-Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 with the offending parameter, a series the collector never created is a 404. The endpoints talk to `ICandleReader`, so a caching decorator can be added without touching them.
+Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 with the offending parameter, a series the collector never created is a 404. The endpoints talk to `ICandleReader`, so the cache is a decorator behind it.
+
+### Authentication
+
+`POST /api/auth/login` issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret and the seeded admin credentials are **not** in the committed `appsettings.json`: Development gets throwaway values from `appsettings.Development.json`; anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes) and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.
+
+### Candle cache
+
+`CachedCandleReader` decorates `ICandleReader` with .NET's `HybridCache`: entries live in process memory (L1) and, if `ConnectionStrings:Redis` is set, also in Redis (L2) so several API instances share them. Concurrent identical requests share one database call, and errors are never cached. Answers that reach the newest candle expire after `CandleCache:LatestTtl` (30 s); answers that end more than two candles ago expire after `HistoricalTtl` (1 h, not forever, because Binance sometimes revises old candles). Set `CandleCache:Enabled` to `false` to turn it off.
+
+Measured (BenchmarkDotNet, Postgres and Redis in Docker on the same machine, Ryzen 7 8840HS; warm cache, mean):
+
+| Request | No cache | Redis only (L2) | Memory (L1) |
+|---|---|---|---|
+| latest 78 x 4h (Ichimoku lookback) | 959 us | 821 us | 0.30 us |
+| latest 1 x 15m | 809 us | 565 us | 0.31 us |
+| page of 500 x 15m | 1,575 us | 2,005 us | 0.33 us |
+
+Takeaways: Postgres already answers in about 1 ms, so a Redis hit saves little (a network round trip either way) and a large page is even slower from Redis because of the JSON copy. The gain comes from the in-memory level; Redis only adds sharing between instances. Redis is opt-in: if it is configured and goes down, requests still succeed but every cache miss waits for the Redis timeout, so use short ones, e.g. `localhost:6379,abortConnect=false,connectTimeout=500,syncTimeout=500,asyncTimeout=500`.
 
 ### Quality
 
 - **Unit tests** (xunit v3): value objects, command handling, rate limiter and health checks (with `FakeTimeProvider`), scheduling, the real health endpoint on Kestrel, table definitions and **contract tests** that fail if an enum value, table name or `appsettings.json` entry drifts from what other services expect.
 - **Integration tests** (Testcontainers, real Postgres, needs Docker): the repositories' SQL, idempotent inserts, rollback, gap detection and the read queries.
-- **Benchmarks** (BenchmarkDotNet, `benchmarks/TradePulse.Benchmarks`, needs Docker): read latency of the candle query layer against a seeded Postgres (300k 15m + 18.7k 4h candles). Run with `dotnet run -c Release --project benchmarks/TradePulse.Benchmarks -- --filter '*'`. Baseline without any cache: latest 78 x 4h candles about 0.84 ms (p95 0.87 ms), latest 1 candle about 0.71 ms, a 500-candle page about 1.5 ms (Ryzen 7 8840HS, Postgres in Docker on the same machine).
+- **API integration tests** (`WebApi.IntegrationTests`, the real host on a throwaway Postgres): login, bearer validation and every rejection case (no token, wrong key, issuer or audience, expired, tampered, `alg: none`, wrong algorithm), and the startup refusal without a strong secret.
+- **Benchmarks** (BenchmarkDotNet, `benchmarks/TradePulse.Benchmarks`, needs Docker): read latency of the candle query layer against a seeded Postgres (300k 15m + 18.7k 4h candles), with and without the cache. Run with `dotnet run -c Release --project benchmarks/TradePulse.Benchmarks -- --filter '*'`. Results are in [Candle cache](#candle-cache).
 - **CI:** GitHub Actions and Azure Pipelines both build and test every push and pull request.
 
 ## 🧩 Design decisions
@@ -114,7 +133,7 @@ dotnet test --solution DotNetTradePulse.slnx
 Planned, not built yet:
 
 - Event publishing (`CandleClosed`) through **RabbitMQ** using an outbox, and **Redis** for latest-candle caching.
-- Candle read API extras (hybrid caching, streaming, CSV/Parquet export) and a data-health dashboard.
+- Candle read API extras (streaming, CSV/Parquet export, cache invalidation from `CandleClosed` events instead of TTL) and a data-health dashboard.
 - Re-checking recent candles for exchange-side revisions.
 - More exchanges and symbols behind a common collector abstraction.
 - BenchmarkDotNet results, OpenTelemetry.
