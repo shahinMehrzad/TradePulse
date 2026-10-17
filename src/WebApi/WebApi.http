@@ -4,3 +4,11 @@ GET {{WebApi_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+### Last 78 four-hour BTCUSDT futures candles (Ichimoku lookback)
+GET {{WebApi_HostAddress}}/api/candles/binance/futures/btcusdt/4h/latest?limit=78
+Accept: application/json
+
+### A page of 15m candles; follow nextFrom for the next one
+GET {{WebApi_HostAddress}}/api/candles/binance/futures/btcusdt/15m?from=2024-01-01T00:00:00Z&limit=500
+Accept: application/json
