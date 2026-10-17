@@ -8,6 +8,17 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddDataProtection();
 builder.Services.AddApplicationServices();
+
+// Candle reads go through a HybridCache (memory, plus Redis when a connection string is configured).
+if (builder.Configuration.GetValue("CandleCache:Enabled", true))
+{
+    var redis = builder.Configuration.GetConnectionString("Redis");
+    if (!string.IsNullOrWhiteSpace(redis))
+        builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redis);
+
+    builder.Services.AddCandleCaching(builder.Configuration);
+}
+
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 

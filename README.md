@@ -74,6 +74,7 @@ Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 wi
 
 - **Unit tests** (xunit v3): value objects, command handling, rate limiter and health checks (with `FakeTimeProvider`), scheduling, the real health endpoint on Kestrel, table definitions and **contract tests** that fail if an enum value, table name or `appsettings.json` entry drifts from what other services expect.
 - **Integration tests** (Testcontainers, real Postgres, needs Docker): the repositories' SQL, idempotent inserts, rollback, gap detection and the read queries.
+- **Benchmarks** (BenchmarkDotNet, `benchmarks/TradePulse.Benchmarks`, needs Docker): read latency of the candle query layer against a seeded Postgres (300k 15m + 18.7k 4h candles). Run with `dotnet run -c Release --project benchmarks/TradePulse.Benchmarks -- --filter '*'`. Baseline without any cache: latest 78 x 4h candles about 0.84 ms (p95 0.87 ms), latest 1 candle about 0.71 ms, a 500-candle page about 1.5 ms (Ryzen 7 8840HS, Postgres in Docker on the same machine).
 - **CI:** GitHub Actions and Azure Pipelines both build and test every push and pull request.
 
 ## 🧩 Design decisions
