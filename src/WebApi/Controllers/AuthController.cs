@@ -1,9 +1,9 @@
-﻿using Application.Commands.Auth;
+using Application.Commands.Auth;
 using Application.Dtos.Auth;
 using Application.Interfaces;
-using CryptoExchange.Net.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace WebApi.Controllers;
 
@@ -13,7 +13,10 @@ namespace WebApi.Controllers;
 public class AuthController(ICommandDispatcher dispatcher) : BaseController
 {
 
+    public const string LoginRateLimitPolicy = "login";
+
     [HttpPost("login")]
+    [EnableRateLimiting(LoginRateLimitPolicy)]
     public async Task<IActionResult> Login([FromBody] LoginCommand payload, CancellationToken cancellationToken)
     {
         try
@@ -32,21 +35,18 @@ public class AuthController(ICommandDispatcher dispatcher) : BaseController
     [HttpPost("refresh-token")]
     public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequestDto payload, CancellationToken cancellationToken)
     {
-        Guid.TryParse(GetUserId(), out var userId);
-        if (userId == default)
-            return Unauthorized(new { message = "Invalid user ID." });
-
         try
         {
             var response = await dispatcher.SendAsync<ValidateRefreshTokenCommand, AuthResponseDto>
-                (new ValidateRefreshTokenCommand(userId, payload.RefreshToken, GetDeviceId()), cancellationToken);
+                (new ValidateRefreshTokenCommand(payload.RefreshToken, GetDeviceId()), cancellationToken);
             var refreshToken = await dispatcher.SendAsync<GenerateRefreshTokenCommand, string>
-                (new GenerateRefreshTokenCommand(userId, GetDeviceId(), GetIpAddress(), GetUserAgent(), response.RefreshTokenDurationInDays), cancellationToken);
+                (new GenerateRefreshTokenCommand(response.UserId, GetDeviceId(), GetIpAddress(), GetUserAgent(), response.RefreshTokenDurationInDays), cancellationToken);
             return Ok(new LoginResponseDto(response.AccessToken, response.ExpiresAt, response.UserName, refreshToken));
         }
-        catch (Exception ex)
+        catch (UnauthorizedAccessException)
         {
-            return Unauthorized(new { message = ex.Message });
-        }        
+            // Deliberately generic, and only for authentication failures: other exceptions must not leak their messages.
+            return Unauthorized(new { message = "Invalid token." });
+        }
     }
 }

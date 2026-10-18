@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - TradePulse</title>
+    <link rel="stylesheet" href="~/lib/tabler/css/tabler.min.css" asp-append-version="true" />
+</head>
+<body class="d-flex flex-column" style="background: linear-gradient(160deg, var(--tblr-bg-surface-secondary) 0%, var(--tblr-bg-surface-tertiary, var(--tblr-bg-surface-secondary)) 100%)">
+    <div class="page page-center">
+        <div class="container container-tight py-4">
+            <div class="text-center mb-4">
+                <div class="text-primary mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+                <span class="h1 fw-bold">TradePulse</span>
+                <div class="text-secondary">Admin panel</div>
+            </div>
+            @RenderBody()
+        </div>
+    </div>
+</body>
+</html>

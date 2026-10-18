@@ -1,0 +1,53 @@
+using Domain.Entities;
+using Infrastructure.Repositories;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Testcontainers.PostgreSql;
+
+namespace WebApi.IntegrationTests;
+
+/// <summary>
+/// The real WebApi host (Program.cs, real middleware, real JWT validation) on top of a throwaway Postgres.
+/// The database holds the auth schema (migrated and seeded by the app itself) and one small candle table.
+/// </summary>
+public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
+{
+    public const string CandleUrl = "/api/candles/binance/futures/btcusdt/1h/latest?limit=5";
+
+    // The same values the Development settings seed.
+    public const string AdminEmail = "admin@example.com";
+    public const string AdminPassword = "AdminPassword123!";
+
+    public string ConnectionString => _postgres.GetConnectionString();
+
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+
+    public async ValueTask InitializeAsync()
+    {
+        await _postgres.StartAsync();
+
+        var repository = new CandleRepository(_postgres.GetConnectionString());
+        await repository.EnsureTableExistsAsync("binance_futures_btcusdt_1h", CancellationToken.None);
+
+        var start = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var candles = Enumerable.Range(0, 10).Select(i =>
+            new Candle(start.AddHours(i), 1m, 4m, 0.5m, 3m, 10m, start.AddHours(i + 1).AddMilliseconds(-1), 25m, 42, 6m, 15m));
+        await repository.BulkInsert("binance_futures_btcusdt_1h", candles, CancellationToken.None);
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        var connectionString = _postgres.GetConnectionString();
+        builder.UseSetting("ConnectionStrings:DefaultConnection", connectionString);
+        builder.UseSetting("ConnectionStrings:AuthConnection", connectionString);
+        builder.UseSetting("ConnectionStrings:Redis", "");
+        // Many tests log in within a minute; the throttle itself is tested with its own low limit.
+        builder.UseSetting("RateLimiting:LoginPermitsPerMinute", "1000");
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        await base.DisposeAsync();
+        await _postgres.DisposeAsync();
+    }
+}

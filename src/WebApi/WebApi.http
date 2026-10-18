@@ -5,10 +5,27 @@ Accept: application/json
 
 ###
 
+### Log in (Development seeds admin@example.com); copy accessToken into the variable below
+POST {{WebApi_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "admin@example.com", "username": "", "password": "AdminPassword123!" }
+
+@token = paste-accessToken-here
+@refreshToken = paste-refreshToken-here
+
+### Refresh: no access token needed; refresh tokens are single use, so paste the new pair from each response
+POST {{WebApi_HostAddress}}/api/auth/refresh-token
+Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
+
 ### Last 78 four-hour BTCUSDT futures candles (Ichimoku lookback)
 GET {{WebApi_HostAddress}}/api/candles/binance/futures/btcusdt/4h/latest?limit=78
+Authorization: Bearer {{token}}
 Accept: application/json
 
 ### A page of 15m candles; follow nextFrom for the next one
 GET {{WebApi_HostAddress}}/api/candles/binance/futures/btcusdt/15m?from=2024-01-01T00:00:00Z&limit=500
+Authorization: Bearer {{token}}
 Accept: application/json

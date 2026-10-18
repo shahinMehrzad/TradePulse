@@ -19,7 +19,9 @@ public static class CandleEndpoints
 
     public static IEndpointRouteBuilder MapCandleEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/candles/{exchange}/{market}/{symbol}/{timeframe}").WithTags("Candles");
+        var group = app.MapGroup("/api/candles/{exchange}/{market}/{symbol}/{timeframe}")
+            .WithTags("Candles")
+            .RequireAuthorization(); // any signed-in user; tokens come from POST /api/auth/login
 
         group.MapGet("/", GetRange)
             .WithSummary("Candles in a time range, oldest first, paged. Follow nextFrom for the next page.");

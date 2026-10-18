@@ -25,30 +25,19 @@ public class RefreshTokenRepository(AuthDbContext context) : IRefreshTokenReposi
 
 
 
-    public async Task<bool> RevokeTokenAsync(string token, Guid userId, string deviceId, CancellationToken cancellationToken = default)
+    public async Task<Guid?> ConsumeAsync(string tokenHash, string deviceId, CancellationToken cancellationToken = default)
     {
-        var refreshToken = await GetByTokenAsync(token, userId, cancellationToken);
+        var now = DateTime.UtcNow;
+        var active = context.RefreshTokens.Where(r =>
+            r.Token == tokenHash && r.DeviceId == deviceId && !r.IsRevoked && r.ExpiresOn > now);
 
-        if (refreshToken == null)
-            return false;
+        var userId = await active.Select(r => (Guid?)r.UserId).SingleOrDefaultAsync(cancellationToken);
+        if (userId is null)
+            return null;
 
-        if(refreshToken.DeviceId != deviceId)
-            return false;
+        // One conditional UPDATE decides the race: only the call that flips IsRevoked from false gets the user.
+        var claimed = await active.ExecuteUpdateAsync(s => s.SetProperty(r => r.IsRevoked, true), cancellationToken);
 
-        refreshToken.IsRevoked = true;
-        await UpdateAsync(refreshToken, cancellationToken);
-        return true;
-    }
-
-    private async Task<RefreshToken?> GetByTokenAsync(string token, Guid userId, CancellationToken cancellationToken = default)
-    {        
-        return await context.RefreshTokens
-            .SingleOrDefaultAsync(r => r.Token == token && r.UserId == userId && !r.IsRevoked && r.ExpiresOn > DateTime.UtcNow, cancellationToken);
-    }
-
-    private async Task UpdateAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default)
-    {
-        context.RefreshTokens.Update(refreshToken);
-        await context.SaveChangesAsync(cancellationToken);
+        return claimed == 1 ? userId : null;
     }
 }

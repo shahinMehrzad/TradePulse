@@ -1,10 +1,26 @@
 ﻿@page
 @model IndexModel
 @{
-    ViewData["Title"] = "Home page";
+    ViewData["Title"] = "Dashboard";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="row row-cards">
+    <div class="col-sm-6 col-lg-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="subheader">Signed in as</div>
+                <div class="h2 mb-1">@Model.Admin?.UserName</div>
+                <div class="text-secondary">@Model.Admin?.Email</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="subheader">Roles</div>
+                <div class="h2 mb-1">@string.Join(", ", Model.Admin?.Roles ?? [])</div>
+                <div class="text-secondary">Confirmed by the API just now</div>
+            </div>
+        </div>
+    </div>
 </div>

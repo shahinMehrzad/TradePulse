@@ -1,5 +1,6 @@
 ﻿using Application.Dtos.Auth;
 using Application.Interfaces;
+using Application.Services;
 using Domain.Repositories;
 using Infrastructure.Configurations;
 using Infrastructure.DbContext;
@@ -22,12 +23,13 @@ public record ValidateRefreshTokenCommandHandler(IRefreshTokenRepository refresh
 
     public async Task<AuthResponseDto> HandleAsync(ValidateRefreshTokenCommand request, CancellationToken cancellationToken)
     {
-        var user = await _userManager.FindByIdAsync(request.UserId.ToString());
-        if (user == null)
+        // The refresh token alone identifies the user: the access token is usually expired by the time this is called.
+        var userId = await _refreshTokenRepository.ConsumeAsync(RefreshTokenHasher.Hash(request.RefreshToken), request.DeviceId, cancellationToken);
+        if (userId is null)
             throw new UnauthorizedAccessException("Invalid token.");
 
-        var revokeResponse =  await _refreshTokenRepository.RevokeTokenAsync(request.RefreshToken, request.UserId, request.DeviceId, cancellationToken);
-        if (!revokeResponse)
+        var user = await _userManager.FindByIdAsync(userId.Value.ToString());
+        if (user == null)
             throw new UnauthorizedAccessException("Invalid token.");
 
         var tokenHandler = new JwtSecurityTokenHandler();
