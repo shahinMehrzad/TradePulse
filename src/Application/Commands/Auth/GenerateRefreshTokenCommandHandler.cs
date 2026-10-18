@@ -1,4 +1,5 @@
 ﻿using Application.Interfaces;
+using Application.Services;
 using Domain.Repositories;
 using System.Security.Cryptography;
 
@@ -17,7 +18,7 @@ public class GenerateRefreshTokenCommandHandler(IRefreshTokenRepository refreshT
 
         await _refreshTokenRepository.AddAsync(new Domain.Entities.RefreshToken
         {
-            Token = refreshToken,
+            Token = RefreshTokenHasher.Hash(refreshToken),
             UserId = request.UserId,
             DeviceId = request.DeviceId,
             IPAddress = request.IpAddress,

@@ -12,6 +12,13 @@ Content-Type: application/json
 { "email": "admin@example.com", "username": "", "password": "AdminPassword123!" }
 
 @token = paste-accessToken-here
+@refreshToken = paste-refreshToken-here
+
+### Refresh: no access token needed; refresh tokens are single use, so paste the new pair from each response
+POST {{WebApi_HostAddress}}/api/auth/refresh-token
+Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
 
 ### Last 78 four-hour BTCUSDT futures candles (Ichimoku lookback)
 GET {{WebApi_HostAddress}}/api/candles/binance/futures/btcusdt/4h/latest?limit=78
