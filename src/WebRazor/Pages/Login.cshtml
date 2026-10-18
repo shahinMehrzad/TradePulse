@@ -1,0 +1,30 @@
+@page
+@model LoginModel
+@{
+    ViewData["Title"] = "Sign in";
+    Layout = "_Auth";
+}
+
+<div class="card card-md">
+    <div class="card-body">
+        <h2 class="h2 text-center mb-4">Admin sign in</h2>
+        @if (Model.Error is not null)
+        {
+            <div class="alert alert-danger" role="alert">@Model.Error</div>
+        }
+        <form method="post" autocomplete="off">
+            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+            <div class="mb-3">
+                <label asp-for="Input.Identifier" class="form-label">Email or username</label>
+                <input asp-for="Input.Identifier" class="form-control" autofocus />
+                <span asp-validation-for="Input.Identifier" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="Input.Password" class="form-label">Password</label>
+                <input asp-for="Input.Password" class="form-control" autocomplete="current-password" />
+                <span asp-validation-for="Input.Password" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Sign in</button>
+        </form>
+    </div>
+</div>

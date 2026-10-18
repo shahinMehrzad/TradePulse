@@ -10,6 +10,9 @@ public static class JwtAuthenticationExtensions
     /// <summary>The key is used with HMAC-SHA256, which wants at least 256 bits.</summary>
     private const int MinimumSecretBytes = 32;
 
+    /// <summary>Policy for the management endpoints: only the role seeded from <c>AdminConfigurations:Role</c>.</summary>
+    public const string AdminPolicy = "Admin";
+
     /// <summary>
     /// Validates the bearer tokens that <c>POST /api/auth/login</c> issues: signature, issuer, audience and lifetime.
     /// The signing secret is deliberately not in the committed <c>appsettings.json</c> (this repo is public);
@@ -44,7 +47,12 @@ public static class JwtAuthenticationExtensions
                 };
             });
 
-        services.AddAuthorization();
+        var adminRole = configuration["AdminConfigurations:Role"];
+        if (string.IsNullOrWhiteSpace(adminRole))
+            throw new InvalidOperationException("AdminConfigurations:Role must be set; the admin policy has nothing to match without it.");
+
+        services.AddAuthorizationBuilder()
+            .AddPolicy(AdminPolicy, policy => policy.RequireAuthenticatedUser().RequireRole(adminRole));
 
         return services;
     }
