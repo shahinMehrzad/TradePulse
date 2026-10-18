@@ -18,6 +18,8 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     public const string AdminEmail = "admin@example.com";
     public const string AdminPassword = "AdminPassword123!";
 
+    public string ConnectionString => _postgres.GetConnectionString();
+
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
 
     public async ValueTask InitializeAsync()

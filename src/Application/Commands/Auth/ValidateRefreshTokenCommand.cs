@@ -1,3 +1,3 @@
 ﻿namespace Application.Commands.Auth;
 
-public record ValidateRefreshTokenCommand(Guid UserId, string RefreshToken, string DeviceId);
+public record ValidateRefreshTokenCommand(string RefreshToken, string DeviceId);
