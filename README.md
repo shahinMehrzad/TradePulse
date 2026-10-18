@@ -57,7 +57,7 @@ Domain  ←  Application  ←  Infrastructure  ←  BackgroundWorker / WebApi / 
 - **Domain:** entities, value objects (`Price`, `TimeRange`), enums, repository interfaces.
 - **Application:** a small hand-written CQRS layer (`ICommandHandler`, `ICommandDispatcher`, handlers discovered by reflection), and the `TableNameRegistry`.
 - **Infrastructure:** Dapper and Npgsql for market data, EF Core with ASP.NET Identity for authentication.
-- **WebApi:** JWT login and refresh tokens, and the candle read API below. **WebRazor:** placeholder UI.
+- **WebApi:** JWT login and refresh tokens, and the candle read API below. **WebRazor:** admin panel (sign-in and a dashboard so far), see [Admin panel](#admin-panel-webrazor).
 
 ### Candle read API (`WebApi`)
 
@@ -75,6 +75,12 @@ Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 wi
 `POST /api/auth/login` issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret and the seeded admin credentials are **not** in the committed `appsettings.json`: Development gets throwaway values from `appsettings.Development.json`; anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes) and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.
 
 `POST /api/auth/refresh-token` with `{ "refreshToken": "..." }` (and the same `X-Device-Id` header used at login) returns a new access token and a new refresh token. It needs no access token, since that is usually expired by then. Refresh tokens are single-use (rotated), bound to the device they were issued to, expire after `RefreshTokenDurationInDays`, and only their SHA-256 hash is stored. Concurrent use of one token succeeds exactly once.
+
+### Admin panel (`WebRazor`)
+
+A Tabler-based panel that only the seeded administrator can enter. It references no other project and computes nothing: every page asks WebApi over HTTP (`Api:BaseUrl`). Sign-in posts to `POST /api/auth/login`, then `GET /api/admin/me` (which needs the admin role and answers 403 to anyone else) decides whether the user may enter. The API tokens stay on the panel's server (`SessionTokenStore`, in memory, so a restart signs the admin out); the browser only gets an `HttpOnly`, `SameSite=Strict` cookie holding an opaque session id, and the access token is refreshed shortly before it expires. Sessions last 8 hours.
+
+WebApi side: the `Admin` policy (role from `AdminConfigurations:Role`) guards `/api/admin/*`, `POST /api/auth/login` is limited to `RateLimiting:LoginPermitsPerMinute` (default 10) per client IP, and CORS stays off until `Cors:AllowedOrigins` lists origins. The panel itself needs no CORS since it calls the API from the server.
 
 ### Candle cache
 

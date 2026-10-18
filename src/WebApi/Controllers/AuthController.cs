@@ -1,9 +1,9 @@
-﻿using Application.Commands.Auth;
+using Application.Commands.Auth;
 using Application.Dtos.Auth;
 using Application.Interfaces;
-using CryptoExchange.Net.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace WebApi.Controllers;
 
@@ -13,7 +13,10 @@ namespace WebApi.Controllers;
 public class AuthController(ICommandDispatcher dispatcher) : BaseController
 {
 
+    public const string LoginRateLimitPolicy = "login";
+
     [HttpPost("login")]
+    [EnableRateLimiting(LoginRateLimitPolicy)]
     public async Task<IActionResult> Login([FromBody] LoginCommand payload, CancellationToken cancellationToken)
     {
         try
