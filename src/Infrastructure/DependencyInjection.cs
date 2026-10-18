@@ -1,7 +1,7 @@
-﻿using Domain.Entities;
+using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Configurations;
-using Infrastructure.DbContext;
+using Infrastructure.Persistence;
 using Infrastructure.Repositories;
 using Infrastructure.Repositories.TimeSeries;
 using Microsoft.AspNetCore.Identity;
@@ -39,6 +39,12 @@ public static class DependencyInjection
             options.UseNpgsql(configuration.GetConnectionString("AuthConnection"), npgsqlOptions =>
             {
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "auth");
+            }));
+
+        services.AddDbContext<ConfigDbContext>(options =>
+            options.UseNpgsql(configuration.GetConnectionString("ConfigConnection"), npgsqlOptions =>
+            {
+                npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "config");
             }));
 
         services.AddIdentityCore<ApplicationUser>()
