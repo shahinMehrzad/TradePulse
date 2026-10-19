@@ -40,6 +40,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         var connectionString = _postgres.GetConnectionString();
         builder.UseSetting("ConnectionStrings:DefaultConnection", connectionString);
         builder.UseSetting("ConnectionStrings:AuthConnection", connectionString);
+        builder.UseSetting("ConnectionStrings:ConfigConnection", connectionString);
         builder.UseSetting("ConnectionStrings:Redis", "");
         // Many tests log in within a minute; the throttle itself is tested with its own low limit.
         builder.UseSetting("RateLimiting:LoginPermitsPerMinute", "1000");

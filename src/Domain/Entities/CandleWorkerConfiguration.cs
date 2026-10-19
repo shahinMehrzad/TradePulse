@@ -15,8 +15,6 @@
 
         /// <summary>UTC. Stored as <c>timestamp</c> (no zone) like every other time column.</summary>
         public DateTime StartDate { get; set; }
-
-        /// <summary>UTC. Stored as <c>timestamp</c> (no zone) like every other time column.</summary>
-        public DateTime CreateDate { get; set; } = DateTime.UtcNow;
+        public DateTime CreateDate { get; set; }
     }
 }
