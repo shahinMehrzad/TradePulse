@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IMarketDataRepository<OpenInterest>>(_ => new TimeSeriesRepository<OpenInterest>(connectionString, new OpenInterestTable()));
         services.AddScoped<IMarketDataRepository<Liquidation>>(_ => new TimeSeriesRepository<Liquidation>(connectionString, new LiquidationTable()));
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<ILookupsRepository, LookupsRepository>();
 
         services.Configure<BinanceExchangeConfigurations>(configuration.GetSection(nameof(BinanceExchangeConfigurations)));
         services.Configure<BinanceFuturesDataConfigurations>(configuration.GetSection(nameof(BinanceFuturesDataConfigurations)));
@@ -64,10 +65,12 @@ public static class DependencyInjection
         try
         {
             var context = services.GetRequiredService<AuthDbContext>();
+            var contextConfig = services.GetRequiredService<ConfigDbContext>();
             var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
             var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
 
             await context.Database.MigrateAsync();
+            await contextConfig.Database.MigrateAsync();
 
             string? adminRoleName = configuration["AdminConfigurations:Role"];
             if (string.IsNullOrEmpty(adminRoleName))
