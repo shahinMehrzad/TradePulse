@@ -1,4 +1,5 @@
-﻿using Application.Interfaces;
+﻿using Application.Dtos.Lookups;
+using Application.Interfaces;
 using Application.Queries.Lookups;
 using Domain.Entities;
 using Domain.Repositories;
@@ -33,7 +34,7 @@ public class LookupsQueryHandlerTests
     {
         _repository.Exchanges.Add(new ExchangeLookup { Id = 1, Name = "Binance" });
 
-        var result = await SendAsync<GetExchangesQuery, IEnumerable<ExchangeLookup>>(new GetExchangesQuery());
+        var result = await SendAsync<GetExchangesQuery, IEnumerable<ExchangesResponseDto>>(new GetExchangesQuery());
 
         Assert.Equal("Binance", Assert.Single(result).Name);
     }
@@ -44,7 +45,7 @@ public class LookupsQueryHandlerTests
         _repository.Markets.Add(new MarketLookup { Id = 1, Name = "Spot" });
         _repository.Markets.Add(new MarketLookup { Id = 2, Name = "Futures" });
 
-        var result = await SendAsync<GetMarketsQuery, IEnumerable<MarketLookup>>(new GetMarketsQuery());
+        var result = await SendAsync<GetMarketsQuery, IEnumerable<MarketsResponseDto>>(new GetMarketsQuery());
 
         Assert.Equal(["Spot", "Futures"], result.Select(m => m.Name));
     }
@@ -56,7 +57,7 @@ public class LookupsQueryHandlerTests
     {
         _repository.Symbols.Add(new SymbolLookup { Id = 1, Name = "BTCUSDT" });
 
-        var result = await SendAsync<GetSymbolsQuery, IEnumerable<SymbolLookup>>(new GetSymbolsQuery(keyword));
+        var result = await SendAsync<GetSymbolsQuery, IEnumerable<SymbolsResponseDto>>(new GetSymbolsQuery(keyword));
 
         Assert.Equal("BTCUSDT", Assert.Single(result).Name);
         Assert.Equal(keyword, _repository.LastKeyword);
@@ -71,7 +72,7 @@ public class LookupsQueryHandlerTests
     {
         _repository.TimeFrames.Add(new TimeFrameLookup { Id = 3600, Name = "_1H", IntervalToSeconds = 3600 });
 
-        var result = await SendAsync<GetTimeFramesQuery, IEnumerable<TimeFrameLookup>>(new GetTimeFramesQuery(min, max));
+        var result = await SendAsync<GetTimeFramesQuery, IEnumerable<TimeFramesResponseDto>>(new GetTimeFramesQuery(min, max));
 
         Assert.Single(result);
         Assert.Equal((min, max), _repository.LastRange);
