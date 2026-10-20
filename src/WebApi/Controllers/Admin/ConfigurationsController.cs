@@ -14,7 +14,10 @@ namespace WebApi.Controllers.Admin
 
         [HttpPost("add-config")]
         public async Task<IActionResult> AddCandleWorkerConfigurations(BaseCandleWorkerConfigurationDto payload, CancellationToken cancellationToken)
-            => Ok(await dispatcher.SendAsync<BaseCandleWorkerConfigurationDto, int>(payload, cancellationToken));
+        {
+            var id = await dispatcher.SendAsync<BaseCandleWorkerConfigurationDto, int>(payload, cancellationToken);
+            return StatusCode(StatusCodes.Status201Created, new { id });
+        }
     }
 }
 

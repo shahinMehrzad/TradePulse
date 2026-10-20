@@ -1,5 +1,6 @@
 ﻿using Domain.Entities;
 using Domain.Enums;
+using Domain.Exceptions;
 using Infrastructure.Persistence;
 using Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -170,5 +171,63 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
 
         var postgres = failure as PostgresException ?? failure.InnerException as PostgresException;
         Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, postgres?.SqlState);
+    }
+
+    private static CandleWorkerConfiguration NewSeries(DateTime startDate, int symbolId = (int)SymbolEnum.BTCUSDT, int exchangeId = (int)ExchangeEnum.Binance) => new()
+    {
+        ExchangeId = exchangeId,
+        MarketId = (int)MarketTypeEnum.Futures,
+        SymbolId = symbolId,
+        TimeFrameId = (int)TimeFrameEnum._4H,
+        StartDate = startDate
+    };
+
+    [Theory]
+    [InlineData(DateTimeKind.Utc)]
+    [InlineData(DateTimeKind.Unspecified)]
+    public async Task AddingASeriesAcceptsAUtcDateOfEitherKindAndReturnsTheNewId(DateTimeKind kind)
+    {
+        await using var context = await MigratedContextAsync();
+        var repository = new CandleWorkerConfigurationRepository(context);
+        var start = new DateTime(2020, 1, 1, 0, 0, 0, kind);
+
+        var id = await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);
+
+        Assert.True(id > 0);
+        var stored = Assert.Single(await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct));
+        Assert.Equal((id, new DateTime(2020, 1, 1)), (stored.Id, stored.StartDate));
+    }
+
+    [Fact]
+    public async Task AddingTheSameSeriesTwiceIsAConflictEvenWhenNoOneCheckedFirst()
+    {
+        await using var context = await MigratedContextAsync();
+        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await new CandleWorkerConfigurationRepository(context).AddNewCandleWorkerConfiguration(NewSeries(start), Ct);
+
+        // A second context stands for the second of two simultaneous requests: it never saw the first row.
+        await using var other = await ContextOnSameDatabaseAsync(context);
+
+        await Assert.ThrowsAsync<ConfigurationConflictException>(
+            () => new CandleWorkerConfigurationRepository(other).AddNewCandleWorkerConfiguration(NewSeries(start), Ct));
+    }
+
+    [Fact]
+    public async Task AddingASeriesWithAnUnknownIdIsAValidationErrorNotASilentZero()
+    {
+        await using var context = await MigratedContextAsync();
+        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        await Assert.ThrowsAsync<ConfigurationValidationException>(
+            () => new CandleWorkerConfigurationRepository(context).AddNewCandleWorkerConfiguration(NewSeries(start, exchangeId: 99), Ct));
+        Assert.Empty(await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct));
+    }
+
+    private static Task<ConfigDbContext> ContextOnSameDatabaseAsync(ConfigDbContext context)
+    {
+        var options = new DbContextOptionsBuilder<ConfigDbContext>()
+            .UseNpgsql(context.Database.GetConnectionString(), npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "config"))
+            .Options;
+        return Task.FromResult(new ConfigDbContext(options));
     }
 }
