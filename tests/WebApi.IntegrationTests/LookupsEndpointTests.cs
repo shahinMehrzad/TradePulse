@@ -29,8 +29,8 @@ public class LookupsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task SymbolsCanBeSearchedByNameIgnoringCase()
     {
         var all = await GetAsync<Lookup>("/api/lookups/symbols");
-        var found = await GetAsync<Lookup>("/api/lookups/symbols?name=BtC");
-        var none = await GetAsync<Lookup>("/api/lookups/symbols?name=nothing-like-this");
+        var found = await GetAsync<Lookup>("/api/lookups/symbols?keyword=BtC");
+        var none = await GetAsync<Lookup>("/api/lookups/symbols?keyword=nothing-like-this");
 
         Assert.Contains(all, x => x.Name == "BTCUSDT");
         Assert.Equal(all.OrderBy(x => x.Name).Select(x => x.Name), all.Select(x => x.Name));

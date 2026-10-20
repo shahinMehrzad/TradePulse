@@ -1,18 +1,14 @@
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using WebApi.Authentication;
+using System.Security.Claims;
 
-namespace WebApi.Controllers;
+namespace WebApi.Controllers.Admin;
 
 /// <summary>
 /// Management endpoints for the admin panel (WebRazor). Every action needs the admin role,
 /// so a valid token of an ordinary user is a 403, not a 200.
 /// </summary>
 [Route("api/[controller]")]
-[ApiController]
-[Authorize(Policy = JwtAuthenticationExtensions.AdminPolicy)]
-public class AdminController : BaseController
+public class AdminController : AdminControllerBase
 {
     /// <summary>Who the token belongs to. The panel calls it right after login to confirm the user is an admin.</summary>
     [HttpGet("me")]

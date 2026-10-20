@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IMarketDataRepository<Liquidation>>(_ => new TimeSeriesRepository<Liquidation>(connectionString, new LiquidationTable()));
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<ILookupsRepository, LookupsRepository>();
+        services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();
 
         services.Configure<BinanceExchangeConfigurations>(configuration.GetSection(nameof(BinanceExchangeConfigurations)));
         services.Configure<BinanceFuturesDataConfigurations>(configuration.GetSection(nameof(BinanceFuturesDataConfigurations)));

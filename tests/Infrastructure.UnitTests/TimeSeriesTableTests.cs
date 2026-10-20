@@ -1,3 +1,4 @@
+using Infrastructure.Helpers;
 using Infrastructure.Repositories.TimeSeries;
 
 namespace Infrastructure.UnitTests;

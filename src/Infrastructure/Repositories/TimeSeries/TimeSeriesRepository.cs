@@ -1,5 +1,6 @@
 using Dapper;
 using Domain.Repositories;
+using Infrastructure.Helpers;
 using Npgsql;
 
 namespace Infrastructure.Repositories.TimeSeries;

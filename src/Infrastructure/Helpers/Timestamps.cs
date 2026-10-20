@@ -1,4 +1,4 @@
-namespace Infrastructure.Repositories.TimeSeries;
+namespace Infrastructure.Helpers;
 
 /// <summary>
 /// Time columns are <c>timestamp</c> (no zone) and always hold UTC. Npgsql rejects <c>Kind=Utc</c> for that type,

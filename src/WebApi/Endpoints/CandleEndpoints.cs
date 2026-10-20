@@ -3,7 +3,7 @@ using Application.Dtos.Candles;
 using Application.Interfaces;
 using Application.Queries.Candles;
 using Domain.Enums;
-using Domain.Repositories;
+using Domain.Exceptions;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace WebApi.Endpoints;
