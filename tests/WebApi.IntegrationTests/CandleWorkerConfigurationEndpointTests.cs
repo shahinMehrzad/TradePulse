@@ -91,6 +91,113 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
         Assert.Equal(before, (await ListAsync(client)).Length);   // and no half-saved row
     }
 
+    private const string UpdateUrl = "/api/admin/configurations/update-config";
+
+    private async Task<int> AddAsync(HttpClient client, int symbolId, int timeFrameId)
+    {
+        var response = await client.PostAsJsonAsync(AddUrl, Series(symbolId, timeFrameId), Ct);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<Created>(Ct))!.Id;
+    }
+
+    private static object Edit(int id, int symbolId, int timeFrameId, string? startDate = "2021-06-01T00:00:00Z", int exchangeId = 1) =>
+        new { id, exchangeId, marketId = 2, symbolId, timeFrameId, startDate };
+
+    [Fact]
+    public async Task UpdatingWithoutATokenIsUnauthorized()
+    {
+        var response = await api.CreateClient().PutAsJsonAsync(UpdateUrl, Edit(1, 1, 3600), Ct);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateChangesTheRowInPlaceIncludingItsStartDate()
+    {
+        var client = await AdminAsync();
+        var id = await AddAsync(client, symbolId: 5, timeFrameId: 7200);
+        var other = await AddAsync(client, symbolId: 7, timeFrameId: 7200);
+        var rowsBefore = (await ListAsync(client)).Length;
+
+        var response = await client.PutAsJsonAsync(UpdateUrl, Edit(id, symbolId: 6, timeFrameId: 21600), Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var returned = (await response.Content.ReadFromJsonAsync<Row>(Ct))!;
+        var rows = await ListAsync(client);
+        var saved = Assert.Single(rows, r => r.Id == id);
+        Assert.Equal(returned, saved);
+        Assert.Equal((id, 1, 2, 6, 21600), (saved.Id, saved.ExchangeId, saved.MarketId, saved.SymbolId, saved.TimeFrameId));
+        Assert.Equal(new DateTime(2021, 6, 1), saved.StartDate);   // not wiped, and the "Z" date was accepted
+        Assert.Equal(rowsBefore, rows.Length);                     // an edit must never add a row
+        var untouched = Assert.Single(rows, r => r.Id == other);
+        Assert.Equal((7, 7200, new DateTime(2020, 1, 1)), (untouched.SymbolId, untouched.TimeFrameId, untouched.StartDate));
+    }
+
+    [Fact]
+    public async Task UpdatingARowWithItsOwnValuesIsNotAConflictWithItself()
+    {
+        var client = await AdminAsync();
+        var id = await AddAsync(client, symbolId: 8, timeFrameId: 7200);
+
+        var response = await client.PutAsJsonAsync(UpdateUrl, Edit(id, symbolId: 8, timeFrameId: 7200), Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdatingToASeriesThatAlreadyExistsIsAConflictAndChangesNothing()
+    {
+        var client = await AdminAsync();
+        var first = await AddAsync(client, symbolId: 3, timeFrameId: 1800);
+        await AddAsync(client, symbolId: 4, timeFrameId: 1800);
+
+        var response = await client.PutAsJsonAsync(UpdateUrl, Edit(first, symbolId: 4, timeFrameId: 1800), Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var unchanged = Assert.Single(await ListAsync(client), r => r.Id == first);
+        Assert.Equal((3, new DateTime(2020, 1, 1)), (unchanged.SymbolId, unchanged.StartDate));
+    }
+
+    [Fact]
+    public async Task UpdatingARowThatDoesNotExistIsNotFound()
+    {
+        var client = await AdminAsync();
+
+        var response = await client.PutAsJsonAsync(UpdateUrl, Edit(id: 999_999, symbolId: 3, timeFrameId: 3600), Ct);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // The database is shared by the tests of this class, so every case adds a series of its own (symbol 8, one time frame per case).
+    private static readonly int[] CaseTimeFrames = [1, 60, 900, 3600, 14400, 28800, 86400];
+
+    [Theory]
+    [MemberData(nameof(InvalidEdits))]
+    public async Task AnInvalidEditIsBadRequestAndTheRowKeepsItsValues(string case_, int slot, object body)
+    {
+        var client = await AdminAsync();
+        var id = await AddAsync(client, symbolId: 8, timeFrameId: CaseTimeFrames[slot]);
+        var before = Assert.Single(await ListAsync(client), r => r.Id == id);
+
+        var response = await client.PutAsJsonAsync(UpdateUrl, body is Func<int, object> make ? make(id) : body, Ct);
+        var text = await response.Content.ReadAsStringAsync(Ct);
+
+        Assert.True(response.StatusCode == HttpStatusCode.BadRequest, $"{case_}: {(int)response.StatusCode} {text}");
+        Assert.DoesNotContain("   at ", text);
+        Assert.Equal(before, Assert.Single(await ListAsync(client), r => r.Id == id));
+    }
+
+    public static TheoryData<string, int, object> InvalidEdits() => new()
+    {
+        { "no id", 0, (Func<int, object>)(_ => Edit(0, 8, 2)) },
+        { "unknown exchange", 1, (Func<int, object>)(id => Edit(id, 8, 7200, exchangeId: 99)) },
+        { "unknown symbol", 2, (Func<int, object>)(id => Edit(id, 999, 7200)) },
+        { "unknown time frame", 3, (Func<int, object>)(id => Edit(id, 8, 12345)) },
+        { "symbol missing", 4, (Func<int, object>)(id => Edit(id, 0, 7200)) },
+        { "no start date", 5, (Func<int, object>)(id => Edit(id, 8, 7200, startDate: null)) },
+        { "start date in the future", 6, (Func<int, object>)(id => Edit(id, 8, 7200, startDate: "2999-01-01T00:00:00")) },
+    };
+
     public static TheoryData<string, object> InvalidRequests() => new()
     {
         { "exchange missing", Series(1, 900, exchangeId: 0) },

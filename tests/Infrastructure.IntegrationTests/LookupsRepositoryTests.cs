@@ -223,6 +223,35 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         Assert.Empty(await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct));
     }
 
+    [Fact]
+    public async Task UpdatingASeriesWritesTheNewValuesAndKeepsTheCreationDate()
+    {
+        await using var context = await MigratedContextAsync();
+        var repository = new CandleWorkerConfigurationRepository(context);
+        var id = await repository.AddNewCandleWorkerConfiguration(NewSeries(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)), Ct);
+        var created = (await repository.GetConfigurations(Ct)).Single().CreateDate;
+
+        var change = NewSeries(new DateTime(2021, 6, 1, 0, 0, 0, DateTimeKind.Utc), symbolId: (int)SymbolEnum.ETHUSDT);
+        change.Id = id;
+
+        var updated = await repository.UpdateCandleWorkerConfiguration(change, Ct);
+
+        Assert.Equal((id, (int)SymbolEnum.ETHUSDT, new DateTime(2021, 6, 1)), (updated.Id, updated.SymbolId, updated.StartDate));
+        var stored = (await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct)).Single();
+        Assert.Equal((id, (int)SymbolEnum.ETHUSDT, new DateTime(2021, 6, 1), created), (stored.Id, stored.SymbolId, stored.StartDate, stored.CreateDate));
+    }
+
+    [Fact]
+    public async Task UpdatingAMissingSeriesIsNotFound()
+    {
+        await using var context = await MigratedContextAsync();
+        var missing = NewSeries(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        missing.Id = 12345;
+
+        await Assert.ThrowsAsync<ConfigurationNotFoundException>(
+            () => new CandleWorkerConfigurationRepository(context).UpdateCandleWorkerConfiguration(missing, Ct));
+    }
+
     private static Task<ConfigDbContext> ContextOnSameDatabaseAsync(ConfigDbContext context)
     {
         var options = new DbContextOptionsBuilder<ConfigDbContext>()

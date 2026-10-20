@@ -15,18 +15,7 @@ namespace Infrastructure.Repositories
             configuration.StartDate = DateTime.SpecifyKind(configuration.StartDate, DateTimeKind.Unspecified);
 
             context.CandleWorkerConfigurations.Add(configuration);
-            try
-            {
-                await context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-            {
-                throw new ConfigurationConflictException("Configuration already exists.", ex);
-            }
-            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation })
-            {
-                throw new ConfigurationValidationException("Unknown exchange, market, symbol or time frame.");
-            }
+            await SaveAsync(cancellationToken);
 
             return configuration.Id;
         }
@@ -39,26 +28,35 @@ namespace Infrastructure.Repositories
 
         public async Task<CandleWorkerConfiguration> UpdateCandleWorkerConfiguration(CandleWorkerConfiguration configuration, CancellationToken cancellationToken)
         {
-            configuration.StartDate = DateTime.SpecifyKind(configuration.StartDate, DateTimeKind.Unspecified);
-            var config = context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefault(c => c.Id == configuration.Id);
-            if (config is null)
-                throw new ConfigurationValidationException("Configuration does not exist.");
+            var config = await context.CandleWorkerConfigurations.SingleOrDefaultAsync(c => c.Id == configuration.Id, cancellationToken)
+                ?? throw new ConfigurationNotFoundException("Configuration does not exist.");
 
             config.ExchangeId = configuration.ExchangeId;
             config.MarketId = configuration.MarketId;
             config.SymbolId = configuration.SymbolId;
             config.TimeFrameId = configuration.TimeFrameId;
-            config.StartDate = configuration.StartDate;
-            context.CandleWorkerConfigurations.Update(config);
+            config.StartDate = DateTime.SpecifyKind(configuration.StartDate, DateTimeKind.Unspecified);
+            await SaveAsync(cancellationToken);
+
+            return config;
+        }
+
+        /// <summary>Saves, turning the two database errors a caller can cause into domain exceptions. Anything else is a real failure and is left to propagate.</summary>
+        private async Task SaveAsync(CancellationToken cancellationToken)
+        {
             try
             {
                 await context.SaveChangesAsync(cancellationToken);
             }
-            catch (Exception)
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                // The unique index is the real guard; a check before saving can lose a race.
+                throw new ConfigurationConflictException("Configuration already exists.", ex);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation })
             {
                 throw new ConfigurationValidationException("Unknown exchange, market, symbol or time frame.");
             }
-            return config;
         }
     }
 }

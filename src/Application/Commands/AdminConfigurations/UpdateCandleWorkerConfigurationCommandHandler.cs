@@ -12,6 +12,9 @@ namespace Application.Commands.AdminConfigurations
     {
         public async Task<CandleWorkerConfiguration> HandleAsync(UpdateCandleWorkerConfigurationDto request, CancellationToken cancellationToken)
         {
+            if (request.Id == default)
+                throw new ConfigurationValidationException("Id is required.");
+
             if (request.ExchangeId == default || request.MarketId == default || request.SymbolId == default || request.TimeFrameId == default)
                 throw new ConfigurationValidationException("Exchange, market, symbol and time frame are required.");
 
@@ -28,7 +31,8 @@ namespace Application.Commands.AdminConfigurations
                 Id = request.Id,
                 MarketId = request.MarketId,
                 SymbolId = request.SymbolId,
-                TimeFrameId = request.TimeFrameId
+                TimeFrameId = request.TimeFrameId,
+                StartDate = startDate
             }, cancellationToken);
         }
     }
