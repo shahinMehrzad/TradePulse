@@ -36,5 +36,29 @@ namespace Infrastructure.Repositories
 
         public async Task<IEnumerable<CandleWorkerConfiguration>> GetConfigurations(CancellationToken cancellationToken)
             => await context.CandleWorkerConfigurations.AsNoTracking().ToListAsync(cancellationToken);
+
+        public async Task<CandleWorkerConfiguration> UpdateCandleWorkerConfiguration(CandleWorkerConfiguration configuration, CancellationToken cancellationToken)
+        {
+            configuration.StartDate = DateTime.SpecifyKind(configuration.StartDate, DateTimeKind.Unspecified);
+            var config = context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefault(c => c.Id == configuration.Id);
+            if (config is null)
+                throw new ConfigurationValidationException("Configuration does not exist.");
+
+            config.ExchangeId = configuration.ExchangeId;
+            config.MarketId = configuration.MarketId;
+            config.SymbolId = configuration.SymbolId;
+            config.TimeFrameId = configuration.TimeFrameId;
+            config.StartDate = configuration.StartDate;
+            context.CandleWorkerConfigurations.Update(config);
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception)
+            {
+                throw new ConfigurationValidationException("Unknown exchange, market, symbol or time frame.");
+            }
+            return config;
+        }
     }
 }

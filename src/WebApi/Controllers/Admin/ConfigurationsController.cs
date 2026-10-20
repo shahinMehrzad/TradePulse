@@ -18,6 +18,18 @@ namespace WebApi.Controllers.Admin
             var id = await dispatcher.SendAsync<BaseCandleWorkerConfigurationDto, int>(payload, cancellationToken);
             return StatusCode(StatusCodes.Status201Created, new { id });
         }
+
+        [HttpPut("update-config")]
+        public async Task<IActionResult> UpdateCandleWorkerConfigurations(UpdateCandleWorkerConfigurationDto payload, CancellationToken cancellationToken)
+            => Ok(await dispatcher.SendAsync<UpdateCandleWorkerConfigurationDto, CandleWorkerConfiguration>(payload, cancellationToken));
+
+
+        [HttpPut("delete-config")]
+        public async Task<IActionResult> DeleteCandleWorkerConfigurations(UpdateCandleWorkerConfigurationDto payload, CancellationToken cancellationToken)
+        {
+            var id = await dispatcher.SendAsync<BaseCandleWorkerConfigurationDto, int>(payload, cancellationToken);
+            return StatusCode(StatusCodes.Status204NoContent);
+        }
     }
 }
 
