@@ -168,6 +168,82 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    private static string DeleteUrl(int id) => $"/api/admin/configurations/delete-config/{id}";
+
+    [Fact]
+    public async Task DeletingWithoutATokenIsUnauthorized()
+    {
+        var response = await api.CreateClient().DeleteAsync(DeleteUrl(1), Ct);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteRemovesOnlyThatRowAndAnswersNoContent()
+    {
+        var client = await AdminAsync();
+        var doomed = await AddAsync(client, symbolId: 4, timeFrameId: 300);
+        var survivor = await AddAsync(client, symbolId: 4, timeFrameId: 900);
+
+        var response = await client.DeleteAsync(DeleteUrl(doomed), Ct);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Empty(await response.Content.ReadAsStringAsync(Ct));
+        var rows = await ListAsync(client);
+        Assert.DoesNotContain(rows, r => r.Id == doomed);
+        Assert.Contains(rows, r => r.Id == survivor);
+    }
+
+    [Fact]
+    public async Task DeletingTheSameRowTwiceIsNotFoundTheSecondTime()
+    {
+        var client = await AdminAsync();
+        var id = await AddAsync(client, symbolId: 4, timeFrameId: 14400);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync(DeleteUrl(id), Ct)).StatusCode);
+
+        var again = await client.DeleteAsync(DeleteUrl(id), Ct);
+
+        Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);
+        Assert.DoesNotContain("   at ", await again.Content.ReadAsStringAsync(Ct));
+    }
+
+    [Theory]
+    [InlineData(999_999)]
+    [InlineData(-1)]
+    public async Task DeletingARowThatDoesNotExistIsNotFoundAndChangesNothing(int id)
+    {
+        var client = await AdminAsync();
+        var before = (await ListAsync(client)).Length;
+
+        var response = await client.DeleteAsync(DeleteUrl(id), Ct);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(before, (await ListAsync(client)).Length);
+    }
+
+    [Fact]
+    public async Task DeletingIdZeroIsBadRequest()
+    {
+        var client = await AdminAsync();
+
+        var response = await client.DeleteAsync(DeleteUrl(0), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ADeletedSeriesCanBeAddedAgain()
+    {
+        var client = await AdminAsync();
+        var id = await AddAsync(client, symbolId: 3, timeFrameId: 86400);
+        (await client.DeleteAsync(DeleteUrl(id), Ct)).EnsureSuccessStatusCode();
+
+        // The unique index no longer holds the series, so it is not a conflict any more.
+        var newId = await AddAsync(client, symbolId: 3, timeFrameId: 86400);
+
+        Assert.NotEqual(id, newId);
+    }
+
     // The database is shared by the tests of this class, so every case adds a series of its own (symbol 8, one time frame per case).
     private static readonly int[] CaseTimeFrames = [1, 60, 900, 3600, 14400, 28800, 86400];
 

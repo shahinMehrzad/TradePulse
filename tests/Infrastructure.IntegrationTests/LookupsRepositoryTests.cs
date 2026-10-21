@@ -252,6 +252,30 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
             () => new CandleWorkerConfigurationRepository(context).UpdateCandleWorkerConfiguration(missing, Ct));
     }
 
+    [Fact]
+    public async Task RemovingASeriesDeletesOnlyThatRow()
+    {
+        await using var context = await MigratedContextAsync();
+        var repository = new CandleWorkerConfigurationRepository(context);
+        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var doomed = await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);
+        var survivor = await repository.AddNewCandleWorkerConfiguration(NewSeries(start, symbolId: (int)SymbolEnum.ETHUSDT), Ct);
+
+        await repository.RemoveCandleWorkerConfiguration(doomed, Ct);
+
+        var left = await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct);
+        Assert.Equal([survivor], left.Select(c => c.Id));
+    }
+
+    [Fact]
+    public async Task RemovingAMissingSeriesIsNotFound()
+    {
+        await using var context = await MigratedContextAsync();
+
+        await Assert.ThrowsAsync<ConfigurationNotFoundException>(
+            () => new CandleWorkerConfigurationRepository(context).RemoveCandleWorkerConfiguration(12345, Ct));
+    }
+
     private static Task<ConfigDbContext> ContextOnSameDatabaseAsync(ConfigDbContext context)
     {
         var options = new DbContextOptionsBuilder<ConfigDbContext>()

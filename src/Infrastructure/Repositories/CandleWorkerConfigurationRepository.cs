@@ -20,6 +20,14 @@ namespace Infrastructure.Repositories
             return configuration.Id;
         }
 
+        public async Task RemoveCandleWorkerConfiguration(int configurationId, CancellationToken cancellationToken)
+        {
+            var entity = await context.CandleWorkerConfigurations.SingleOrDefaultAsync(c => c.Id == configurationId, cancellationToken)
+                ?? throw new ConfigurationNotFoundException("Configuration does not exist.");
+            context.CandleWorkerConfigurations.Remove(entity);
+            await SaveAsync(cancellationToken);
+        }
+
         public async Task<CandleWorkerConfiguration?> GetConfiguration(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, CancellationToken cancellationToken)
             => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.ExchangeId == ExchangeId && c.MarketId == MarketId && c.SymbolId == SymbolId && c.TimeFrameId == TimeFrameId, cancellationToken);
 

@@ -1,4 +1,5 @@
-﻿using Application.Dtos.CandleWorkerConfigurations;
+﻿using Application.Commands.AdminConfigurations;
+using Application.Dtos.CandleWorkerConfigurations;
 using Application.Interfaces;
 using Application.Queries.AdminConfigurations;
 using Domain.Entities;
@@ -24,11 +25,11 @@ namespace WebApi.Controllers.Admin
             => Ok(await dispatcher.SendAsync<UpdateCandleWorkerConfigurationDto, CandleWorkerConfiguration>(payload, cancellationToken));
 
 
-        [HttpPut("delete-config")]
-        public async Task<IActionResult> DeleteCandleWorkerConfigurations(UpdateCandleWorkerConfigurationDto payload, CancellationToken cancellationToken)
+        [HttpDelete("delete-config/{id:int}")]
+        public async Task<IActionResult> DeleteCandleWorkerConfigurations(int id, CancellationToken cancellationToken)
         {
-            var id = await dispatcher.SendAsync<BaseCandleWorkerConfigurationDto, int>(payload, cancellationToken);
-            return StatusCode(StatusCodes.Status204NoContent);
+            await dispatcher.SendAsync<RemoveCandleWorkerConfigurationCommand, bool>(new RemoveCandleWorkerConfigurationCommand(id), cancellationToken);
+            return NoContent();
         }
     }
 }
