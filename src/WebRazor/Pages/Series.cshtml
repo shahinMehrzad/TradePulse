@@ -1,0 +1,136 @@
+@page
+@model SeriesModel
+@{
+    ViewData["Title"] = "Collector series";
+}
+
+<div class="alert alert-info" role="alert">
+    This is the list of candle series the collector should fetch. The worker does not read it yet: it still runs on its own appsettings.json.
+</div>
+
+@if (Model.Saved is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.Saved</div>
+}
+@if (Model.Errors.Count > 0)
+{
+    <div class="alert alert-danger" role="alert">
+        <ul class="mb-0">
+            @foreach (var error in Model.Errors)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="row row-cards">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Configured series (@Model.Series.Count)</h3></div>
+            @if (Model.Series.Count == 0)
+            {
+                <div class="card-body text-secondary">Nothing is configured yet. Add the first series on the right.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table card-table table-vcenter">
+                        <thead>
+                            <tr><th>Exchange</th><th>Market</th><th>Symbol</th><th>Time frame</th><th>From (UTC)</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var series in Model.Series)
+                            {
+                                <tr>
+                                    <td>@Model.ExchangeName(series.ExchangeId)</td>
+                                    <td><span class="badge @(Model.MarketName(series.MarketId) == "Futures" ? "bg-purple-lt" : "bg-blue-lt")">@Model.MarketName(series.MarketId)</span></td>
+                                    <td class="fw-bold">@Model.SymbolName(series.SymbolId)</td>
+                                    <td>@Model.TimeFrameName(series.TimeFrameId)</td>
+                                    <td class="text-nowrap">@series.StartDate.ToString("yyyy-MM-dd")</td>
+                                    <td class="text-nowrap text-end">
+                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-route-edit="@series.Id">Edit</a>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-@series.Id">Remove</button>
+
+                                        <div class="modal modal-blur fade text-start" id="delete-@series.Id" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog modal-sm modal-dialog-centered">
+                                                <div class="modal-content">
+                                                    <div class="modal-body">
+                                                        <div class="modal-title">Remove this series?</div>
+                                                        <div class="text-secondary">
+                                                            @Model.SymbolName(series.SymbolId), @Model.MarketName(series.MarketId), @Model.TimeFrameName(series.TimeFrameId).
+                                                            The stored candles stay; the collector just stops fetching new ones.
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
+                                                        <form method="post" asp-page-handler="Delete" asp-route-id="@series.Id">
+                                                            <button type="submit" class="btn btn-danger">Remove</button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">@(Model.IsEditing ? "Change series" : "Add a series")</h3>
+            </div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="Save" autocomplete="off">
+                    <input type="hidden" asp-for="Input.Id" />
+                    <div class="mb-3">
+                        <label asp-for="Input.ExchangeId" class="form-label">Exchange</label>
+                        <select asp-for="Input.ExchangeId" asp-items="Model.ExchangeItems" class="form-select">
+                            <option value="0">Select...</option>
+                        </select>
+                        <span asp-validation-for="Input.ExchangeId" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.MarketId" class="form-label">Market</label>
+                        <select asp-for="Input.MarketId" asp-items="Model.MarketItems" class="form-select">
+                            <option value="0">Select...</option>
+                        </select>
+                        <span asp-validation-for="Input.MarketId" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.SymbolId" class="form-label">Symbol</label>
+                        <select asp-for="Input.SymbolId" asp-items="Model.SymbolItems" class="form-select">
+                            <option value="0">Select...</option>
+                        </select>
+                        <span asp-validation-for="Input.SymbolId" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.TimeFrameId" class="form-label">Time frame</label>
+                        <select asp-for="Input.TimeFrameId" asp-items="Model.TimeFrameItems" class="form-select">
+                            <option value="0">Select...</option>
+                        </select>
+                        <span asp-validation-for="Input.TimeFrameId" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.StartDate" class="form-label">Collect from (UTC)</label>
+                        <input asp-for="Input.StartDate" type="date" class="form-control" />
+                        <span asp-validation-for="Input.StartDate" class="text-danger"></span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">@(Model.IsEditing ? "Save changes" : "Add series")</button>
+                        @if (Model.IsEditing)
+                        {
+                            <a class="btn" asp-page="/Series">Cancel</a>
+                        }
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

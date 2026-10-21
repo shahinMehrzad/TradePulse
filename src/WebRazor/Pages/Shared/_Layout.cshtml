@@ -11,6 +11,10 @@
         <header class="navbar navbar-expand-md d-print-none">
             <div class="container-xl">
                 <a class="navbar-brand d-flex align-items-center gap-2 text-primary" asp-page="/Index"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="text-body fw-bold">TradePulse</span></a>
+                <ul class="navbar-nav flex-row me-auto ms-4">
+                    <li class="nav-item"><a class="nav-link" asp-page="/Index">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" asp-page="/Series">Collector series</a></li>
+                </ul>
                 <div class="navbar-nav flex-row order-md-last align-items-center">
                     <span class="nav-link text-secondary">@User.Identity?.Name</span>
                     <form method="post" asp-page="/Logout" class="ms-2">
