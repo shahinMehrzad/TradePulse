@@ -1,7 +1,7 @@
-﻿using Domain.Entities;
+using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Configurations;
-using Infrastructure.DbContext;
+using Infrastructure.Persistence;
 using Infrastructure.Repositories;
 using Infrastructure.Repositories.TimeSeries;
 using Microsoft.AspNetCore.Identity;
@@ -23,6 +23,8 @@ public static class DependencyInjection
         services.AddScoped<IMarketDataRepository<OpenInterest>>(_ => new TimeSeriesRepository<OpenInterest>(connectionString, new OpenInterestTable()));
         services.AddScoped<IMarketDataRepository<Liquidation>>(_ => new TimeSeriesRepository<Liquidation>(connectionString, new LiquidationTable()));
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<ILookupsRepository, LookupsRepository>();
+        services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();
 
         services.Configure<BinanceExchangeConfigurations>(configuration.GetSection(nameof(BinanceExchangeConfigurations)));
         services.Configure<BinanceFuturesDataConfigurations>(configuration.GetSection(nameof(BinanceFuturesDataConfigurations)));
@@ -39,6 +41,12 @@ public static class DependencyInjection
             options.UseNpgsql(configuration.GetConnectionString("AuthConnection"), npgsqlOptions =>
             {
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "auth");
+            }));
+
+        services.AddDbContext<ConfigDbContext>(options =>
+            options.UseNpgsql(configuration.GetConnectionString("ConfigConnection"), npgsqlOptions =>
+            {
+                npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "config");
             }));
 
         services.AddIdentityCore<ApplicationUser>()
@@ -58,10 +66,12 @@ public static class DependencyInjection
         try
         {
             var context = services.GetRequiredService<AuthDbContext>();
+            var contextConfig = services.GetRequiredService<ConfigDbContext>();
             var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
             var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
 
             await context.Database.MigrateAsync();
+            await contextConfig.Database.MigrateAsync();
 
             string? adminRoleName = configuration["AdminConfigurations:Role"];
             if (string.IsNullOrEmpty(adminRoleName))

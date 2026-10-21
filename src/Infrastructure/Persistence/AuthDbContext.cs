@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
-namespace Infrastructure.DbContext;
+namespace Infrastructure.Persistence;
 
 public class AuthDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>
 {

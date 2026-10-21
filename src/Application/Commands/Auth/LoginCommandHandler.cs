@@ -1,7 +1,7 @@
 ﻿using Application.Dtos.Auth;
 using Application.Interfaces;
 using Infrastructure.Configurations;
-using Infrastructure.DbContext;
+using Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;

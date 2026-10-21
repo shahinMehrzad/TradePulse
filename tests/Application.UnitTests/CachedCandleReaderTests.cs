@@ -2,7 +2,7 @@ using Application.Dtos.Candles;
 using Application.Interfaces;
 using Application.Queries.Candles;
 using Domain.Enums;
-using Domain.Repositories;
+using Domain.Exceptions;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;

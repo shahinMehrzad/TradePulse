@@ -57,7 +57,7 @@ Domain  ←  Application  ←  Infrastructure  ←  BackgroundWorker / WebApi / 
 - **Domain:** entities, value objects (`Price`, `TimeRange`), enums, repository interfaces.
 - **Application:** a small hand-written CQRS layer (`ICommandHandler`, `ICommandDispatcher`, handlers discovered by reflection), and the `TableNameRegistry`.
 - **Infrastructure:** Dapper and Npgsql for market data, EF Core with ASP.NET Identity for authentication.
-- **WebApi:** JWT login and refresh tokens, and the candle read API below. **WebRazor:** admin panel (sign-in and a dashboard so far), see [Admin panel](#admin-panel-webrazor).
+- **WebApi:** JWT login and refresh tokens, and the candle read API below. **WebRazor:** admin panel (sign-in, a dashboard and the list of candle series to collect), see [Admin panel](#admin-panel-webrazor).
 
 ### Candle read API (`WebApi`)
 
@@ -79,6 +79,8 @@ Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 wi
 ### Admin panel (`WebRazor`)
 
 A Tabler-based panel that only the seeded administrator can enter. It references no other project and computes nothing: every page asks WebApi over HTTP (`Api:BaseUrl`). Sign-in posts to `POST /api/auth/login`, then `GET /api/admin/me` (which needs the admin role and answers 403 to anyone else) decides whether the user may enter. The API tokens stay on the panel's server (`SessionTokenStore`, in memory, so a restart signs the admin out); the browser only gets an `HttpOnly`, `SameSite=Strict` cookie holding an opaque session id, and the access token is refreshed shortly before it expires. Sessions last 8 hours.
+
+The **Collector series** page lists the candle series stored through the API (`/api/admin/configurations/...`) and adds, changes and removes them. Dropdowns come from the public `/api/lookups/...` lists, which mirror the enums. The collector does not read this list yet; it still runs on `appsettings.json`.
 
 WebApi side: the `Admin` policy (role from `AdminConfigurations:Role`) guards `/api/admin/*`, `POST /api/auth/login` is limited to `RateLimiting:LoginPermitsPerMinute` (default 10) per client IP, and CORS stays off until `Cors:AllowedOrigins` lists origins. The panel itself needs no CORS since it calls the API from the server.
 

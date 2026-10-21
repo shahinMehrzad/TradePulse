@@ -9,4 +9,8 @@
     <ProjectReference Include="..\..\src\WebApi\WebApi.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Update="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+
 </Project>

@@ -1,9 +1,10 @@
 ﻿using Dapper;
 using Domain.Entities;
+using Domain.Exceptions;
 using Domain.Repositories;
 using Domain.ValueObjects;
 using Npgsql;
-using static Infrastructure.Repositories.TimeSeries.Timestamps;
+using static Infrastructure.Helpers.Timestamps;
 
 namespace Infrastructure.Repositories;
 
