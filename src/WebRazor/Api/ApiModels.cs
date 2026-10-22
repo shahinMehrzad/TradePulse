@@ -26,6 +26,12 @@ public record Lookups(
 /// <summary>One candle series the collector should fetch, as the API stores it (ids, not names).</summary>
 public record CandleWorkerSeries(int Id, int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate);
 
+/// <summary>One page of the series list, with the totals the API reports for the (filtered) list.</summary>
+public record SeriesPage(IReadOnlyList<CandleWorkerSeries> Items, int PageNumber, int PageSize, int TotalItems, int TotalPages)
+{
+    public bool HasNext => PageNumber < TotalPages;
+}
+
 /// <summary>What the panel sends to add or change a series. <c>StartDate</c> is a UTC date.</summary>
 public record SeriesRequest(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate);
 

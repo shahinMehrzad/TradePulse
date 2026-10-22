@@ -27,7 +27,7 @@ Highlights of the collection path:
 - **Boundary-aligned scheduling:** one loop per timeframe wakes just after each candle closes.
 - **Non-blocking liquidation pipeline:** the WebSocket callback only enqueues into a bounded `Channel<T>`; a single writer drains it in batches.
 - **Live candles over WebSocket:** closed klines are stored the moment they close (the callback enqueues, one writer batches). The REST loop still runs at every boundary as the watchdog, and a socket reconnect triggers an immediate REST sync plus gap repair. Live candles are only accepted for a table after its first REST sync, so they can never hide missing history.
-- **Config-driven:** adding a symbol or timeframe is an `appsettings.json` change, no code.
+- **Config-driven:** which candle series to collect is chosen in the admin panel and stored in the database, no code and no redeploy (see [Candle series](#candle-series-chosen-in-the-database)).
 
 
 ### Health monitoring
@@ -41,10 +41,11 @@ The worker serves `GET /health` (JSON, `503` when anything is unhealthy) and `GE
 | `binance-futures-websocket` | A busy probe stream (mark price) is open and flowing. Silence for 60 s or a disconnect longer than 2 min is unhealthy. |
 | `binance-liquidation-stream` | The real liquidation subscription is connected. Liquidations are bursty, so a long silence (default 60 min) only degrades. |
 | `binance-candle-stream-futures`, `binance-candle-stream-spot` | The live candle subscription is connected and receiving (5 min of silence degrades). Turn the stream off with `LiveCandles: false`. |
+| `candle-series` | The worker knows what to collect. Healthy with series, degraded when none are configured (idle), unhealthy when the database cannot be read. |
 | `candle-freshness` | The newest stored candle of every table is not behind the clock (1 candle behind is degraded, 3 or more unhealthy; a table that is still moving during backfill is healthy). |
 | `candle-requests`, `funding-rate-requests`, `open-interest-requests` | Consecutive failures of the collectors' own API requests. |
 
-Only components that are actually configured get a check. Status changes are also written to the log, so a healthy worker stays quiet and a problem is visible without polling the endpoint.
+Funding rate, open interest and liquidation checks exist only when those sections are configured. The candle checks are always there, because the series are chosen at run time; the per-market stream checks and the spot ping only judge a market that has a series. Status changes are also written to the log, so a healthy worker stays quiet and a problem is visible without polling the endpoint.
 
 ### Architecture
 
@@ -80,7 +81,7 @@ Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 wi
 
 A Tabler-based panel that only the seeded administrator can enter. It references no other project and computes nothing: every page asks WebApi over HTTP (`Api:BaseUrl`). Sign-in posts to `POST /api/auth/login`, then `GET /api/admin/me` (which needs the admin role and answers 403 to anyone else) decides whether the user may enter. The API tokens stay on the panel's server (`SessionTokenStore`, in memory, so a restart signs the admin out); the browser only gets an `HttpOnly`, `SameSite=Strict` cookie holding an opaque session id, and the access token is refreshed shortly before it expires. Sessions last 8 hours.
 
-The **Collector series** page lists the candle series stored through the API (`/api/admin/configurations/...`) and adds, changes and removes them. Dropdowns come from the public `/api/lookups/...` lists, which mirror the enums. The collector does not read this list yet; it still runs on `appsettings.json`.
+The **Collector series** page lists the candle series stored through the API (`/api/admin/configurations/...`) and adds, changes and removes them. Dropdowns come from the public `/api/lookups/...` lists, which mirror the enums. The collector collects exactly this list, see [Candle series](#candle-series-chosen-in-the-database).
 
 WebApi side: the `Admin` policy (role from `AdminConfigurations:Role`) guards `/api/admin/*`, `POST /api/auth/login` is limited to `RateLimiting:LoginPermitsPerMinute` (default 10) per client IP, and CORS stays off until `Cors:AllowedOrigins` lists origins. The panel itself needs no CORS since it calls the API from the server.
 
@@ -121,10 +122,19 @@ docker-compose up -d                  # PostgreSQL (plus Redis and RabbitMQ for 
 dotnet run --project src/BackgroundWorker
 ```
 
-Symbols, timeframes and start dates are configured in [`src/BackgroundWorker/appsettings.json`](src/BackgroundWorker/appsettings.json):
+### Candle series (chosen in the database)
+
+Which candle series (market, symbol, time frame and start date) the collector fetches is **not** in `appsettings.json`: the admin chooses them in the panel and they are stored in `config.candle_worker_configurations` (WebApi creates and migrates the `config` schema; the worker only reads it).
+
+- The worker reads the list when it starts, through the same query the admin API lists them with. **A change applies when the worker is restarted.**
+- **An empty table means the collector idles**: it has nothing to collect, checks again every 30 s and starts as soon as the first series appears, without a restart. `/health` shows `candle-series` as degraded meanwhile.
+- A database that cannot be read does not stop the process either: the worker waits, keeps retrying every 30 s and reports `candle-series` as unhealthy.
+- The tables of the series are created by the worker once it knows them. Removing a series stops fetching it and keeps its stored candles.
+
+Funding rate, open interest and liquidations are still configured in [`src/BackgroundWorker/appsettings.json`](src/BackgroundWorker/appsettings.json), together with the request budget (`MaxLimit`) and `LiveCandles`:
 
 ```jsonc
-"BinanceExchangeConfigurations": { "Symbols": { "Futures_BTCUSDT_4H": { "Name": "BTCUSDT", "Interval": "_4H", "MarketType": "Futures", "StartDate": "2020-01-01T00:00:00Z" } } },
+"BinanceExchangeConfigurations": { "MaxLimit": 5900, "LiveCandles": true },
 "BinanceFuturesDataConfigurations": {
   "FundingRates": { "BTCUSDT": { "Name": "BTCUSDT", "StartDate": "2020-01-01T00:00:00Z" } },
   "OpenInterests": { "BTCUSDT_1H": { "Name": "BTCUSDT", "Interval": "_1H" } },

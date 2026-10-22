@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Application.Services;
+using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using Binance.Net.Clients;
 using Binance.Net.Enums;
@@ -18,7 +19,7 @@ namespace BackgroundWorker;
 
 public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         ILogger<BinanceCandleWorker> logger,
-        IOptions<BinanceExchangeConfigurations> binanceConfigurations,
+        CandleSeriesProvider seriesProvider,
         IBinanceRestClient binanceRestClient,
         IBinanceSocketClient binanceSocketClient,
         BinanceRateLimiters rateLimiters,
@@ -27,28 +28,58 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 {
     private readonly IBinanceRestClient _binanceClient = binanceRestClient;
     private readonly IBinanceSocketClient _binanceSocketClient = binanceSocketClient;
-    private readonly BinanceExchangeConfigurations _binanceConfigurations = binanceConfigurations.Value;
     private const int MaxKlineLimit = 1000;
     private const int MaxParallelSymbols = 4;
     private const int MaxRetries = 5;
 
     private static readonly TimeSpan GapCheckPeriod = TimeSpan.FromHours(24);
+    private static readonly TimeSpan TableRetryDelay = TimeSpan.FromSeconds(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        
-        var groups = _binanceConfigurations.Symbols.Values
-            .GroupBy(s => (int)s.Interval)
-            .ToList();
-
-        if (groups.Count == 0)
+        try
         {
-            logger.LogWarning("No symbols configured for Binance candle worker.");
-            return;
-        }
+            // The admin chooses the series; with none chosen (or the database unreachable) there is nothing to do but wait.
+            var series = await seriesProvider.WaitForSeriesAsync(stoppingToken);
+            await EnsureTablesAsync(series, stoppingToken);
 
-        await Task.WhenAll(groups.Select(g =>
-            RunIntervalLoopAsync(TimeSpan.FromSeconds(g.Key), g.ToList(), stoppingToken)));
+            var groups = series
+                .GroupBy(s => (int)s.Interval)
+                .ToList();
+
+            await Task.WhenAll(groups.Select(g =>
+                RunIntervalLoopAsync(TimeSpan.FromSeconds(g.Key), g.ToList(), stoppingToken)));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Creates the table of every series that does not have one yet (idempotent). A database error is retried, not
+    /// thrown: an exception out of a worker would stop the whole host.
+    /// </summary>
+    private async Task EnsureTablesAsync(IReadOnlyList<BinanceSymbolConfigurations> series, CancellationToken ct)
+    {
+        foreach (var symbol in series)
+        {
+            var tableName = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
+
+            while (true)
+            {
+                try
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<ICandleRepository>().EnsureTableExistsAsync(tableName, ct);
+                    break;
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogError(ex, "Cannot create table {Table}; retrying in {Delay}", tableName, TableRetryDelay);
+                    await Task.Delay(TableRetryDelay, ct);
+                }
+            }
+        }
     }
 
     private async Task RunIntervalLoopAsync(TimeSpan interval, List<BinanceSymbolConfigurations> symbols, CancellationToken ct)

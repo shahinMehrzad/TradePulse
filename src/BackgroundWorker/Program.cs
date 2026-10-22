@@ -1,5 +1,6 @@
 using Application;
 using BackgroundWorker;
+using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using Infrastructure;
 using Microsoft.AspNetCore.Hosting;
@@ -33,6 +34,11 @@ var host = builder.ConfigureServices((context, services) =>
     services.AddInfrastructureServices(context.Configuration);
 
     services.AddTransient<DatabaseSeeder>();
+
+    // Which candle series to collect comes from the database. Registered first so it starts reading before the workers wait for it.
+    services.AddSingleton<ICandleSeriesSource, DatabaseCandleSeriesSource>();
+    services.AddSingleton<CandleSeriesProvider>();
+    services.AddHostedService(provider => provider.GetRequiredService<CandleSeriesProvider>());
     services.AddSingleton<BinanceRateLimiters>();
     services.AddSingleton<CandleSyncCoordinator>();
     services.AddWorkerHealth(context.Configuration);

@@ -35,16 +35,25 @@ public sealed class TradePulseApiClient(HttpClient http)
         return new Lookups(exchanges.Result ?? [], markets.Result ?? [], symbols.Result ?? [], timeFrames.Result ?? []);
     }
 
-    /// <returns>The configured series, or null when the session is no longer accepted by the API.</returns>
-    public async Task<IReadOnlyList<CandleWorkerSeries>?> GetSeriesAsync(CancellationToken cancellationToken)
+    /// <param name="keyword">Matched by the API against the exchange, market, symbol and time frame names.</param>
+    /// <returns>One page of the configured series, or null when the session is no longer accepted by the API.</returns>
+    public async Task<SeriesPage?> GetSeriesAsync(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
     {
-        using var response = await http.GetAsync($"{SeriesRoot}/candle-worker", cancellationToken);
+        var url = $"{SeriesRoot}/candle-worker?pageNumber={pageNumber}&pageSize={pageSize}";
+        if (!string.IsNullOrWhiteSpace(keyword))
+            url += $"&keyword={Uri.EscapeDataString(keyword.Trim())}";
+
+        using var response = await http.GetAsync(url, cancellationToken);
         if (IsRejected(response))
             return null;
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<List<CandleWorkerSeries>>(cancellationToken) ?? [];
+        var wire = await response.Content.ReadFromJsonAsync<SeriesPageWire>(cancellationToken);
+        return new SeriesPage(wire?.Data ?? [], pageNumber, pageSize, wire?.TotalItemsCount ?? 0, wire?.TotalPages ?? 0);
     }
+
+    /// <summary>The API's paged answer (<c>PaginationResponseDto</c>).</summary>
+    private sealed record SeriesPageWire(int TotalItemsCount, int TotalPages, int ItemsPerPage, int CurrentPage, List<CandleWorkerSeries>? Data);
 
     public async Task<ApiResult> AddSeriesAsync(SeriesRequest request, CancellationToken cancellationToken)
     {

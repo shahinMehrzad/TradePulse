@@ -31,8 +31,12 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
         return client;
     }
 
+    private record Page(int TotalItemsCount, int TotalPages, int ItemsPerPage, int CurrentPage, Row[] Data);
+
+    // The biggest page the API allows: these tests look at the whole list (they add far fewer rows than that), the paging
+    // itself is covered by CandleWorkerConfigurationPagingTests.
     private static async Task<Row[]> ListAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<Row[]>(ListUrl, Ct))!;
+        (await client.GetFromJsonAsync<Page>($"{ListUrl}?PageNumber=1&PageSize=100", Ct))!.Data;
 
     [Fact]
     public async Task WithoutATokenBothEndpointsAreUnauthorized()

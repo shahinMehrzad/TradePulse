@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BackgroundWorker.CandleSeries;
 using Domain.Enums;
 using Infrastructure.Configurations;
 using Microsoft.AspNetCore.Builder;
@@ -18,8 +19,10 @@ public static class HealthRegistration
     private static readonly TimeSpan UnhealthyAfterDisconnected = TimeSpan.FromMinutes(2);
 
     /// <summary>
-    /// Registers the state scoreboard, one check per connection this worker actually uses, and the probe worker.
-    /// Components that are not configured (no spot symbols, no liquidations, ...) get no check, so they cannot raise false alarms.
+    /// Registers the state scoreboard, one check per connection this worker can use, and the probe worker.
+    /// What is not configured (no liquidations, ...) gets no check. The candle series are chosen at run time, so the checks
+    /// that depend on them (the per-market streams) are always registered but only judge a market that has a series.
+    /// Needs a <see cref="CandleSeriesProvider"/> in the container.
     /// </summary>
     public static IServiceCollection AddWorkerHealth(this IServiceCollection services, IConfiguration configuration)
     {
@@ -43,29 +46,24 @@ public static class HealthRegistration
             new WebSocketHealthOptions(StartupGrace, UnhealthyAfterDisconnected,
                 MaxSilence: TimeSpan.FromSeconds(60), SilenceStatus: HealthStatus.Unhealthy));
 
-        if (exchange.Symbols.Values.Any(s => s.MarketType == MarketTypeEnum.Spot))
-            checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.SpotRest, HealthComponents.SpotRest);
+        // Whether the worker knows what to collect, and the checks that only matter once it does. These are harmless while
+        // idle: a request component that has not made a request is healthy, and the gated checks report "not in use".
+        checks.AddTypeActivatedCheck<CandleSeriesHealthCheck>(HealthComponents.CandleSeries);
+        checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.SpotRest, HealthComponents.SpotRest);
+        checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.CandleRequests, HealthComponents.CandleRequests);
 
-        if (exchange.Symbols.Count > 0)
+        // Data-level check: connections can be fine while candles stop being stored.
+        services.AddSingleton<CandleFreshnessMonitor>();
+        checks.AddTypeActivatedCheck<CandleFreshnessHealthCheck>(HealthComponents.CandleFreshness);
+
+        if (exchange.LiveCandles)
         {
-            checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.CandleRequests, HealthComponents.CandleRequests);
+            // Kline streams also push updates for the still-open candle, so even a quiet interval is never silent for long.
+            var streamOptions = new WebSocketHealthOptions(StartupGrace, UnhealthyAfterDisconnected,
+                MaxSilence: TimeSpan.FromMinutes(5), SilenceStatus: HealthStatus.Degraded);
 
-            // Data-level check: connections can be fine while candles stop being stored.
-            services.AddSingleton<CandleFreshnessMonitor>();
-
-            if (exchange.LiveCandles)
-            {
-                // Kline streams also push updates for the still-open candle, so even a quiet interval is never silent for long.
-                var streamOptions = new WebSocketHealthOptions(StartupGrace, UnhealthyAfterDisconnected,
-                    MaxSilence: TimeSpan.FromMinutes(5), SilenceStatus: HealthStatus.Degraded);
-
-                if (exchange.Symbols.Values.Any(s => s.MarketType == MarketTypeEnum.Futures))
-                    checks.AddTypeActivatedCheck<WebSocketHealthCheck>(HealthComponents.CandleStreamFutures, HealthComponents.CandleStreamFutures, streamOptions);
-                if (exchange.Symbols.Values.Any(s => s.MarketType == MarketTypeEnum.Spot))
-                    checks.AddTypeActivatedCheck<WebSocketHealthCheck>(HealthComponents.CandleStreamSpot, HealthComponents.CandleStreamSpot, streamOptions);
-            }
-
-            checks.AddTypeActivatedCheck<CandleFreshnessHealthCheck>(HealthComponents.CandleFreshness);
+            AddCandleStreamCheck(checks, HealthComponents.CandleStreamFutures, MarketTypeEnum.Futures, streamOptions);
+            AddCandleStreamCheck(checks, HealthComponents.CandleStreamSpot, MarketTypeEnum.Spot, streamOptions);
         }
 
         if (futuresData.FundingRates.Count > 0)
@@ -91,6 +89,18 @@ public static class HealthRegistration
 
         return services;
     }
+
+    private static void AddCandleStreamCheck(IHealthChecksBuilder checks, string component, MarketTypeEnum market, WebSocketHealthOptions options) =>
+        checks.Add(new HealthCheckRegistration(
+            component,
+            provider => new MarketGatedHealthCheck(
+                ActivatorUtilities.CreateInstance<WebSocketHealthCheck>(provider, component, options),
+                provider.GetRequiredService<CandleSeriesProvider>(),
+                market,
+                StartupGrace,
+                provider.GetRequiredService<TimeProvider>()),
+            failureStatus: null,
+            tags: null));
 
     /// <summary>Maps <c>/health</c> (all checks, JSON) and <c>/health/live</c> (process is up, no checks).</summary>
     public static void UseHealthEndpoints(this IApplicationBuilder app)

@@ -28,11 +28,9 @@ namespace Infrastructure.Repositories
             await SaveAsync(cancellationToken);
         }
 
-        public async Task<CandleWorkerConfiguration?> GetConfiguration(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, CancellationToken cancellationToken)
-            => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.ExchangeId == ExchangeId && c.MarketId == MarketId && c.SymbolId == SymbolId && c.TimeFrameId == TimeFrameId, cancellationToken);
+        public async Task<CandleWorkerConfiguration?> GetConfiguration(int exchangeId, int marketId, int symbolId, int timeFrameId, CancellationToken cancellationToken)
+            => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.ExchangeId == exchangeId && c.MarketId == marketId && c.SymbolId == symbolId && c.TimeFrameId == timeFrameId, cancellationToken);
 
-        public async Task<IEnumerable<CandleWorkerConfiguration>> GetConfigurations(CancellationToken cancellationToken)
-            => await context.CandleWorkerConfigurations.AsNoTracking().ToListAsync(cancellationToken);
 
         public async Task<CandleWorkerConfiguration> UpdateCandleWorkerConfiguration(CandleWorkerConfiguration configuration, CancellationToken cancellationToken)
         {
@@ -65,6 +63,28 @@ namespace Infrastructure.Repositories
             {
                 throw new ConfigurationValidationException("Unknown exchange, market, symbol or time frame.");
             }
+        }
+
+        public async Task<IEnumerable<CandleWorkerConfiguration>> GetConfigurationList(CancellationToken cancellationToken)
+            => await context.CandleWorkerConfigurations.OrderBy(c => c.Symbol.Name)
+                .ThenBy(c => c.Id).AsNoTracking().ToListAsync(cancellationToken);
+
+        public async Task<(IEnumerable<CandleWorkerConfiguration> result, int totalCount)> GetConfigurationsListByPagination(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
+        {
+            var query = context.CandleWorkerConfigurations.AsQueryable();
+            if (!string.IsNullOrWhiteSpace(keyword))
+            {
+                var term = keyword.Trim().ToLower();
+                query = query.Where(c => (c.Exchange != null && c.Exchange.Name.ToLower().Contains(term)) || (c.Market != null && c.Market.Name.ToLower().Contains(term)) || (c.Symbol != null && c.Symbol.Name.ToLower().Contains(term)) || (c.Symbol != null && c.Symbol.Description != null && c.Symbol.Description.ToLower().Contains(term)));
+            }
+            var totalCount = await query.CountAsync(cancellationToken);
+            return (await query
+                .OrderBy(c => c.Symbol.Name)
+                .ThenBy(c => c.TimeFrame.IntervalToSeconds)
+                .ThenBy(c => c.Id)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .AsNoTracking().ToListAsync(cancellationToken), totalCount);
         }
     }
 }

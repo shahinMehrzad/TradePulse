@@ -1,3 +1,4 @@
+using BackgroundWorker.CandleSeries;
 using Binance.Net.Interfaces.Clients;
 using Domain.Enums;
 using Infrastructure.Configurations;
@@ -24,7 +25,7 @@ public class BinanceConnectivityWorker(
     IBinanceSocketClient socketClient,
     BinanceRateLimiters rateLimiters,
     IOptions<HealthConfigurations> healthOptions,
-    IOptions<BinanceExchangeConfigurations> exchangeOptions) : BackgroundService
+    CandleSeriesProvider seriesProvider) : BackgroundService
 {
     private static readonly TimeSpan SubscribeRetryDelay = TimeSpan.FromSeconds(10);
     private const int MarkPriceIntervalMs = 3000;
@@ -42,7 +43,6 @@ public class BinanceConnectivityWorker(
 
     private async Task PingLoopAsync(CancellationToken ct)
     {
-        var usesSpot = exchangeOptions.Value.Symbols.Values.Any(s => s.MarketType == MarketTypeEnum.Spot);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(5, healthOptions.Value.ProbeIntervalSeconds)));
 
         do
@@ -50,7 +50,8 @@ public class BinanceConnectivityWorker(
             await PingAsync(HealthComponents.FuturesRest, MarketTypeEnum.Futures,
                 async token => { var r = await restClient.UsdFuturesApi.ExchangeData.PingAsync(token); return (r.Success, r.Error?.Message); }, ct);
 
-            if (usesSpot)
+            // Spot is only pinged while a spot series is being collected (the series are known after startup).
+            if (seriesProvider.Current.Any(s => s.MarketType == MarketTypeEnum.Spot))
             {
                 await PingAsync(HealthComponents.SpotRest, MarketTypeEnum.Spot,
                     async token => { var r = await restClient.SpotApi.ExchangeData.PingAsync(token); return (r.Success, r.Error?.Message); }, ct);

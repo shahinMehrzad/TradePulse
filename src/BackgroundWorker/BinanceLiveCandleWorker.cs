@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Application.Services;
+using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using Binance.Net.Enums;
 using Binance.Net.Interfaces;
@@ -30,6 +31,7 @@ public class BinanceLiveCandleWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<BinanceLiveCandleWorker> logger,
     IOptions<BinanceExchangeConfigurations> configurations,
+    CandleSeriesProvider seriesProvider,
     IBinanceSocketClient socketClient,
     CandleSyncCoordinator coordinator,
     WorkerHealthState health) : BackgroundService
@@ -44,10 +46,19 @@ public class BinanceLiveCandleWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var settings = configurations.Value;
-        if (!settings.LiveCandles || settings.Symbols.Count == 0)
+        if (!configurations.Value.LiveCandles)
         {
-            logger.LogInformation("Live candle stream is disabled or has no symbols; REST sync only.");
+            logger.LogInformation("Live candle stream is disabled; REST sync only.");
+            return;
+        }
+
+        IReadOnlyList<BinanceSymbolConfigurations> series;
+        try
+        {
+            series = await seriesProvider.WaitForSeriesAsync(stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
             return;
         }
 
@@ -57,7 +68,7 @@ public class BinanceLiveCandleWorker(
             _ => logger.LogError("Live candle queue is full; a candle was dropped (REST will fetch it)"));
 
         // One subscription per market and interval, each covering all of its symbols.
-        var streams = settings.Symbols.Values
+        var streams = series
             .GroupBy(s => (s.MarketType, s.Interval))
             .Select(g => new CandleStream(g.Key.MarketType, g.Key.Interval,
                 g.DistinctBy(s => s.Name).ToDictionary(

@@ -1,4 +1,5 @@
 ﻿using Application.Commands.AdminConfigurations;
+using Application.Dtos;
 using Application.Dtos.CandleWorkerConfigurations;
 using Application.Interfaces;
 using Application.Queries.AdminConfigurations;
@@ -10,8 +11,9 @@ namespace WebApi.Controllers.Admin
     public class ConfigurationsController(ICommandDispatcher dispatcher) : AdminControllerBase
     {
         [HttpGet("candle-worker")]
-        public async Task<IActionResult> GetCandleWorkerConfigurations(CancellationToken cancellationToken)
-            => Ok(await dispatcher.SendAsync<GetCandleWorkerConfigurationsQuery, IEnumerable<CandleWorkerConfiguration>>(new GetCandleWorkerConfigurationsQuery(), cancellationToken));
+        public async Task<IActionResult> GetCandleWorkerConfigurations([FromQuery] GetPaginationCandleWorkerConfigurationsQuery payload, CancellationToken cancellationToken)
+            => Ok(await dispatcher.SendAsync<GetPaginationCandleWorkerConfigurationsQuery, PaginationResponseDto<CandleWorkerConfiguration>>
+                (payload, cancellationToken));
 
         [HttpPost("add-config")]
         public async Task<IActionResult> AddCandleWorkerConfigurations(BaseCandleWorkerConfigurationDto payload, CancellationToken cancellationToken)

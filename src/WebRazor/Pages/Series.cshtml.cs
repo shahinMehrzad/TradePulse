@@ -7,7 +7,26 @@ namespace WebRazor.Pages;
 
 public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : AdminPageModel(store)
 {
+    public const int PageSize = 10;
+
     public IReadOnlyList<CandleWorkerSeries> Series { get; private set; } = [];
+
+    /// <summary>Which page of the list is shown. Kept (with <see cref="Keyword"/>) through the edit, save and remove round trips.</summary>
+    [BindProperty(SupportsGet = true)]
+    public int PageNumber { get; set; } = 1;
+
+    /// <summary>Narrows the list; the API matches it against the names of the exchange, market, symbol and time frame.</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? Keyword { get; set; }
+
+    public bool HasPrevious => PageNumber > 1;
+
+    public bool HasNext { get; private set; }
+
+    /// <summary>How many series match the search (all of them without one), as the API counts them.</summary>
+    public int TotalItems { get; private set; }
+
+    public int TotalPages { get; private set; }
 
     public Lookups Lookups { get; private set; } = Lookups.Empty;
 
@@ -57,6 +76,9 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     /// <summary>The Edit button links here with <c>?edit=id</c>, which fills the form with that series.</summary>
     public async Task<IActionResult> OnGetAsync(int? edit, CancellationToken cancellationToken)
     {
+        // A hand-edited address must not reach the API with a page it would refuse.
+        PageNumber = Math.Max(1, PageNumber);
+
         var result = await LoadAsync(cancellationToken);
         if (result is not null)
             return result;
@@ -83,6 +105,8 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken cancellationToken)
     {
+        PageNumber = Math.Max(1, PageNumber);
+
         if (ModelState.IsValid)
         {
             // The date input has no time or zone; the API reads a "Z" date as UTC, which is what is meant.
@@ -113,6 +137,8 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
     public async Task<IActionResult> OnPostDeleteAsync(int id, CancellationToken cancellationToken)
     {
+        PageNumber = Math.Max(1, PageNumber);
+
         var result = await CallAsync(() => api.DeleteSeriesAsync(id, cancellationToken));
         if (result.SessionRejected)
             return await EndSessionAsync();
@@ -143,11 +169,19 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     {
         try
         {
-            var series = await api.GetSeriesAsync(cancellationToken);
-            if (series is null)
+            var page = await api.GetSeriesAsync(PageNumber, PageSize, Keyword, cancellationToken);
+
+            // Removing the last row of the last page leaves that page empty: step back to the one before it.
+            while (page is { Items.Count: 0 } && PageNumber > 1)
+                page = await api.GetSeriesAsync(--PageNumber, PageSize, Keyword, cancellationToken);
+
+            if (page is null)
                 return await EndSessionAsync();
 
-            Series = series.OrderBy(s => s.Id).ToList();
+            Series = page.Items;
+            HasNext = page.HasNext;
+            TotalItems = page.TotalItems;
+            TotalPages = page.TotalPages;
             Lookups = await api.GetLookupsAsync(cancellationToken);
         }
         catch (HttpRequestException)

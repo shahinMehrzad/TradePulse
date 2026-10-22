@@ -168,6 +168,36 @@ namespace Infrastructure.Migrations.ConfigDb
                         {
                             Id = 8,
                             Name = "ADAUSDT"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            Name = "DOGEUSDT"
+                        },
+                        new
+                        {
+                            Id = 10,
+                            Name = "LINKUSDT"
+                        },
+                        new
+                        {
+                            Id = 11,
+                            Name = "LTCUSDT"
+                        },
+                        new
+                        {
+                            Id = 12,
+                            Name = "AVAXUSDT"
+                        },
+                        new
+                        {
+                            Id = 13,
+                            Name = "DOTUSDT"
+                        },
+                        new
+                        {
+                            Id = 14,
+                            Name = "TRXUSDT"
                         });
                 });
 

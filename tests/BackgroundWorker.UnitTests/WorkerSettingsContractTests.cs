@@ -18,44 +18,14 @@ public class WorkerSettingsContractTests
             .GetSection("BinanceExchangeConfigurations")
             .Get<BinanceExchangeConfigurations>()!;
 
+    // Which candle series to collect is no longer a setting: the admin chooses them in the config schema, where the
+    // foreign keys and the unique index (not this file) guarantee that every series is representable and appears once.
     [Fact]
-    public void ShippedSettingsBindToTheEnums()
+    public void ShippedSettingsBindAndTheRequestBudgetIsPositive()
     {
         var settings = LoadSettings();
 
-        Assert.NotEmpty(settings.Symbols);
         Assert.True(settings.MaxLimit > 0);
-        Assert.All(settings.Symbols.Values, s =>
-        {
-            Assert.True(Enum.IsDefined(s.Name));
-            Assert.True(Enum.IsDefined(s.Interval));
-            Assert.True(Enum.IsDefined(s.MarketType));
-        });
-    }
-
-    [Fact]
-    public void EntryKeysDescribeTheirContent()
-    {
-        foreach (var (key, symbol) in LoadSettings().Symbols)
-            Assert.Equal($"{symbol.MarketType}_{symbol.Name}_{symbol.Interval.ToString().TrimStart('_')}", key);
-    }
-
-    [Fact]
-    public void NoMarketSymbolAndIntervalIsConfiguredTwice()
-    {
-        var duplicates = LoadSettings().Symbols.Values
-            .GroupBy(s => (s.MarketType, s.Name, s.Interval))
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-
-        Assert.Empty(duplicates);
-    }
-
-    [Fact]
-    public void StartDatesAreInThePast()
-    {
-        Assert.All(LoadSettings().Symbols.Values, s => Assert.True(s.StartDate < DateTime.UtcNow));
     }
 
     private static BinanceFuturesDataConfigurations LoadFuturesData() =>

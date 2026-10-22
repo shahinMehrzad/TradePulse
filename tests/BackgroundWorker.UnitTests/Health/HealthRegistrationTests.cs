@@ -1,4 +1,7 @@
 using BackgroundWorker.Health;
+using BackgroundWorker.UnitTests.CandleSeries;
+using Domain.Enums;
+using Infrastructure.Configurations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -17,17 +20,24 @@ public class HealthRegistrationTests
             }.Concat(values).ToDictionary())
             .Build();
 
-    private static ServiceProvider Build(IConfiguration configuration)
+    private static async Task<ServiceProvider> BuildAsync(IConfiguration configuration)
     {
         var services = new ServiceCollection();
         services.AddLogging();
+
+        // The series are chosen at run time (in the database); a provider that already knows one futures and one spot series stands for that.
+        services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(
+            TimeProvider.System,
+            new BinanceSymbolConfigurations { Name = SymbolEnum.BTCUSDT, Interval = TimeFrameEnum._1H, MarketType = MarketTypeEnum.Futures },
+            new BinanceSymbolConfigurations { Name = SymbolEnum.BTCUSDT, Interval = TimeFrameEnum._1H, MarketType = MarketTypeEnum.Spot }));
+
         services.AddWorkerHealth(configuration);
         return services.BuildServiceProvider();
     }
 
     private static async Task<HashSet<string>> RegisteredChecksAsync(IConfiguration configuration)
     {
-        await using var provider = Build(configuration);
+        await using var provider = await BuildAsync(configuration);
         var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);
         return report.Entries.Keys.ToHashSet();
     }
@@ -38,14 +48,11 @@ public class HealthRegistrationTests
         // AddTypeActivatedCheck only fails when the check is created, so run the real service end to end.
         var config = Config(new()
         {
-            ["BinanceExchangeConfigurations:Symbols:a:Name"] = "BTCUSDT",
-            ["BinanceExchangeConfigurations:Symbols:a:Interval"] = "_1H",
-            ["BinanceExchangeConfigurations:Symbols:a:MarketType"] = "Spot",
             ["BinanceFuturesDataConfigurations:FundingRates:a:Name"] = "BTCUSDT",
             ["BinanceFuturesDataConfigurations:OpenInterests:a:Name"] = "BTCUSDT",
             ["BinanceFuturesDataConfigurations:Liquidations:a:Name"] = "BTCUSDT",
         });
-        await using var provider = Build(config);
+        await using var provider = await BuildAsync(config);
 
         var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);
 
@@ -54,8 +61,9 @@ public class HealthRegistrationTests
         Assert.Equal(
             new[]
             {
-                "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket", "binance-liquidation-stream", "binance-spot-rest",
-                "candle-freshness", "candle-requests", "database", "funding-rate-requests", "open-interest-requests",
+                "binance-candle-stream-futures", "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket",
+                "binance-liquidation-stream", "binance-spot-rest", "candle-freshness", "candle-requests", "candle-series", "database",
+                "funding-rate-requests", "open-interest-requests",
             },
             report.Entries.Keys.Order());
     }
@@ -63,17 +71,27 @@ public class HealthRegistrationTests
     [Fact]
     public async Task OnlyConfiguredComponentsGetAChecks()
     {
-        // No spot symbols, no futures data: nothing to monitor beyond the always-on probe and the database.
-        var checks = await RegisteredChecksAsync(Config(new()
-        {
-            ["BinanceExchangeConfigurations:Symbols:a:Name"] = "BTCUSDT",
-            ["BinanceExchangeConfigurations:Symbols:a:Interval"] = "_1H",
-            ["BinanceExchangeConfigurations:Symbols:a:MarketType"] = "Futures",
-        }));
+        // No futures data configured: no funding rate, open interest or liquidation checks. The candle checks are always there,
+        // because which series exist is only known at run time.
+        var checks = await RegisteredChecksAsync(Config(new()));
 
         Assert.Equal(
-            new[] { "binance-candle-stream-futures", "binance-futures-rest", "binance-futures-websocket", "candle-freshness", "candle-requests", "database" },
+            new[]
+            {
+                "binance-candle-stream-futures", "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket",
+                "binance-spot-rest", "candle-freshness", "candle-requests", "candle-series", "database",
+            },
             checks.Order());
+    }
+
+    [Fact]
+    public async Task WithoutLiveCandlesThereAreNoCandleStreamChecks()
+    {
+        var checks = await RegisteredChecksAsync(Config(new() { ["BinanceExchangeConfigurations:LiveCandles"] = "false" }));
+
+        Assert.DoesNotContain("binance-candle-stream-futures", checks);
+        Assert.DoesNotContain("binance-candle-stream-spot", checks);
+        Assert.Contains("candle-series", checks);
     }
 
     [Fact]

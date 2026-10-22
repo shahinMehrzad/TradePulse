@@ -10,5 +10,5 @@ public sealed class GetCandleWorkerConfigurationsQueryHandler(ICandleWorkerConfi
 {
     private readonly ICandleWorkerConfigurationRepository _workerConfigurationRepository = workerConfigurationRepository;
     public async Task<IEnumerable<CandleWorkerConfiguration>> HandleAsync(GetCandleWorkerConfigurationsQuery request, CancellationToken cancellationToken)
-        => await _workerConfigurationRepository.GetConfigurations(cancellationToken);      
+        => await _workerConfigurationRepository.GetConfigurationList(cancellationToken);
 }

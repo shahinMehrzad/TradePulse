@@ -20,9 +20,9 @@ public class GenerateRefreshTokenCommandHandler(IRefreshTokenRepository refreshT
         {
             Token = RefreshTokenHasher.Hash(refreshToken),
             UserId = request.UserId,
-            DeviceId = request.DeviceId,
-            IPAddress = request.IpAddress,
-            UserAgent = request.UserAgent,
+            DeviceId = request.DeviceId ?? string.Empty,
+            IPAddress = request.IpAddress ?? string.Empty,
+            UserAgent = request.UserAgent ?? string.Empty,
             ExpiresOn = DateTime.UtcNow.AddDays(request.DurationInDays)
         }, cancellationToken);
 
