@@ -24,9 +24,7 @@ public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         var startDate = request.StartDate.AsUtc();
         if (startDate >= DateTime.UtcNow)
             throw new ConfigurationValidationException("StartDate must be in the past.");
-                
-        var current = await workerConfigurationRepository.GetConfigurationById(request.Id, cancellationToken)
-            ?? throw new ConfigurationNotFoundException("Configuration does not exist.");
+
         if (request.CollectOpenInterest)
             OpenInterestValidation.EnsureSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
 

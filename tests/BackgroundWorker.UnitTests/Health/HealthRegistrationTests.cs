@@ -49,7 +49,6 @@ public class HealthRegistrationTests
         var config = Config(new()
         {
             ["BinanceFuturesDataConfigurations:FundingRates:a:Name"] = "BTCUSDT",
-            ["BinanceFuturesDataConfigurations:OpenInterests:a:Name"] = "BTCUSDT",
             ["BinanceFuturesDataConfigurations:Liquidations:a:Name"] = "BTCUSDT",
         });
         await using var provider = await BuildAsync(config);
@@ -69,17 +68,17 @@ public class HealthRegistrationTests
     }
 
     [Fact]
-    public async Task OnlyConfiguredComponentsGetAChecks()
+    public async Task OnlyConfiguredComponentsGetACheck()
     {
-        // No futures data configured: no funding rate, open interest or liquidation checks. The candle checks are always there,
-        // because which series exist is only known at run time.
+        // No futures data configured: no funding rate or liquidation check. The candle and open interest checks are always there,
+        // because which series exist (and which of them collect open interest) is only known at run time.
         var checks = await RegisteredChecksAsync(Config(new()));
 
         Assert.Equal(
             new[]
             {
                 "binance-candle-stream-futures", "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket",
-                "binance-spot-rest", "candle-freshness", "candle-requests", "candle-series", "database",
+                "binance-spot-rest", "candle-freshness", "candle-requests", "candle-series", "database", "open-interest-requests",
             },
             checks.Order());
     }

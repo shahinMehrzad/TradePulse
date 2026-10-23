@@ -26,7 +26,19 @@ public class CandleSeriesTests
     }
 
     [Theory]
-    [InlineData(99, (int)MarketTypeEnum.Futures, (int)SymbolEnum.BTCUSDT, (int)TimeFrameEnum._1H, "unknown exchange")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TheOpenInterestFlagOfTheRowIsCarriedIntoThePlan(bool collectOpenInterest)
+    {
+        var row = Row(exchange: (int)ExchangeEnum.Binance);
+        row.CollectOpenInterest = collectOpenInterest;
+
+        Assert.True(CandleSeriesPlan.TryCreate(row, out var plan, out _));
+        Assert.Equal(collectOpenInterest, plan.CollectOpenInterest);
+    }
+
+    [Theory]
+    [InlineData(99,(int)MarketTypeEnum.Futures, (int)SymbolEnum.BTCUSDT, (int)TimeFrameEnum._1H, "unknown exchange")]
     [InlineData((int)ExchangeEnum.Binance, 99, (int)SymbolEnum.BTCUSDT, (int)TimeFrameEnum._1H, "unknown market")]
     [InlineData((int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, 999, (int)TimeFrameEnum._1H, "unknown symbol")]
     [InlineData((int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, (int)SymbolEnum.BTCUSDT, 12345, "unknown time frame")]

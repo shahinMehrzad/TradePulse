@@ -15,6 +15,7 @@ public class ConfigDbContext : DbContext
     public DbSet<SymbolLookup> Symbols => Set<SymbolLookup>();
     public DbSet<TimeFrameLookup> TimeFrames => Set<TimeFrameLookup>();
     public DbSet<CandleWorkerConfiguration> CandleWorkerConfigurations => Set<CandleWorkerConfiguration>();
+    public DbSet<SymbolDataConfiguration> SymbolDataConfigurations => Set<SymbolDataConfiguration>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -70,6 +71,26 @@ public class ConfigDbContext : DbContext
 
             // One row per series, like the worker's own duplicate rule.
             e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId, x.TimeFrameId }).IsUnique();
+        });
+
+        builder.Entity<SymbolDataConfiguration>(e =>
+        {
+            e.ToTable("symbol_data_configurations", "config");
+
+            // Time columns are timestamp (no zone), always UTC.
+            e.Property(x => x.FundingStartDate).HasColumnType("timestamp");
+            e.Property(x => x.CreateDate).HasColumnType("timestamp").HasDefaultValueSql("now() at time zone 'utc'");
+
+            e.Property(x => x.CollectFundingRate).HasDefaultValue(false);
+            e.Property(x => x.CollectLiquidation).HasDefaultValue(false);
+
+            // A lookup row must never silently take its configurations with it.
+            e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
+
+            // One row per symbol of an exchange market.
+            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId }).IsUnique();
         });
     }
 }

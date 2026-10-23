@@ -5,7 +5,7 @@ namespace Domain.Repositories
     public interface ICandleWorkerConfigurationRepository
     {
         Task<IEnumerable<CandleWorkerConfiguration>> GetConfigurationList(CancellationToken cancellationToken);
-        Task<(IEnumerable<CandleWorkerConfiguration> result, int totalCount)> GetConfigurationsListByPagination(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken);
+        Task<(IReadOnlyList<CandleWorkerConfiguration> result, int totalCount)> GetConfigurationsListByPagination(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken);
         Task<CandleWorkerConfiguration?> GetConfigurationById(int configurationId, CancellationToken cancellationToken);
         Task<CandleWorkerConfiguration?> GetConfiguration(int exchangeId, int marketId, int symbolId, int timeFrameId, CancellationToken cancellationToken);
         Task<int> AddNewCandleWorkerConfiguration(CandleWorkerConfiguration configuration, CancellationToken cancellationToken);

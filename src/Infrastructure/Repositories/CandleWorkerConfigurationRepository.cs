@@ -73,7 +73,7 @@ namespace Infrastructure.Repositories
             => await context.CandleWorkerConfigurations.OrderBy(c => c.Symbol.Name)
                 .ThenBy(c => c.Id).AsNoTracking().ToListAsync(cancellationToken);
 
-        public async Task<(IEnumerable<CandleWorkerConfiguration> result, int totalCount)> GetConfigurationsListByPagination(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
+        public async Task<(IReadOnlyList<CandleWorkerConfiguration> result, int totalCount)> GetConfigurationsListByPagination(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
         {
             var query = context.CandleWorkerConfigurations.AsQueryable();
             if (!string.IsNullOrWhiteSpace(keyword))

@@ -1,4 +1,4 @@
-using Domain.Services;
+using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Exchange.Binance;
 using BackgroundWorker.Health;
 using BackgroundWorker.Scheduling;
@@ -6,23 +6,24 @@ using Binance.Net.Interfaces.Clients;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
-using Infrastructure.Configurations;
+using Domain.Services;
+using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace BackgroundWorker.Collection.OpenInterests;
 
 /// <summary>
-/// Collects open interest snapshots for USD-M futures, one loop per period like the candle worker.
+/// Collects open interest snapshots for USD-M futures, one loop per period like the candle worker. Which series it runs
+/// for is the admin's choice: the candle series flagged "collect open interest" (see <see cref="OpenInterestPlans"/>).
 /// Binance serves only about the last 30 days of history, so anything older than the first run can never be
 /// recovered: keep this worker running continuously.
 /// </summary>
 public class BinanceOpenInterestWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<BinanceOpenInterestWorker> logger,
-    IOptions<BinanceFuturesDataConfigurations> configurations,
+    CandleSeriesProvider seriesProvider,
     IBinanceRestClient binanceClient,
     BinanceRateLimiters rateLimiters,
     WorkerHealthState health) : BackgroundService
@@ -34,41 +35,54 @@ public class BinanceOpenInterestWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var groups = configurations.Value.OpenInterests.Values
-            .Where(IsSupported)
-            .GroupBy(s => (int)s.Interval)
-            .ToList();
-
-        if (groups.Count == 0)
+        try
         {
-            logger.LogWarning("No symbols configured for the open interest worker.");
-            return;
+            // The same list the candle workers wait for: the flag lives on the candle series rows.
+            var plans = await seriesProvider.WaitForSeriesAsync(stoppingToken);
+            var series = OpenInterestPlans.SelectForBinance(plans, (s, reason) =>
+                logger.LogWarning("Open interest is not collected for {Symbol} {Interval}: {Reason}", s.Series.Symbol, s.Series.Timeframe, reason));
+
+            if (series.Count == 0)
+            {
+                logger.LogInformation("No candle series asks for open interest; nothing to collect.");
+                return;
+            }
+
+            await EnsureTablesAsync(series, stoppingToken);
+
+            await Task.WhenAll(series.GroupBy(p => p.Series.Timeframe).Select(group =>
+            {
+                var forPeriod = group.ToList();
+                return MarketClock.RunEveryIntervalAsync(
+                    TimeSpan.FromSeconds((int)group.Key), ct => SyncAllAsync(forPeriod, ct), stoppingToken);
+            }));
         }
-
-        await Task.WhenAll(groups.Select(g =>
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            var symbols = g.ToList();
-            return MarketClock.RunEveryIntervalAsync(
-                TimeSpan.FromSeconds(g.Key), ct => SyncAllAsync(symbols, ct), stoppingToken);
-        }));
+        }
     }
 
-    private bool IsSupported(OpenInterestConfiguration symbol)
+    private async Task EnsureTablesAsync(IReadOnlyList<CandleSeriesPlan> series, CancellationToken ct)
     {
-        if (BinancePeriodIntervals.TryMap(symbol.Interval, out _))
-            return true;
+        foreach (var plan in series)
+        {
+            var tableName = TableNameRegistry.GetOpenInterestTableName(plan.Series.Exchange, plan.Series.Symbol, plan.Series.Timeframe);
 
-        logger.LogError("Open interest is not available for {Symbol} at {Interval}; entry ignored", symbol.Name, symbol.Interval);
-        return false;
+            await TableCreation.EnsureWithRetryAsync(async token =>
+            {
+                using var scope = scopeFactory.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<IMarketDataRepository<OpenInterest>>().EnsureTableExistsAsync(tableName, token);
+            }, tableName, logger, ct);
+        }
     }
 
-    private async Task SyncAllAsync(List<OpenInterestConfiguration> symbols, CancellationToken ct)
+    private async Task SyncAllAsync(List<CandleSeriesPlan> series, CancellationToken ct)
     {
-        foreach (var symbol in symbols)
+        foreach (var plan in series)
         {
             try
             {
-                await SyncSymbolAsync(symbol, ct);
+                await SyncSeriesAsync(plan, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -76,18 +90,19 @@ public class BinanceOpenInterestWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Open interest sync failed for {Symbol} {Interval}", symbol.Name, symbol.Interval);
+                logger.LogError(ex, "Open interest sync failed for {Symbol} {Interval}", plan.Series.Symbol, plan.Series.Timeframe);
             }
         }
     }
 
-    private async Task SyncSymbolAsync(OpenInterestConfiguration symbol, CancellationToken ct)
+    private async Task SyncSeriesAsync(CandleSeriesPlan plan, CancellationToken ct)
     {
-        BinancePeriodIntervals.TryMap(symbol.Interval, out var period);
+        var series = plan.Series;
+        BinancePeriodIntervals.TryMap(series.Timeframe, out var period);
 
         using var scope = scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IMarketDataRepository<OpenInterest>>();
-        var tableName = TableNameRegistry.GetOpenInterestTableName(ExchangeEnum.Binance, symbol.Name, symbol.Interval);
+        var tableName = TableNameRegistry.GetOpenInterestTableName(series.Exchange, series.Symbol, series.Timeframe);
         var limiter = rateLimiters.For(MarketTypeEnum.Futures);
 
         var oldestAvailable = DateTime.UtcNow - MaxHistory;
@@ -101,13 +116,13 @@ public class BinanceOpenInterestWorker(
             await limiter.AcquireAsync(1, ct);
 
             var result = await binanceClient.UsdFuturesApi.ExchangeData.GetOpenInterestHistoryAsync(
-                symbol.Name.ToString(), period, limit: MaxLimit, startTime: from, ct: ct);
+                series.Symbol.ToString(), period, limit: MaxLimit, startTime: from, ct: ct);
 
             if (!result.Success)
             {
                 health.RecordFailure(HealthComponents.OpenInterestRequests, result.Error?.Message);
                 // Resumable: the next period boundary continues from the newest stored snapshot.
-                logger.LogWarning("Open interest request failed for {Symbol} {Interval}: {Error}", symbol.Name, symbol.Interval, result.Error);
+                logger.LogWarning("Open interest request failed for {Symbol} {Interval}: {Error}", series.Symbol, series.Timeframe, result.Error);
                 return;
             }
 
@@ -123,7 +138,7 @@ public class BinanceOpenInterestWorker(
             if (rows.Count == 0)
                 return;
             var inserted = await repository.BulkInsert(tableName, rows, ct);
-            logger.LogDebug("Inserted {Count} open interest rows for {Symbol} {Interval}", inserted, symbol.Name, symbol.Interval);
+            logger.LogDebug("Inserted {Count} open interest rows for {Symbol} {Interval}", inserted, series.Symbol, series.Timeframe);
 
             from = rows.Max(r => r.Time).AddMilliseconds(1);
 

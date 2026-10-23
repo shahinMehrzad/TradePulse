@@ -174,13 +174,13 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
 
     // ---- Open interest flag. Symbols 12 to 14 are used by these cases only, so they cannot collide with the series above.
 
-    private static object WithFlag(int marketId, int symbolId, int timeFrameId, bool? collectOpenInterest) =>
+    private static object WithFlag(int marketId, int symbolId, int timeFrameId, bool collectOpenInterest) =>
         new { exchangeId = 1, marketId, symbolId, timeFrameId, startDate = "2020-01-01T00:00:00", collectOpenInterest };
 
-    private static object EditWithFlag(int id, int marketId, int symbolId, int timeFrameId, bool? collectOpenInterest) =>
+    private static object EditWithFlag(int id, int marketId, int symbolId, int timeFrameId, bool collectOpenInterest) =>
         new { id, exchangeId = 1, marketId, symbolId, timeFrameId, startDate = "2021-06-01T00:00:00Z", collectOpenInterest };
 
-    private async Task<int> AddWithFlagAsync(HttpClient client, int symbolId, int timeFrameId, bool? collectOpenInterest)
+    private async Task<int> AddWithFlagAsync(HttpClient client, int symbolId, int timeFrameId, bool collectOpenInterest)
     {
         var response = await client.PostAsJsonAsync(AddUrl, WithFlag(2, symbolId, timeFrameId, collectOpenInterest), Ct);
         response.EnsureSuccessStatusCode();
@@ -234,16 +234,16 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
     }
 
     [Fact]
-    public async Task AnUpdateThatLeavesTheFlagOutKeepsItAsItWas()
+    public async Task AnUpdateThatLeavesTheFlagOutSwitchesItOff()
     {
         var client = await AdminAsync();
         var id = await AddWithFlagAsync(client, symbolId: 13, timeFrameId: 3600, collectOpenInterest: true);
 
-        // The panel that does not know the field sends exactly this.
+        // A client that does not know the field (the panel today) sends exactly this: an absent flag is false, like on add.
         var response = await client.PutAsJsonAsync(UpdateUrl, Edit(id, symbolId: 13, timeFrameId: 3600), Ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.True(Assert.Single(await ListAsync(client), r => r.Id == id).CollectOpenInterest);
+        Assert.False(Assert.Single(await ListAsync(client), r => r.Id == id).CollectOpenInterest);
     }
 
     [Fact]
@@ -262,14 +262,14 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
     [Theory]
     [InlineData(2, 60, 3600)]      // a time frame Binance has no open interest for
     [InlineData(1, 14400, 7200)]   // Spot has none at all
-    public async Task MovingASeriesWhereItsStoredOpenInterestCannotExistIsRefusedAndTheRowIsUntouched(int marketId, int timeFrameId, int storedTimeFrameId)
+    public async Task MovingASeriesWhereItsOpenInterestCannotExistIsRefusedAndTheRowIsUntouched(int marketId, int timeFrameId, int storedTimeFrameId)
     {
         var client = await AdminAsync();
         var id = await AddWithFlagAsync(client, symbolId: 14, timeFrameId: storedTimeFrameId, collectOpenInterest: true);
         var before = Assert.Single(await ListAsync(client), r => r.Id == id);
 
-        // The flag is left out ("unchanged"), yet the series it belongs to changes underneath it.
-        var response = await client.PutAsJsonAsync(UpdateUrl, EditWithFlag(id, marketId, 14, timeFrameId, collectOpenInterest: null), Ct);
+        // The flag stays on, yet the series it belongs to moves to a market or time frame without open interest.
+        var response = await client.PutAsJsonAsync(UpdateUrl, EditWithFlag(id, marketId, 14, timeFrameId, collectOpenInterest: true), Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(before, Assert.Single(await ListAsync(client), r => r.Id == id));

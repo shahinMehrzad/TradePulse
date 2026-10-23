@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<ILookupsRepository, LookupsRepository>();
         services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();
+        services.AddScoped<ISymbolDataConfigurationRepository, SymbolDataConfigurationRepository>();
 
         // The config schema (series the admin chose) is read by the worker and written by WebApi, so it lives here, not with auth.
         // ConfigConnection is optional: the schema normally sits in the same database as everything else.

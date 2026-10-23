@@ -10,7 +10,6 @@ namespace BackgroundWorker.Collection;
 public class FuturesDataTableInitializer(
     IOptions<BinanceFuturesDataConfigurations> futuresConfig,
     IMarketDataRepository<FundingRate> fundingRateRepository,
-    IMarketDataRepository<OpenInterest> openInterestRepository,
     IMarketDataRepository<Liquidation> liquidationRepository)
 {
     private readonly BinanceFuturesDataConfigurations _futuresConfig = futuresConfig.Value;
@@ -21,12 +20,6 @@ public class FuturesDataTableInitializer(
         {
             var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, funding.Name);
             await fundingRateRepository.EnsureTableExistsAsync(tableName, cancellationToken);
-        }
-
-        foreach (var openInterest in _futuresConfig.OpenInterests.Values)
-        {
-            var tableName = TableNameRegistry.GetOpenInterestTableName(ExchangeEnum.Binance, openInterest.Name, openInterest.Interval);
-            await openInterestRepository.EnsureTableExistsAsync(tableName, cancellationToken);
         }
 
         foreach (var liquidation in _futuresConfig.Liquidations.Values)

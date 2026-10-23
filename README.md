@@ -130,14 +130,14 @@ Which candle series (market, symbol, time frame and start date) the collector fe
 - **An empty table means the collector idles**: it has nothing to collect, checks again every 30 s and starts as soon as the first series appears, without a restart. `/health` shows `candle-series` as degraded meanwhile.
 - A database that cannot be read does not stop the process either: the worker waits, keeps retrying every 30 s and reports `candle-series` as unhealthy.
 - The tables of the series are created by the worker once it knows them. Removing a series stops fetching it and keeps its stored candles.
+- **Open interest** is a flag on the same row (`CollectOpenInterest`, off by default): a series flagged on also has its open interest collected, at the same time frame. Only futures series at the time frames Binance offers can carry it (5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d); the admin API refuses the rest with the reason.
 
-Funding rate, open interest and liquidations are still configured in [`src/BackgroundWorker/appsettings.json`](src/BackgroundWorker/appsettings.json), together with the request budget (`MaxLimit`) and `LiveCandles`:
+Funding rate and liquidations are still configured in [`src/BackgroundWorker/appsettings.json`](src/BackgroundWorker/appsettings.json), together with the request budget (`MaxLimit`) and `LiveCandles`:
 
 ```jsonc
 "BinanceExchangeConfigurations": { "MaxLimit": 5900, "LiveCandles": true },
 "BinanceFuturesDataConfigurations": {
   "FundingRates": { "BTCUSDT": { "Name": "BTCUSDT", "StartDate": "2020-01-01T00:00:00Z" } },
-  "OpenInterests": { "BTCUSDT_1H": { "Name": "BTCUSDT", "Interval": "_1H" } },
   "Liquidations": { "BTCUSDT": { "Name": "BTCUSDT" } }
 }
 ```

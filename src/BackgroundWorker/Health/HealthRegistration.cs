@@ -69,8 +69,9 @@ public static class HealthRegistration
         if (futuresData.FundingRates.Count > 0)
             checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.FundingRateRequests, HealthComponents.FundingRateRequests);
 
-        if (futuresData.OpenInterests.Count > 0)
-            checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.OpenInterestRequests, HealthComponents.OpenInterestRequests);
+        // Which series collect open interest is chosen at run time (a flag on the candle series), so the check is always there.
+        // A request component that has not made a request yet is healthy.
+        checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.OpenInterestRequests, HealthComponents.OpenInterestRequests);
 
         if (futuresData.Liquidations.Count > 0)
         {

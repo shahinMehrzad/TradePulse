@@ -1,4 +1,3 @@
-using BackgroundWorker.Exchange.Binance;
 using Binance.Net.Enums;
 using Domain.Enums;
 using Infrastructure.Configurations;
@@ -42,23 +41,9 @@ public class WorkerSettingsContractTests
         var settings = LoadFuturesData();
 
         Assert.NotEmpty(settings.FundingRates);
-        Assert.NotEmpty(settings.OpenInterests);
         Assert.NotEmpty(settings.Liquidations);
         Assert.All(settings.FundingRates.Values, f => Assert.True(Enum.IsDefined(f.Name)));
-        Assert.All(settings.OpenInterests.Values, o =>
-        {
-            Assert.True(Enum.IsDefined(o.Name));
-            Assert.True(Enum.IsDefined(o.Interval));
-        });
         Assert.All(settings.Liquidations.Values, l => Assert.True(Enum.IsDefined(l.Name)));
-    }
-
-    [Fact]
-    public void ConfiguredOpenInterestIntervalsAreOnesBinanceOffers()
-    {
-        // An unsupported interval is skipped (with an error) at runtime; fail here before it gets shipped.
-        foreach (var entry in LoadFuturesData().OpenInterests.Values)
-            Assert.True(BinancePeriodIntervals.TryMap(entry.Interval, out _), $"{entry.Name} {entry.Interval} is not available from Binance");
     }
 
     [Fact]
@@ -68,9 +53,6 @@ public class WorkerSettingsContractTests
 
         foreach (var (key, entry) in settings.FundingRates)
             Assert.Equal(entry.Name.ToString(), key);
-
-        foreach (var (key, entry) in settings.OpenInterests)
-            Assert.Equal($"{entry.Name}_{entry.Interval.ToString().TrimStart('_')}", key);
 
         foreach (var (key, entry) in settings.Liquidations)
             Assert.Equal(entry.Name.ToString(), key);
@@ -82,7 +64,6 @@ public class WorkerSettingsContractTests
         var settings = LoadFuturesData();
 
         Assert.Equal(settings.FundingRates.Count, settings.FundingRates.Values.Select(f => f.Name).Distinct().Count());
-        Assert.Equal(settings.OpenInterests.Count, settings.OpenInterests.Values.Select(o => (o.Name, o.Interval)).Distinct().Count());
         Assert.Equal(settings.Liquidations.Count, settings.Liquidations.Values.Select(l => l.Name).Distinct().Count());
     }
 
