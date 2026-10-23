@@ -1,9 +1,6 @@
-using Application;
 using BackgroundWorker;
 using BackgroundWorker.Health;
-using Infrastructure;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -27,28 +24,6 @@ if (health.Enabled)
         .Configure(app => app.UseHealthEndpoints()));
 }
 
-var host = builder.ConfigureServices((context, services) =>
-{
-    services.AddApplicationServices();
-    services.AddInfrastructureServices(context.Configuration);
-
-    services.AddTransient<DatabaseSeeder>();
-    services.AddSingleton<BinanceRateLimiters>();
-    services.AddSingleton<CandleSyncCoordinator>();
-    services.AddWorkerHealth(context.Configuration);
-
-    services.AddHostedService<BinanceCandleWorker>();
-    services.AddHostedService<BinanceLiveCandleWorker>();
-    services.AddHostedService<BinanceFundingRateWorker>();
-    services.AddHostedService<BinanceOpenInterestWorker>();
-    services.AddHostedService<BinanceLiquidationWorker>();
-}).Build();
-
-
-using (var scope = host.Services.CreateScope())
-{
-    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
-    await seeder.InitializeBinanceAsync();
-}
+var host = builder.ConfigureServices((context, services) => services.AddCollector(context.Configuration)).Build();
 
 await host.RunAsync();

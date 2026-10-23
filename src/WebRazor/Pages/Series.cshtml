@@ -5,7 +5,7 @@
 }
 
 <div class="alert alert-info" role="alert">
-    This is the list of candle series the collector should fetch. The worker does not read it yet: it still runs on its own appsettings.json.
+    This is the list of candle series the collector fetches, and which of them also collect open interest. The worker reads it when it starts, so a change applies after the worker is restarted. With an empty list the worker idles and starts by itself when the first series is added.
 </div>
 
 @if (Model.Saved is not null)
@@ -27,17 +27,33 @@
 <div class="row row-cards">
     <div class="col-lg-8">
         <div class="card">
-            <div class="card-header"><h3 class="card-title">Configured series (@Model.Series.Count)</h3></div>
+            <div class="card-header">
+                <h3 class="card-title">Configured series (@Model.TotalItems)</h3>
+                <div class="card-actions">
+                    <form method="get" asp-page="/Series" class="d-flex gap-2">
+                        <input type="search" name="Keyword" value="@Model.Keyword" class="form-control form-control-sm" placeholder="Search..." aria-label="Search the series" />
+                        <button type="submit" class="btn btn-sm">Search</button>
+                        @if (!string.IsNullOrWhiteSpace(Model.Keyword))
+                        {
+                            <a class="btn btn-sm btn-ghost-secondary" asp-page="/Series">Clear</a>
+                        }
+                    </form>
+                </div>
+            </div>
             @if (Model.Series.Count == 0)
             {
-                <div class="card-body text-secondary">Nothing is configured yet. Add the first series on the right.</div>
+                <div class="card-body text-secondary">
+                    @(string.IsNullOrWhiteSpace(Model.Keyword)
+                        ? "Nothing is configured yet. Add the first series on the right."
+                        : $"No series match \"{Model.Keyword}\".")
+                </div>
             }
             else
             {
                 <div class="table-responsive">
                     <table class="table card-table table-vcenter">
                         <thead>
-                            <tr><th>Exchange</th><th>Market</th><th>Symbol</th><th>Time frame</th><th>From (UTC)</th><th></th></tr>
+                            <tr><th>Exchange</th><th>Market</th><th>Symbol</th><th>Time frame</th><th>From (UTC)</th><th>Open interest</th><th></th></tr>
                         </thead>
                         <tbody>
                             @foreach (var series in Model.Series)
@@ -48,8 +64,9 @@
                                     <td class="fw-bold">@Model.SymbolName(series.SymbolId)</td>
                                     <td>@Model.TimeFrameName(series.TimeFrameId)</td>
                                     <td class="text-nowrap">@series.StartDate.ToString("yyyy-MM-dd")</td>
+                                    <td>@if (series.CollectOpenInterest) { <span class="badge bg-green-lt">On</span> } else { <span class="text-secondary">-</span> }</td>
                                     <td class="text-nowrap text-end">
-                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-route-edit="@series.Id">Edit</a>
+                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-route-edit="@series.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Edit</a>
                                         <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-@series.Id">Remove</button>
                                     </td>
                                 </tr>
@@ -57,6 +74,20 @@
                         </tbody>
                     </table>
                 </div>
+                @if (Model.TotalPages > 1)
+                {
+                    <div class="card-footer d-flex align-items-center">
+                        <span class="text-secondary">Page @Model.PageNumber of @Model.TotalPages</span>
+                        <ul class="pagination m-0 ms-auto">
+                            <li class="page-item @(Model.HasPrevious ? "" : "disabled")">
+                                <a class="page-link" asp-page="/Series" asp-route-pageNumber="@Math.Max(1, Model.PageNumber - 1)" asp-route-keyword="@Model.Keyword">Previous</a>
+                            </li>
+                            <li class="page-item @(Model.HasNext ? "" : "disabled")">
+                                <a class="page-link" asp-page="/Series" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-keyword="@Model.Keyword">Next</a>
+                            </li>
+                        </ul>
+                    </div>
+                }
                 @foreach (var series in Model.Series)
                 {
                 <div class="modal modal-blur fade text-start" id="delete-@series.Id" tabindex="-1" aria-hidden="true">
@@ -71,7 +102,7 @@
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
-                                <form method="post" asp-page-handler="Delete" asp-route-id="@series.Id">
+                                <form method="post" asp-page-handler="Delete" asp-route-id="@series.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">
                                     <button type="submit" class="btn btn-danger">Remove</button>
                                 </form>
                             </div>
@@ -89,18 +120,18 @@
                 <h3 class="card-title">@(Model.IsEditing ? "Change series" : "Add a series")</h3>
             </div>
             <div class="card-body">
-                <form method="post" asp-page-handler="Save" autocomplete="off">
+                <form method="post" asp-page-handler="Save" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" autocomplete="off" data-support-form>
                     <input type="hidden" asp-for="Input.Id" />
                     <div class="mb-3">
                         <label asp-for="Input.ExchangeId" class="form-label">Exchange</label>
-                        <select asp-for="Input.ExchangeId" asp-items="Model.ExchangeItems" class="form-select">
+                        <select asp-for="Input.ExchangeId" asp-items="Model.ExchangeItems" class="form-select" data-support-field="exchange">
                             <option value="0">Select...</option>
                         </select>
                         <span asp-validation-for="Input.ExchangeId" class="text-danger"></span>
                     </div>
                     <div class="mb-3">
                         <label asp-for="Input.MarketId" class="form-label">Market</label>
-                        <select asp-for="Input.MarketId" asp-items="Model.MarketItems" class="form-select">
+                        <select asp-for="Input.MarketId" asp-items="Model.MarketItems" class="form-select" data-support-field="market">
                             <option value="0">Select...</option>
                         </select>
                         <span asp-validation-for="Input.MarketId" class="text-danger"></span>
@@ -114,7 +145,7 @@
                     </div>
                     <div class="mb-3">
                         <label asp-for="Input.TimeFrameId" class="form-label">Time frame</label>
-                        <select asp-for="Input.TimeFrameId" asp-items="Model.TimeFrameItems" class="form-select">
+                        <select asp-for="Input.TimeFrameId" asp-items="Model.TimeFrameItems" class="form-select" data-support-field="timeframe">
                             <option value="0">Select...</option>
                         </select>
                         <span asp-validation-for="Input.TimeFrameId" class="text-danger"></span>
@@ -124,11 +155,18 @@
                         <input asp-for="Input.StartDate" type="date" class="form-control" />
                         <span asp-validation-for="Input.StartDate" class="text-danger"></span>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-check mb-1">
+                            <input asp-for="Input.CollectOpenInterest" type="checkbox" class="form-check-input" data-support-type="OpenInterest" disabled="@(!Model.OpenInterestAvailable)" />
+                            <span class="form-check-label">Also collect open interest</span>
+                        </label>
+                        <div class="form-hint">@Model.OpenInterestRule The exchange keeps only about 30 days of it, so it is recorded from the moment the worker runs.</div>
+                    </div>
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary flex-fill">@(Model.IsEditing ? "Save changes" : "Add series")</button>
                         @if (Model.IsEditing)
                         {
-                            <a class="btn" asp-page="/Series">Cancel</a>
+                            <a class="btn" asp-page="/Series" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Cancel</a>
                         }
                     </div>
                 </form>
@@ -136,3 +174,5 @@
         </div>
     </div>
 </div>
+
+<script type="application/json" id="market-data-support">@Json.Serialize(Model.Lookups.MarketDataSupport)</script>

@@ -31,6 +31,11 @@ namespace Infrastructure.Migrations.ConfigDb
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("CollectOpenInterest")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTime>("CreateDate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp")
@@ -112,6 +117,53 @@ namespace Infrastructure.Migrations.ConfigDb
                         });
                 });
 
+            modelBuilder.Entity("Domain.Entities.SymbolDataConfiguration", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("CollectFundingRate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("CollectLiquidation")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime>("CreateDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<int>("ExchangeId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("FundingStartDate")
+                        .HasColumnType("timestamp");
+
+                    b.Property<int>("MarketId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SymbolId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MarketId");
+
+                    b.HasIndex("SymbolId");
+
+                    b.HasIndex("ExchangeId", "MarketId", "SymbolId")
+                        .IsUnique();
+
+                    b.ToTable("symbol_data_configurations", "config");
+                });
+
             modelBuilder.Entity("Domain.Entities.SymbolLookup", b =>
                 {
                     b.Property<int>("Id")
@@ -168,6 +220,36 @@ namespace Infrastructure.Migrations.ConfigDb
                         {
                             Id = 8,
                             Name = "ADAUSDT"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            Name = "DOGEUSDT"
+                        },
+                        new
+                        {
+                            Id = 10,
+                            Name = "LINKUSDT"
+                        },
+                        new
+                        {
+                            Id = 11,
+                            Name = "LTCUSDT"
+                        },
+                        new
+                        {
+                            Id = 12,
+                            Name = "AVAXUSDT"
+                        },
+                        new
+                        {
+                            Id = 13,
+                            Name = "DOTUSDT"
+                        },
+                        new
+                        {
+                            Id = 14,
+                            Name = "TRXUSDT"
                         });
                 });
 
@@ -301,6 +383,33 @@ namespace Infrastructure.Migrations.ConfigDb
                     b.Navigation("Symbol");
 
                     b.Navigation("TimeFrame");
+                });
+
+            modelBuilder.Entity("Domain.Entities.SymbolDataConfiguration", b =>
+                {
+                    b.HasOne("Domain.Entities.ExchangeLookup", "Exchange")
+                        .WithMany()
+                        .HasForeignKey("ExchangeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.MarketLookup", "Market")
+                        .WithMany()
+                        .HasForeignKey("MarketId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.SymbolLookup", "Symbol")
+                        .WithMany()
+                        .HasForeignKey("SymbolId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Exchange");
+
+                    b.Navigation("Market");
+
+                    b.Navigation("Symbol");
                 });
 #pragma warning restore 612, 618
         }

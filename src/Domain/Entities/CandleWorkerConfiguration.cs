@@ -15,6 +15,7 @@
 
         /// <summary>UTC. Stored as <c>timestamp</c> (no zone) like every other time column.</summary>
         public DateTime StartDate { get; set; }
+        public bool CollectOpenInterest { get; set; }
         public DateTime CreateDate { get; set; }
     }
 }

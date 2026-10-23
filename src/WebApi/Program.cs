@@ -14,6 +14,7 @@ builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 
 builder.Services.AddDataProtection();
 builder.Services.AddApplicationServices();
+builder.Services.AddAuthApplicationServices();
 
 // Candle reads go through a HybridCache (memory, plus Redis when a connection string is configured).
 if (builder.Configuration.GetValue("CandleCache:Enabled", true))

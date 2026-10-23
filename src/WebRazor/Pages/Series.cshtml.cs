@@ -7,7 +7,26 @@ namespace WebRazor.Pages;
 
 public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : AdminPageModel(store)
 {
+    public const int PageSize = 10;
+
     public IReadOnlyList<CandleWorkerSeries> Series { get; private set; } = [];
+
+    /// <summary>Which page of the list is shown. Kept (with <see cref="Keyword"/>) through the edit, save and remove round trips.</summary>
+    [BindProperty(SupportsGet = true)]
+    public int PageNumber { get; set; } = 1;
+
+    /// <summary>Narrows the list; the API matches it against the names of the exchange, market, symbol and time frame.</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? Keyword { get; set; }
+
+    public bool HasPrevious => PageNumber > 1;
+
+    public bool HasNext { get; private set; }
+
+    /// <summary>How many series match the search (all of them without one), as the API counts them.</summary>
+    public int TotalItems { get; private set; }
+
+    public int TotalPages { get; private set; }
 
     public Lookups Lookups { get; private set; } = Lookups.Empty;
 
@@ -40,6 +59,9 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
         [Required(ErrorMessage = "Enter the date to collect from.")]
         [DataType(DataType.Date)]
         public DateTime? StartDate { get; set; }
+
+        /// <summary>Also collect the open interest of this series. The API refuses it where the market has none.</summary>
+        public bool CollectOpenInterest { get; set; }
     }
 
     public SelectList ExchangeItems => new(Lookups.Exchanges, nameof(Lookup.Id), nameof(Lookup.Name), Input.ExchangeId);
@@ -54,9 +76,31 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     public string SymbolName(int id) => Lookups.Symbols.FirstOrDefault(x => x.Id == id)?.Name ?? $"#{id}";
     public string TimeFrameName(int id) => Lookups.TimeFrames.FirstOrDefault(x => x.Id == id)?.FriendlyName ?? $"#{id}";
 
+    /// <summary>Whether the series the form describes right now can carry open interest (the checkbox is disabled when not).</summary>
+    public bool OpenInterestAvailable => Lookups.Supports(Input.ExchangeId, Input.MarketId, "OpenInterest", Input.TimeFrameId);
+
+    /// <summary>Says where open interest exists, from the rules the API publishes.</summary>
+    public string OpenInterestRule
+    {
+        get
+        {
+            var entries = Lookups.MarketDataSupport.Where(s => s.DataType == "OpenInterest" && s.TimeFrameIds is not null).ToList();
+            if (entries.Count == 0)
+                return "Not available on any market.";
+
+            var markets = string.Join(" and ", entries.Select(e => MarketName(e.MarketId)).Distinct());
+            var ids = entries.SelectMany(e => e.TimeFrameIds!).ToHashSet();
+            var frames = Lookups.TimeFrames.Where(t => ids.Contains(t.Id)).OrderBy(t => t.IntervalToSeconds).Select(t => t.FriendlyName);
+            return $"{markets} only, at {string.Join(", ", frames)}.";
+        }
+    }
+
     /// <summary>The Edit button links here with <c>?edit=id</c>, which fills the form with that series.</summary>
     public async Task<IActionResult> OnGetAsync(int? edit, CancellationToken cancellationToken)
     {
+        // A hand-edited address must not reach the API with a page it would refuse.
+        PageNumber = Math.Max(1, PageNumber);
+
         var result = await LoadAsync(cancellationToken);
         if (result is not null)
             return result;
@@ -74,7 +118,8 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
                     MarketId = series.MarketId,
                     SymbolId = series.SymbolId,
                     TimeFrameId = series.TimeFrameId,
-                    StartDate = series.StartDate
+                    StartDate = series.StartDate,
+                    CollectOpenInterest = series.CollectOpenInterest
                 };
         }
 
@@ -83,12 +128,15 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken cancellationToken)
     {
+        PageNumber = Math.Max(1, PageNumber);
+
         if (ModelState.IsValid)
         {
             // The date input has no time or zone; the API reads a "Z" date as UTC, which is what is meant.
             var request = new SeriesRequest(
                 Input.ExchangeId, Input.MarketId, Input.SymbolId, Input.TimeFrameId,
-                DateTime.SpecifyKind(Input.StartDate!.Value.Date, DateTimeKind.Utc));
+                DateTime.SpecifyKind(Input.StartDate!.Value.Date, DateTimeKind.Utc),
+                Input.CollectOpenInterest);
 
             var result = await CallAsync(() => IsEditing
                 ? api.UpdateSeriesAsync(Input.Id, request, cancellationToken)
@@ -100,7 +148,7 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
             if (result.Success)
             {
                 Saved = IsEditing ? "The series was changed." : "The series was added.";
-                Input = new SeriesForm();
+                ResetForm();
             }
             else
             {
@@ -113,6 +161,11 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
     public async Task<IActionResult> OnPostDeleteAsync(int id, CancellationToken cancellationToken)
     {
+        // The form is not part of this request. Binding still fills Input.Id from the "id" of the removed row (an empty prefix is
+        // tried when nothing is posted under "Input"), which would turn the next "add" into a change of a row that is gone.
+        ResetForm();
+        PageNumber = Math.Max(1, PageNumber);
+
         var result = await CallAsync(() => api.DeleteSeriesAsync(id, cancellationToken));
         if (result.SessionRejected)
             return await EndSessionAsync();
@@ -123,6 +176,16 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
             Errors = result.Errors;
 
         return await LoadAsync(cancellationToken) ?? Page();
+    }
+
+    /// <summary>
+    /// Back to an empty "add" form. The posted values have to go too: a tag helper shows what was posted (the hidden id, the old
+    /// choices) in preference to the model, so resetting <see cref="Input"/> alone would leave the form still pointing at the old row.
+    /// </summary>
+    private void ResetForm()
+    {
+        ModelState.Clear();
+        Input = new SeriesForm();
     }
 
     /// <summary>A write that could not reach the API is shown as an error, not as a crash.</summary>
@@ -143,11 +206,19 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     {
         try
         {
-            var series = await api.GetSeriesAsync(cancellationToken);
-            if (series is null)
+            var page = await api.GetSeriesAsync(PageNumber, PageSize, Keyword, cancellationToken);
+
+            // Removing the last row of the last page leaves that page empty: step back to the one before it.
+            while (page is { Items.Count: 0 } && PageNumber > 1)
+                page = await api.GetSeriesAsync(--PageNumber, PageSize, Keyword, cancellationToken);
+
+            if (page is null)
                 return await EndSessionAsync();
 
-            Series = series.OrderBy(s => s.Id).ToList();
+            Series = page.Items;
+            HasNext = page.HasNext;
+            TotalItems = page.TotalItems;
+            TotalPages = page.TotalPages;
             Lookups = await api.GetLookupsAsync(cancellationToken);
         }
         catch (HttpRequestException)

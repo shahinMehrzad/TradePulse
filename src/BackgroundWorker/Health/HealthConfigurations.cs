@@ -1,3 +1,5 @@
+using Domain.Enums;
+
 namespace BackgroundWorker.Health;
 
 public class HealthConfigurations
@@ -8,12 +10,15 @@ public class HealthConfigurations
     /// <summary>Where the endpoint listens. Localhost only by default; use http://0.0.0.0:8080 inside a container.</summary>
     public string Url { get; set; } = "http://localhost:5080";
 
-    /// <summary>How often the connectivity probe pings Binance and checks the probe stream.</summary>
+    /// <summary>How often the connectivity probe pings the exchange and checks the probe stream.</summary>
     public int ProbeIntervalSeconds { get; set; } = 30;
 
     /// <summary>A busy futures symbol used for the WebSocket liveness probe (its mark price ticks every few seconds).</summary>
-    public string ProbeSymbol { get; set; } = "BTCUSDT";
+    public SymbolEnum ProbeSymbol { get; set; } = SymbolEnum.BTCUSDT;
 
     /// <summary>Connected but no liquidation for this long is reported as degraded. Liquidations are bursty, so keep it generous.</summary>
     public int LiquidationMaxSilenceMinutes { get; set; } = 60;
+
+    /// <summary>How often the collector writes its one-line summary to the log (what it stored, how fresh it is). 0 turns it off.</summary>
+    public int SummaryIntervalMinutes { get; set; } = 10;
 }

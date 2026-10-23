@@ -1,4 +1,6 @@
+using Application.Interfaces;
 using Domain.Entities;
+using Infrastructure.Identity;
 using Domain.Repositories;
 using Infrastructure.Configurations;
 using Infrastructure.Persistence;
@@ -22,15 +24,20 @@ public static class DependencyInjection
         services.AddScoped<IMarketDataRepository<FundingRate>>(_ => new TimeSeriesRepository<FundingRate>(connectionString, new FundingRateTable()));
         services.AddScoped<IMarketDataRepository<OpenInterest>>(_ => new TimeSeriesRepository<OpenInterest>(connectionString, new OpenInterestTable()));
         services.AddScoped<IMarketDataRepository<Liquidation>>(_ => new TimeSeriesRepository<Liquidation>(connectionString, new LiquidationTable()));
-        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<ILookupsRepository, LookupsRepository>();
         services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();
+        services.AddScoped<ISymbolDataConfigurationRepository, SymbolDataConfigurationRepository>();
 
-        services.Configure<BinanceExchangeConfigurations>(configuration.GetSection(nameof(BinanceExchangeConfigurations)));
-        services.Configure<BinanceFuturesDataConfigurations>(configuration.GetSection(nameof(BinanceFuturesDataConfigurations)));
+        // The config schema (series the admin chose) is read by the worker and written by WebApi, so it lives here, not with auth.
+        // ConfigConnection is optional: the schema normally sits in the same database as everything else.
+        var configConnectionString = configuration.GetConnectionString("ConfigConnection") ?? connectionString;
+        services.AddDbContext<ConfigDbContext>(options =>
+            options.UseNpgsql(configConnectionString, npgsqlOptions =>
+            {
+                npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "config");
+            }));
+
         services.Configure<JwtConfigurations>(configuration.GetSection(nameof(JwtConfigurations)));
-
-        services.AddBinance();
 
         return services;
     }
@@ -43,17 +50,16 @@ public static class DependencyInjection
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "auth");
             }));
 
-        services.AddDbContext<ConfigDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("ConfigConnection"), npgsqlOptions =>
-            {
-                npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "config");
-            }));
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
         services.AddIdentityCore<ApplicationUser>()
             .AddRoles<ApplicationRole>()
             .AddSignInManager<SignInManager<ApplicationUser>>()
             .AddEntityFrameworkStores<AuthDbContext>()
             .AddDefaultTokenProviders();
+
+        services.AddScoped<IIdentityService, IdentityService>();
+        services.AddSingleton<IAccessTokenService, JwtAccessTokenService>();
 
         return services;
     }

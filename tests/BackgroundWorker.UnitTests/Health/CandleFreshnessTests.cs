@@ -1,4 +1,5 @@
 using BackgroundWorker.Health;
+using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
@@ -41,18 +42,13 @@ public class CandleFreshnessTests
         public Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
-    private (CandleFreshnessMonitor Monitor, CandleFreshnessHealthCheck Check) Build()
+    private async Task<(CandleFreshnessMonitor Monitor, CandleFreshnessHealthCheck Check)> BuildAsync()
     {
         var services = new ServiceCollection();
         services.AddSingleton<ICandleRepository>(_repository);
-        var options = Options.Create(new BinanceExchangeConfigurations
-        {
-            Symbols =
-            {
-                ["a"] = new BinanceSymbolConfigurations { Name = SymbolEnum.BTCUSDT, Interval = TimeFrameEnum._1H, MarketType = MarketTypeEnum.Futures },
-            },
-        });
-        var monitor = new CandleFreshnessMonitor(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), options, _time);
+        var series = await CandleSeriesTestSupport.LoadedProviderAsync(
+            _time, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        var monitor = new CandleFreshnessMonitor(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), series, _time);
         return (monitor, new CandleFreshnessHealthCheck(monitor, _time));
     }
 
@@ -73,6 +69,26 @@ public class CandleFreshnessTests
         Assert.Equal(expected, CandleFreshnessMonitor.CandlesBehind(Noon.Date.AddHours(storedHour), Hour, now));
     }
 
+    [Fact]
+    public async Task AnEmptyAnswerIsNotCachedSoSeriesThatAppearLaterAreMeasuredAtOnce()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ICandleRepository>(_repository);
+        var source = new FakeCandleSeriesSource();
+        var series = CandleSeriesTestSupport.NewProvider(source, _time);
+        var monitor = new CandleFreshnessMonitor(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), series, _time);
+        _repository.Latest = Noon.AddHours(-1);
+
+        Assert.Empty(await monitor.GetAsync(TestContext.Current.CancellationToken));
+
+        source.Series.Add(TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        await series.StartAsync(TestContext.Current.CancellationToken);
+        await series.WaitForSeriesAsync(TestContext.Current.CancellationToken);
+
+        // Well inside the 30 s cache window, yet the new series is already there.
+        Assert.Single(await monitor.GetAsync(TestContext.Current.CancellationToken));
+    }
+
     // ---- check ----
 
     [Fact]
@@ -80,7 +96,7 @@ public class CandleFreshnessTests
     {
         _repository.Latest = Noon.AddHours(-1);
 
-        var result = await Run(Build().Check);
+        var result = await Run((await BuildAsync()).Check);
 
         Assert.Equal(HealthStatus.Healthy, result.Status);
     }
@@ -88,7 +104,7 @@ public class CandleFreshnessTests
     [Fact]
     public async Task StaleAfterStartup_IsDegradedThenUnhealthy()
     {
-        var (_, check) = Build();
+        var (_, check) = await BuildAsync();
         _time.Advance(TimeSpan.FromMinutes(30));            // 12:35, past the startup grace
         _repository.Latest = Noon.AddHours(-2);             // one behind
 
@@ -104,7 +120,7 @@ public class CandleFreshnessTests
     [Fact]
     public async Task BackfillThatMoves_IsHealthy()
     {
-        var (_, check) = Build();
+        var (_, check) = await BuildAsync();
         _time.Advance(TimeSpan.FromMinutes(30));
         _repository.Latest = Noon.AddHours(-100);
         await Run(check);
@@ -120,7 +136,7 @@ public class CandleFreshnessTests
     [Fact]
     public async Task EmptyTable_IsDegradedAtStartupAndUnhealthyLater()
     {
-        var (_, check) = Build();
+        var (_, check) = await BuildAsync();
 
         Assert.Equal(HealthStatus.Degraded, (await Run(check)).Status);
 
@@ -133,7 +149,7 @@ public class CandleFreshnessTests
     {
         _repository.Latest = Noon.AddHours(-20);
 
-        Assert.Equal(HealthStatus.Degraded, (await Run(Build().Check)).Status);
+        Assert.Equal(HealthStatus.Degraded, (await Run((await BuildAsync()).Check)).Status);
     }
 
     [Fact]
@@ -141,7 +157,7 @@ public class CandleFreshnessTests
     {
         _repository.Throw = true;
 
-        var result = await Run(Build().Check);
+        var result = await Run((await BuildAsync()).Check);
 
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
         Assert.DoesNotContain("secret-host", result.Description);
@@ -150,7 +166,7 @@ public class CandleFreshnessTests
     [Fact]
     public async Task DatabaseAnswer_IsCachedBriefly()
     {
-        var (_, check) = Build();
+        var (_, check) = await BuildAsync();
         _repository.Latest = Noon.AddHours(-1);
 
         await Run(check);

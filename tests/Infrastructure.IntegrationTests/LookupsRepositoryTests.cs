@@ -76,7 +76,6 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     [InlineData("btc", new[] { "BTCUSDT" })]
     [InlineData("BTC", new[] { "BTCUSDT" })]
     [InlineData("  btc  ", new[] { "BTCUSDT" })]
-    [InlineData("usdt", new[] { "ADAUSDT", "BNBUSDT", "BTCUSDT", "ETHUSDT", "SOLUSDT", "SUIUSDT", "XAUUSDT", "XRPUSDT" })]
     [InlineData("nothing-like-this", new string[0])]
     public async Task SymbolSearchIgnoresCaseAndSortsByName(string keyword, string[] expected)
     {
@@ -85,6 +84,19 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var result = await new LookupsRepository(context).GetSymbolListAsync(keyword, Ct);
 
         Assert.Equal(expected, result.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchingTheSuffixEverySymbolSharesFindsThemAllSortedByName()
+    {
+        // Built from the enum, so adding a symbol (and its migration) never needs this test to change.
+        await using var context = await MigratedContextAsync();
+
+        var result = await new LookupsRepository(context).GetSymbolListAsync("usdt", Ct);
+
+        Assert.Equal(
+            Enum.GetNames<SymbolEnum>().Where(n => n.EndsWith("USDT", StringComparison.Ordinal)).Order(StringComparer.Ordinal),
+            result.Select(x => x.Name));
     }
 
     [Theory]
@@ -194,7 +206,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var id = await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);
 
         Assert.True(id > 0);
-        var stored = Assert.Single(await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct));
+        var stored = Assert.Single(await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct));
         Assert.Equal((id, new DateTime(2020, 1, 1)), (stored.Id, stored.StartDate));
     }
 
@@ -220,7 +232,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
 
         await Assert.ThrowsAsync<ConfigurationValidationException>(
             () => new CandleWorkerConfigurationRepository(context).AddNewCandleWorkerConfiguration(NewSeries(start, exchangeId: 99), Ct));
-        Assert.Empty(await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct));
+        Assert.Empty(await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct));
     }
 
     [Fact]
@@ -229,7 +241,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         await using var context = await MigratedContextAsync();
         var repository = new CandleWorkerConfigurationRepository(context);
         var id = await repository.AddNewCandleWorkerConfiguration(NewSeries(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)), Ct);
-        var created = (await repository.GetConfigurations(Ct)).Single().CreateDate;
+        var created = (await repository.GetConfigurationList(Ct)).Single().CreateDate;
 
         var change = NewSeries(new DateTime(2021, 6, 1, 0, 0, 0, DateTimeKind.Utc), symbolId: (int)SymbolEnum.ETHUSDT);
         change.Id = id;
@@ -237,7 +249,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var updated = await repository.UpdateCandleWorkerConfiguration(change, Ct);
 
         Assert.Equal((id, (int)SymbolEnum.ETHUSDT, new DateTime(2021, 6, 1)), (updated.Id, updated.SymbolId, updated.StartDate));
-        var stored = (await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct)).Single();
+        var stored = (await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct)).Single();
         Assert.Equal((id, (int)SymbolEnum.ETHUSDT, new DateTime(2021, 6, 1), created), (stored.Id, stored.SymbolId, stored.StartDate, stored.CreateDate));
     }
 
@@ -263,7 +275,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
 
         await repository.RemoveCandleWorkerConfiguration(doomed, Ct);
 
-        var left = await new CandleWorkerConfigurationRepository(context).GetConfigurations(Ct);
+        var left = await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct);
         Assert.Equal([survivor], left.Select(c => c.Id));
     }
 
@@ -274,6 +286,70 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
 
         await Assert.ThrowsAsync<ConfigurationNotFoundException>(
             () => new CandleWorkerConfigurationRepository(context).RemoveCandleWorkerConfiguration(12345, Ct));
+    }
+
+    [Fact]
+    public async Task TheFullListIsNotPagedAndThePagedListCountsTheFilteredRows()
+    {
+        await using var context = await MigratedContextAsync();
+        var repository = new CandleWorkerConfigurationRepository(context);
+        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        foreach (var timeFrame in Enum.GetValues<TimeFrameEnum>().Take(12))
+        {
+            var series = NewSeries(start);
+            series.TimeFrameId = (int)timeFrame;
+            await repository.AddNewCandleWorkerConfiguration(series, Ct);
+        }
+        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, symbolId: (int)SymbolEnum.ETHUSDT), Ct);
+
+        // The worker reads this one: every series, however many there are.
+        Assert.Equal(13, (await repository.GetConfigurationList(Ct)).Count());
+
+        var (third, total) = await repository.GetConfigurationsListByPagination(3, 5, null, Ct);
+        Assert.Equal((3, 13), (third.Count(), total));
+
+        var (eth, ethTotal) = await repository.GetConfigurationsListByPagination(1, 5, "eth", Ct);
+        Assert.Equal((1, 1), (eth.Count(), ethTotal));   // the total is of the filtered list, not of the table
+    }
+
+    [Fact]
+    public async Task TheKeywordSearchesTheSymbolDescriptionButNotTheTimeFrame()
+    {
+        await using var context = await MigratedContextAsync();
+        var repository = new CandleWorkerConfigurationRepository(context);
+        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);                                        // BTCUSDT, 4h
+        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, symbolId: (int)SymbolEnum.ETHUSDT), Ct);   // ETHUSDT, 4h
+        (await context.Symbols.SingleAsync(x => x.Name == "BTCUSDT", Ct)).Description = "BitCoin";
+        await context.SaveChangesAsync(Ct);
+
+        async Task<int> Count(string keyword) => (await repository.GetConfigurationsListByPagination(1, 10, keyword, Ct)).totalCount;
+
+        Assert.Equal(1, await Count("bitcoin"));   // only the description says so
+        Assert.Equal(1, await Count("COIN"));
+        Assert.Equal(2, await Count("usdt"));
+        Assert.Equal(0, await Count("_4H"));       // the time frame is not searchable: it matches neither
+        Assert.Equal(0, await Count("4 hours"));
+    }
+
+    [Fact]
+    public async Task TheRowsOfOneSymbolComeShortestTimeFrameFirstWhateverOrderTheyWereAdded()
+    {
+        await using var context = await MigratedContextAsync();
+        var repository = new CandleWorkerConfigurationRepository(context);
+        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        foreach (var timeFrame in new[] { TimeFrameEnum._1D, TimeFrameEnum._1M, TimeFrameEnum._4H, TimeFrameEnum._15M })
+        {
+            var series = NewSeries(start);
+            series.TimeFrameId = (int)timeFrame;
+            await repository.AddNewCandleWorkerConfiguration(series, Ct);
+        }
+
+        var (rows, _) = await repository.GetConfigurationsListByPagination(1, 10, null, Ct);
+
+        Assert.Equal(
+            [(int)TimeFrameEnum._1M, (int)TimeFrameEnum._15M, (int)TimeFrameEnum._4H, (int)TimeFrameEnum._1D],
+            rows.Select(r => r.TimeFrameId));
     }
 
     private static Task<ConfigDbContext> ContextOnSameDatabaseAsync(ConfigDbContext context)

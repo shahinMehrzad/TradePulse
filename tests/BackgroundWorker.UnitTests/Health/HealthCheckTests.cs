@@ -156,19 +156,4 @@ public class HealthCheckTests
 
         Assert.Equal(HealthStatus.Healthy, (await Run(check)).Status);
     }
-
-    // ---- database ----
-
-    [Fact]
-    public async Task Database_UnreachableHostIsUnhealthyAndDoesNotLeakTheConnectionString()
-    {
-        const string secret = "s3cret-password";
-        var check = new DatabaseHealthCheck($"Host=127.0.0.1;Port=1;Database=x;Username=u;Password={secret};Timeout=2");
-
-        var result = await Run(check);
-
-        Assert.Equal(HealthStatus.Unhealthy, result.Status);
-        Assert.DoesNotContain(secret, result.Description);
-        Assert.DoesNotContain("127.0.0.1", result.Description);
-    }
 }
