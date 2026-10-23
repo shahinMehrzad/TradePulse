@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 
-namespace BackgroundWorker;
+namespace BackgroundWorker.Collection.Candles;
 
 /// <summary>
 /// Link between the live WebSocket worker and the REST sync loops.

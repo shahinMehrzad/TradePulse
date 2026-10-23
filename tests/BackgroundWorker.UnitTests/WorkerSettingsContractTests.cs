@@ -1,3 +1,4 @@
+using BackgroundWorker.Exchange.Binance;
 using Binance.Net.Enums;
 using Domain.Enums;
 using Infrastructure.Configurations;

@@ -1,7 +1,7 @@
 using Binance.Net.Enums;
 using Domain.Enums;
 
-namespace BackgroundWorker;
+namespace BackgroundWorker.Exchange.Binance;
 
 /// <summary>
 /// Maps our timeframes onto the "period" values accepted by Binance's futures statistics endpoints

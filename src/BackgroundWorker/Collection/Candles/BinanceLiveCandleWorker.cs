@@ -15,7 +15,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace BackgroundWorker;
+namespace BackgroundWorker.Collection.Candles;
 
 /// <summary>
 /// Stores closed candles straight from the kline WebSocket, moments after they close, instead of waiting for the REST

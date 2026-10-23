@@ -1,5 +1,7 @@
 using Application.Services;
+using BackgroundWorker.Exchange.Binance;
 using BackgroundWorker.Health;
+using BackgroundWorker.Scheduling;
 using Binance.Net.Interfaces.Clients;
 using Domain.Entities;
 using Domain.Enums;
@@ -10,7 +12,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace BackgroundWorker;
+namespace BackgroundWorker.Collection.FundingRates;
 
 /// <summary>
 /// Collects funding rate settlements (every 8 h, some symbols 4 h or 1 h) for USD-M futures.

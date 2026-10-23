@@ -13,7 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace BackgroundWorker;
+namespace BackgroundWorker.Collection.Liquidations;
 
 /// <summary>
 /// Collects forced liquidation orders from the futures WebSocket stream.

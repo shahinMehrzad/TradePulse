@@ -1,4 +1,6 @@
-namespace BackgroundWorker.UnitTests;
+using BackgroundWorker.Scheduling;
+
+namespace BackgroundWorker.UnitTests.Scheduling;
 
 public class MarketClockTests
 {

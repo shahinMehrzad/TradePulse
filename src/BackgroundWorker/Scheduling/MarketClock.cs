@@ -1,4 +1,4 @@
-namespace BackgroundWorker;
+namespace BackgroundWorker.Scheduling;
 
 /// <summary>Scheduling helpers shared by the collectors that wake up at interval boundaries.</summary>
 public static class MarketClock

@@ -2,7 +2,7 @@ using Domain.Enums;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Options;
 
-namespace BackgroundWorker;
+namespace BackgroundWorker.Exchange.Binance;
 
 /// <summary>
 /// One weight limiter per market, shared by every worker. Binance counts request weight per IP, so candle,

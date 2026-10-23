@@ -5,9 +5,9 @@ using Domain.Repositories;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Options;
 
-namespace BackgroundWorker;
+namespace BackgroundWorker.Collection;
 
-public class DatabaseSeeder(
+public class FuturesDataTableInitializer(
     IOptions<BinanceFuturesDataConfigurations> futuresConfig,
     IMarketDataRepository<FundingRate> fundingRateRepository,
     IMarketDataRepository<OpenInterest> openInterestRepository,
@@ -15,7 +15,7 @@ public class DatabaseSeeder(
 {
     private readonly BinanceFuturesDataConfigurations _futuresConfig = futuresConfig.Value;
 
-    public async Task InitializeBinanceAsync(CancellationToken cancellationToken = default)
+    public async Task EnsureTablesAsync(CancellationToken cancellationToken = default)
     {
         foreach (var funding in _futuresConfig.FundingRates.Values)
         {

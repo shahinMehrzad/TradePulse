@@ -1,6 +1,7 @@
 using BackgroundWorker;
+using BackgroundWorker.Collection.Candles;
 
-namespace BackgroundWorker.UnitTests;
+namespace BackgroundWorker.UnitTests.Collection;
 
 public class CandleSyncCoordinatorTests
 {

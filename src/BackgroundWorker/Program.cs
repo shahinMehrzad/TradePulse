@@ -1,10 +1,15 @@
 using Application;
-using BackgroundWorker;
 using BackgroundWorker.CandleSeries;
+using BackgroundWorker.Collection;
+using BackgroundWorker.Collection.Candles;
+using BackgroundWorker.Collection.FundingRates;
+using BackgroundWorker.Collection.Liquidations;
+using BackgroundWorker.Collection.OpenInterests;
+using BackgroundWorker.Exchange.Binance;
 using BackgroundWorker.Health;
 using Infrastructure;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -33,7 +38,7 @@ var host = builder.ConfigureServices((context, services) =>
     services.AddApplicationServices();
     services.AddInfrastructureServices(context.Configuration);
 
-    services.AddTransient<DatabaseSeeder>();
+    services.AddTransient<FuturesDataTableInitializer>();
 
     // Which candle series to collect comes from the database. Registered first so it starts reading before the workers wait for it.
     services.AddSingleton<ICandleSeriesSource, DatabaseCandleSeriesSource>();
@@ -53,8 +58,8 @@ var host = builder.ConfigureServices((context, services) =>
 
 using (var scope = host.Services.CreateScope())
 {
-    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
-    await seeder.InitializeBinanceAsync();
+    var tables = scope.ServiceProvider.GetRequiredService<FuturesDataTableInitializer>();
+    await tables.EnsureTablesAsync();
 }
 
 await host.RunAsync();
