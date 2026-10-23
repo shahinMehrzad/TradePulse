@@ -11,6 +11,9 @@ namespace Domain.Repositories
         /// <summary>Newest stored time (UTC), or null when the table is empty. Database errors are propagated.</summary>
         Task<DateTime?> GetLatestTimeAsync(string tableName, CancellationToken cancellationToken);
 
+        /// <summary>Whether the table exists yet. The collector creates it when it first knows it should collect the data.</summary>
+        Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken);
+
         /// <summary>Inserts the rows and skips duplicates. Returns the number of newly inserted rows.</summary>
         Task<int> BulkInsert(string tableName, IEnumerable<T> rows, CancellationToken cancellationToken);
     }

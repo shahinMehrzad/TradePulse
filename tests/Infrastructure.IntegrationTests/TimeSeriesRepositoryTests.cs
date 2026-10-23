@@ -18,6 +18,20 @@ public class TimeSeriesRepositoryTests(PostgresFixture postgres)
     private static FundingRate FundingAt(int index) => new(Start.AddHours(8 * index), 0.0001m * index, 50_000m + index);
 
     [Fact]
+    public async Task TableExistsTellsACreatedTableFromAMissingOne()
+    {
+        var repository = Funding();
+        var table = NewTable("fundingrate");
+
+        Assert.False(await repository.TableExistsAsync(table, Ct));
+
+        await repository.EnsureTableExistsAsync(table, Ct);
+
+        Assert.True(await repository.TableExistsAsync(table, Ct));
+        Assert.False(await repository.TableExistsAsync(NewTable("missing"), Ct));
+    }
+
+    [Fact]
     public async Task LatestTimeIsNullForAnEmptyTableAndThrowsWhenMissing()
     {
         var repository = Funding();

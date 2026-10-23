@@ -2,11 +2,13 @@
 
 [![CI](https://github.com/shahinMehrzad/TradePulse/actions/workflows/ci.yml/badge.svg)](https://github.com/shahinMehrzad/TradePulse/actions/workflows/ci.yml)
 
+![The admin dashboard: one card per symbol with price, change, sparkline and how fresh the data is](docs/images/dashboard.png)
+
 A .NET 10 / C# 14 project with two purposes: a **reference for how I structure and write code**, and a **real market-data collector** that feeds my own machine-learning trading research.
 
 It continuously collects Binance market data into PostgreSQL, built for speed and reliability on the collection path, with a Clean Architecture around it.
 
-> **Status:** the data collector is the focus and is working. The Web API provides authentication and a read-only candle endpoint; the UI, messaging and caching pieces are planned (see the [roadmap](#-roadmap)). Everything listed under "Implemented" exists in the code today.
+> **Status:** the data collector is the focus and is working. The Web API provides authentication and a read-only candle endpoint; the admin panel (screenshot above) shows what is collected and how fresh it is; messaging and caching are planned (see the [roadmap](#-roadmap)). Everything listed under "Implemented" exists in the code today.
 
 ## ✅ Implemented
 
@@ -73,6 +75,15 @@ Read-only access to the stored closed candles; the route names the series and th
 
 Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 with the offending parameter, a series the collector never created is a 404. The endpoints talk to `ICandleReader`, so the cache is a decorator behind it.
 
+### Dashboard
+
+Admin only (bearer token with the admin role). Built from the stored candles for the panel home page.
+
+| Request | Returns |
+|---|---|
+| `GET /api/admin/dashboard/series?market=futures` | One card per exchange market symbol the collector gathers (`market` is optional): the collected `timeframes`, the `defaultTimeframe` (the shortest), and `current` for it: last close and, over the newest 24 candles of that time frame (from `windowStart`, the open of the first, to `windowEnd`, the close of the last; the same candles as the 24-point `sparkline`), the change, high, low and volume, and `lagSeconds` since the newest candle closed. `status` is `ok`, `late` (a whole candle is overdue) or `empty` (no table or no rows yet; the other fields are null). |
+| `GET /api/admin/dashboard/series/binance/futures/btcusdt?timeframe=4h` | The same card for one chosen time frame (the shortest collected when omitted) and, with `candles=2..500`, over that many candles instead of 24, plus `related`: the funding rate, open interest and liquidations the admin chose to collect, each `ok`, `late` or `empty` with its lag. Futures only. `404` when the series or that time frame is not collected, `400` for an unknown name. |
+
 ### Authentication
 
 `POST /api/auth/login` issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret and the seeded admin credentials are **not** in the committed `appsettings.json`: Development gets throwaway values from `appsettings.Development.json`; anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes) and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.
@@ -82,6 +93,8 @@ Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 wi
 ### Admin panel (`WebRazor`)
 
 A Tabler-based panel that only the seeded administrator can enter. It references no other project and computes nothing: every page asks WebApi over HTTP (`Api:BaseUrl`). Sign-in posts to `POST /api/auth/login`, then `GET /api/admin/me` (which needs the admin role and answers 403 to anyone else) decides whether the user may enter. The API tokens stay on the panel's server (`SessionTokenStore`, in memory, so a restart signs the admin out); the browser only gets an `HttpOnly`, `SameSite=Strict` cookie holding an opaque session id, and the access token is refreshed shortly before it expires. Sessions last 8 hours.
+
+The **Dashboard** page shows one card per symbol the collector gathers (from `GET /api/admin/dashboard/series`): market, time frame, last price, the change over the newest 24 candles (its colour follows the line the card draws), a sparkline drawn on the server as inline SVG (the panel's content security policy allows no inline script), and whether the data is `ok`, `late` or `empty` with its lag. A market filter narrows the grid.
 
 The **Collector series** page lists the candle series stored through the API (`/api/admin/configurations/...`) and adds, changes and removes them. Dropdowns come from the public `/api/lookups/...` lists, which mirror the enums. The collector collects exactly this list, see [Candle series](#candle-series-chosen-in-the-database).
 The **Funding & liquidations** page does the same for the data without a time frame, per symbol. The series form carries the open interest checkbox. Both pages offer only what the API would accept: WebApi publishes the rules (`GET /api/lookups/market-data-support`, the same `MarketDataSupport` that refuses an impossible choice), the page embeds them and a few lines of `site.js` disable the checkboxes that do not apply. The API stays the guard; without JavaScript it answers with the reason.

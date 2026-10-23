@@ -1,0 +1,134 @@
+@page "/symbol/{exchange}/{market}/{symbol}"
+@using WebRazor.Display
+@model SymbolModel
+@{
+    var detail = Model.Detail;
+    var now = detail.Current;
+    var title = detail.Symbol.ToUpperInvariant();
+    ViewData["Title"] = $"{title} {detail.Market} {now.Timeframe}";
+    var empty = now.Status == "empty";
+    var up = (now.ChangePercent ?? 0m) >= 0m;
+    var window = now.WindowStart is { } start && now.WindowEnd is { } end ? DashboardFormat.Window(start, end) : null;
+    var ago = now.LagSeconds is { } lag ? DashboardFormat.Ago(lag) : null;
+}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <a class="btn btn-sm btn-ghost-secondary" asp-page="/Index" asp-route-market="@detail.Market">&larr; Dashboard</a>
+    <span class="badge @(detail.Market == "futures" ? "bg-blue-lt text-blue" : "bg-secondary-lt text-secondary")">@detail.Market</span>
+    <span class="badge @DashboardFormat.StatusBadge(now.Status)" title="@(empty ? "Nothing stored yet" : $"The newest candle closed {ago}. Late means a whole candle (and a minute) is overdue.")">@DashboardFormat.StatusLabel(now.Status)@(ago is null ? "" : " · " + ago)</span>
+    <div class="btn-group ms-auto" role="group" aria-label="Time frame">
+        @foreach (var timeframe in detail.Timeframes)
+        {
+            <a class="btn btn-sm @(timeframe == now.Timeframe ? "active" : "")" asp-page="/Symbol"
+               asp-route-exchange="@detail.Exchange" asp-route-market="@detail.Market" asp-route-symbol="@detail.Symbol" asp-route-timeframe="@timeframe">@timeframe</a>
+        }
+    </div>
+</div>
+
+@if (Model.Error is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.Error</div>
+}
+
+@if (!empty)
+{
+    <div class="row row-cards mb-3">
+        @foreach (var (label, value, tone) in new[]
+        {
+            ("Last close", DashboardFormat.Price(now.LastClose!.Value), ""),
+            ($"Change · {window}", (up ? "▲ " : "▼ ") + DashboardFormat.Change(now.ChangePercent!.Value), up ? "text-success" : "text-danger"),
+            ($"High · {window}", DashboardFormat.Price(now.High!.Value), ""),
+            ($"Low · {window}", DashboardFormat.Price(now.Low!.Value), ""),
+            ($"Volume · {window}", now.Volume!.Value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture), ""),
+            ("Last candle (UTC)", now.LastOpenTime!.Value.ToString("yyyy-MM-dd HH:mm"), "")
+        })
+        {
+            <div class="col-6 col-md-4 col-xl-2">
+                <div class="card card-sm">
+                    <div class="card-body">
+                        <div class="subheader">@label</div>
+                        <div class="h3 mb-0 @tone">@value</div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<div class="row row-cards">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">@title <span class="text-secondary fw-normal">Binance @detail.Market · @now.Timeframe</span></h3>
+                <div class="card-actions small text-secondary">
+                    <span class="text-success">&#9632;</span> close above open
+                    <span class="text-danger ms-2">&#9632;</span> close below open
+                </div>
+            </div>
+            <div class="card-body">
+                @if (Model.Chart is { } chart)
+                {
+                    <partial name="_CandleChart" model="chart" />
+                    <div class="d-flex justify-content-between flex-wrap gap-2 text-secondary small mt-2">
+                        <span>@chart.Candles.Count candles of @now.Timeframe · @now.WindowStart!.Value.ToString("yyyy-MM-dd HH:mm") to @now.WindowEnd!.Value.ToString("yyyy-MM-dd HH:mm") UTC (@window)</span>
+                        <span>The figures above cover exactly these candles. Rest the pointer on one for its prices.</span>
+                    </div>
+                }
+                else if (empty)
+                {
+                    <div class="empty">
+                        <p class="empty-title">No @now.Timeframe candles stored yet</p>
+                        <p class="empty-subtitle text-secondary">The collector creates the table when it starts on this series, then fills it.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-secondary">The chart is not available right now.</div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Related data</h3></div>
+            @if (detail.Related.Count == 0)
+            {
+                <div class="card-body text-secondary">
+                    @(detail.Market == "spot"
+                        ? "Spot has no funding rate, open interest or liquidations."
+                        : "Funding rate, open interest and liquidations are not collected for this symbol.")
+                </div>
+            }
+            else
+            {
+                <div class="list-group list-group-flush">
+                    @foreach (var related in detail.Related)
+                    {
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                @DashboardFormat.DataTypeLabel(related.DataType)
+                                @if (related.LastTime is { } last)
+                                {
+                                    <div class="text-secondary small">newest @last.ToString("yyyy-MM-dd HH:mm") UTC</div>
+                                }
+                            </div>
+                            <span class="badge @DashboardFormat.StatusBadge(related.Status)">@DashboardFormat.StatusLabel(related.Status)@(related.LagSeconds is { } relatedLag ? " · " + DashboardFormat.Ago(relatedLag) : "")</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Manage</h3></div>
+            <div class="card-body d-grid gap-2">
+                <a class="btn" asp-page="/Series" asp-route-Keyword="@detail.Symbol">Collector series for @title</a>
+                @if (detail.Market == "futures")
+                {
+                    <a class="btn" asp-page="/SymbolData">Funding &amp; liquidations</a>
+                }
+            </div>
+        </div>
+    </div>
+</div>

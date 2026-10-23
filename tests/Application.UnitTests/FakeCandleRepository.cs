@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Domain.Exceptions;
 using Domain.Repositories;
 using Domain.ValueObjects;
 
@@ -34,10 +35,22 @@ internal sealed class FakeCandleRepository : ICandleRepository
         return Task.FromResult<IReadOnlyList<Candle>>(Stored.Take(limit).ToList());
     }
 
+    /// <summary>
+    /// When used, each table has its own candles and a table not listed does not exist (like a real database). Lets one test
+    /// cover several series; <see cref="Stored"/> is ignored by <see cref="GetLatestAsync"/> then.
+    /// </summary>
+    public Dictionary<string, List<Candle>> PerTable { get; } = [];
+
     public Task<IReadOnlyList<Candle>> GetLatestAsync(string tableName, int limit, DateTime? upTo, CancellationToken cancellationToken)
     {
         LastRead = (tableName, null, upTo, limit);
-        return Task.FromResult<IReadOnlyList<Candle>>(Stored.TakeLast(limit).ToList());
+
+        if (PerTable.Count == 0)
+            return Task.FromResult<IReadOnlyList<Candle>>(Stored.TakeLast(limit).ToList());
+
+        return PerTable.TryGetValue(tableName, out var candles)
+            ? Task.FromResult<IReadOnlyList<Candle>>(candles.TakeLast(limit).ToList())
+            : throw new CandleSeriesNotFoundException(tableName);
     }
 
     public Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken) =>
