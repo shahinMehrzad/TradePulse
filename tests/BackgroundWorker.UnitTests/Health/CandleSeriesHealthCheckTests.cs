@@ -1,5 +1,6 @@
 using Domain.ValueObjects;
 using BackgroundWorker.CandleSeries;
+using BackgroundWorker.Plans;
 using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Enums;
@@ -47,7 +48,7 @@ public class CandleSeriesHealthCheckTests
     {
         using var provider = CandleSeriesTestSupport.NewProvider(new FakeCandleSeriesSource(), _time);
         await provider.StartAsync(Ct);
-        await WaitUntilAsync(() => provider.Status == CandleSeriesStatus.WaitingForConfiguration);
+        await WaitUntilAsync(() => provider.Status == PlanStatus.WaitingForConfiguration);
 
         var result = await Run(new CandleSeriesHealthCheck(provider));
 
@@ -61,7 +62,7 @@ public class CandleSeriesHealthCheckTests
         var source = new FakeCandleSeriesSource { Failure = new InvalidOperationException("secret-host refused the connection") };
         using var provider = CandleSeriesTestSupport.NewProvider(source, _time);
         await provider.StartAsync(Ct);
-        await WaitUntilAsync(() => provider.Status == CandleSeriesStatus.Failed);
+        await WaitUntilAsync(() => provider.Status == PlanStatus.Failed);
 
         var result = await Run(new CandleSeriesHealthCheck(provider));
 

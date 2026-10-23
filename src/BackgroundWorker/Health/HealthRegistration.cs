@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BackgroundWorker.CandleSeries;
+using BackgroundWorker.SymbolData;
 using Domain.Enums;
 using Infrastructure.Configurations;
 using Microsoft.AspNetCore.Builder;
@@ -22,13 +23,12 @@ public static class HealthRegistration
     /// Registers the state scoreboard, one check per connection this worker can use, and the probe worker.
     /// What is not configured (no liquidations, ...) gets no check. The candle series are chosen at run time, so the checks
     /// that depend on them (the per-market streams) are always registered but only judge a market that has a series.
-    /// Needs a <see cref="CandleSeriesProvider"/> in the container.
+    /// Needs a <see cref="CandleSeriesProvider"/> and a <see cref="SymbolDataProvider"/> in the container.
     /// </summary>
     public static IServiceCollection AddWorkerHealth(this IServiceCollection services, IConfiguration configuration)
     {
         var health = configuration.GetSection("Health").Get<HealthConfigurations>() ?? new HealthConfigurations();
         var exchange = configuration.GetSection(nameof(BinanceExchangeConfigurations)).Get<BinanceExchangeConfigurations>() ?? new();
-        var futuresData = configuration.GetSection(nameof(BinanceFuturesDataConfigurations)).Get<BinanceFuturesDataConfigurations>() ?? new();
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
@@ -66,20 +66,30 @@ public static class HealthRegistration
             AddCandleStreamCheck(checks, HealthComponents.CandleStreamSpot, MarketTypeEnum.Spot, streamOptions);
         }
 
-        if (futuresData.FundingRates.Count > 0)
-            checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.FundingRateRequests, HealthComponents.FundingRateRequests);
-
-        // Which series collect open interest is chosen at run time (a flag on the candle series), so the check is always there.
-        // A request component that has not made a request yet is healthy.
+        // Which symbols collect their funding rate or liquidations, and which series collect open interest, is chosen at run
+        // time (in the database), so these are always registered. A request component that has not made a request is healthy.
+        checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.FundingRateRequests, HealthComponents.FundingRateRequests);
         checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.OpenInterestRequests, HealthComponents.OpenInterestRequests);
 
-        if (futuresData.Liquidations.Count > 0)
-        {
-            // Liquidations are bursty, so silence only degrades; the busy probe stream above is what proves the socket is alive.
-            checks.AddTypeActivatedCheck<WebSocketHealthCheck>(HealthComponents.LiquidationStream, HealthComponents.LiquidationStream,
-                new WebSocketHealthOptions(StartupGrace, UnhealthyAfterDisconnected,
-                    MaxSilence: TimeSpan.FromMinutes(health.LiquidationMaxSilenceMinutes), SilenceStatus: HealthStatus.Degraded));
-        }
+        // Liquidations are bursty, so silence only degrades; the busy probe stream above is what proves the socket is alive.
+        // The stream is only judged once some symbol asks for liquidations.
+        var liquidationOptions = new WebSocketHealthOptions(StartupGrace, UnhealthyAfterDisconnected,
+            MaxSilence: TimeSpan.FromMinutes(health.LiquidationMaxSilenceMinutes), SilenceStatus: HealthStatus.Degraded);
+        checks.Add(new HealthCheckRegistration(
+            HealthComponents.LiquidationStream,
+            provider =>
+            {
+                var symbolData = provider.GetRequiredService<SymbolDataProvider>();
+                return new GatedHealthCheck(
+                    ActivatorUtilities.CreateInstance<WebSocketHealthCheck>(provider, HealthComponents.LiquidationStream, liquidationOptions),
+                    () => symbolData.Current.ForExchange(ExchangeEnum.Binance).Any(p => p.CollectLiquidation),
+                    "No liquidations configured",
+                    () => symbolData.LoadedAt,
+                    StartupGrace,
+                    provider.GetRequiredService<TimeProvider>());
+            },
+            failureStatus: null,
+            tags: null));
 
         services.Configure<HealthCheckPublisherOptions>(o =>
         {

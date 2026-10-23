@@ -1,4 +1,5 @@
 using BackgroundWorker.CandleSeries;
+using BackgroundWorker.Plans;
 using Domain.ValueObjects;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -37,7 +38,7 @@ internal static class CandleSeriesTestSupport
 
         await provider.StartAsync(CancellationToken.None);
         await provider.WaitForSeriesAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(CandleSeriesStatus.Loaded, provider.Status);
+        Assert.Equal(PlanStatus.Loaded, provider.Status);
         return provider;
     }
 }

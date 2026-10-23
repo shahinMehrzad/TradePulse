@@ -1,14 +1,13 @@
 using Application;
 using BackgroundWorker.CandleSeries;
-using BackgroundWorker.Collection;
 using BackgroundWorker.Collection.Candles;
 using BackgroundWorker.Collection.FundingRates;
 using BackgroundWorker.Collection.Liquidations;
 using BackgroundWorker.Collection.OpenInterests;
 using BackgroundWorker.Exchange.Binance;
 using BackgroundWorker.Health;
+using BackgroundWorker.SymbolData;
 using Infrastructure;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,13 +36,12 @@ var host = builder.ConfigureServices((context, services) =>
 {
     services.AddApplicationServices();
     services.AddInfrastructureServices(context.Configuration);
-
-    services.AddTransient<FuturesDataTableInitializer>();
-
-    // Which candle series to collect comes from the database. Registered first so it starts reading before the workers wait for it.
     services.AddSingleton<ICandleSeriesSource, DatabaseCandleSeriesSource>();
     services.AddSingleton<CandleSeriesProvider>();
     services.AddHostedService(provider => provider.GetRequiredService<CandleSeriesProvider>());
+    services.AddSingleton<ISymbolDataSource, DatabaseSymbolDataSource>();
+    services.AddSingleton<SymbolDataProvider>();
+    services.AddHostedService(provider => provider.GetRequiredService<SymbolDataProvider>());
     services.AddSingleton<BinanceRateLimiters>();
     services.AddSingleton<CandleSyncCoordinator>();
     services.AddWorkerHealth(context.Configuration);
@@ -54,12 +52,5 @@ var host = builder.ConfigureServices((context, services) =>
     services.AddHostedService<BinanceOpenInterestWorker>();
     services.AddHostedService<BinanceLiquidationWorker>();
 }).Build();
-
-
-using (var scope = host.Services.CreateScope())
-{
-    var tables = scope.ServiceProvider.GetRequiredService<FuturesDataTableInitializer>();
-    await tables.EnsureTablesAsync();
-}
 
 await host.RunAsync();

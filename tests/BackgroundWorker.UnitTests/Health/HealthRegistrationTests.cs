@@ -1,5 +1,6 @@
 using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
+using BackgroundWorker.UnitTests.SymbolData;
 using Domain.Enums;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Configuration;
@@ -31,6 +32,9 @@ public class HealthRegistrationTests
             TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H),
             TestPlans.Binance(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H)));
 
+        services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
+            TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: true)));
+
         services.AddWorkerHealth(configuration);
         return services.BuildServiceProvider();
     }
@@ -46,17 +50,14 @@ public class HealthRegistrationTests
     public async Task EveryRegisteredCheckCanBeBuiltAndRun()
     {
         // AddTypeActivatedCheck only fails when the check is created, so run the real service end to end.
-        var config = Config(new()
-        {
-            ["BinanceFuturesDataConfigurations:FundingRates:a:Name"] = "BTCUSDT",
-            ["BinanceFuturesDataConfigurations:Liquidations:a:Name"] = "BTCUSDT",
-        });
-        await using var provider = await BuildAsync(config);
+        await using var provider = await BuildAsync(Config(new()));
 
         var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);
 
         Assert.All(report.Entries.Values, e => Assert.NotNull(e.Description));
         Assert.Equal(HealthStatus.Unhealthy, report.Entries["database"].Status);
+        // What to collect is chosen at run time (in the database), so every component has its check from the start; the ones
+        // that depend on the choice only judge what is actually collected.
         Assert.Equal(
             new[]
             {
@@ -68,19 +69,21 @@ public class HealthRegistrationTests
     }
 
     [Fact]
-    public async Task OnlyConfiguredComponentsGetACheck()
+    public async Task WithoutAnyLiquidationChosenTheLiquidationStreamIsNotInUseAndNotAProblem()
     {
-        // No futures data configured: no funding rate or liquidation check. The candle and open interest checks are always there,
-        // because which series exist (and which of them collect open interest) is only known at run time.
-        var checks = await RegisteredChecksAsync(Config(new()));
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(
+            TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H)));
+        services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
+            TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: false)));
+        services.AddWorkerHealth(Config(new()));
+        await using var provider = services.BuildServiceProvider();
 
-        Assert.Equal(
-            new[]
-            {
-                "binance-candle-stream-futures", "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket",
-                "binance-spot-rest", "candle-freshness", "candle-requests", "candle-series", "database", "open-interest-requests",
-            },
-            checks.Order());
+        var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(HealthStatus.Healthy, report.Entries["binance-liquidation-stream"].Status);
+        Assert.Equal("No liquidations configured", report.Entries["binance-liquidation-stream"].Description);
     }
 
     [Fact]

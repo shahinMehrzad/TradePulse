@@ -39,7 +39,6 @@ public static class DependencyInjection
             }));
 
         services.Configure<BinanceExchangeConfigurations>(configuration.GetSection(nameof(BinanceExchangeConfigurations)));
-        services.Configure<BinanceFuturesDataConfigurations>(configuration.GetSection(nameof(BinanceFuturesDataConfigurations)));
         services.Configure<JwtConfigurations>(configuration.GetSection(nameof(JwtConfigurations)));
 
         services.AddBinance();

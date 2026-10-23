@@ -1,17 +1,16 @@
 using System.Threading.Channels;
 using Domain.Services;
 using BackgroundWorker.Health;
+using BackgroundWorker.SymbolData;
 using Binance.Net.Interfaces.Clients;
 using Binance.Net.Objects.Models.Futures.Socket;
 using CryptoExchange.Net.Objects.Sockets;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
-using Infrastructure.Configurations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace BackgroundWorker.Collection.Liquidations;
 
@@ -28,7 +27,7 @@ namespace BackgroundWorker.Collection.Liquidations;
 public class BinanceLiquidationWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<BinanceLiquidationWorker> logger,
-    IOptions<BinanceFuturesDataConfigurations> configurations,
+    SymbolDataProvider symbolDataProvider,
     IBinanceSocketClient binanceSocketClient,
     WorkerHealthState health) : BackgroundService
 {
@@ -42,10 +41,23 @@ public class BinanceLiquidationWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var symbols = configurations.Value.Liquidations.Values.Select(l => l.Name).Distinct().ToList();
-        if (symbols.Count == 0)
+        List<SymbolEnum> symbols;
+        try
         {
-            logger.LogWarning("No symbols configured for the liquidation worker.");
+            var plans = await symbolDataProvider.WaitForPlansAsync(stoppingToken);
+            symbols = SymbolDataPlans.LiquidationsForBinance(plans, (plan, reason) =>
+                logger.LogWarning("Liquidations are not collected for {Symbol}: {Reason}", plan.Symbol, reason)).ToList();
+
+            if (symbols.Count == 0)
+            {
+                logger.LogInformation("No symbol asks for its liquidations; nothing to collect.");
+                return;
+            }
+
+            await EnsureTablesAsync(symbols, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
             return;
         }
 
@@ -68,6 +80,20 @@ public class BinanceLiquidationWorker(
         finally
         {
             await FlushRemainingAsync();
+        }
+    }
+
+    private async Task EnsureTablesAsync(List<SymbolEnum> symbols, CancellationToken ct)
+    {
+        foreach (var symbol in symbols)
+        {
+            var tableName = TableNameRegistry.GetLiquidationTableName(ExchangeEnum.Binance, symbol);
+
+            await TableCreation.EnsureWithRetryAsync(async token =>
+            {
+                using var scope = scopeFactory.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<IMarketDataRepository<Liquidation>>().EnsureTableExistsAsync(tableName, token);
+            }, tableName, logger, ct);
         }
     }
 

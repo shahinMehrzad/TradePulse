@@ -3,6 +3,7 @@ using System.Text.Json;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
+using BackgroundWorker.UnitTests.SymbolData;
 using Domain.Enums;
 using Infrastructure.Configurations;
 using Microsoft.AspNetCore.Builder;
@@ -32,6 +33,8 @@ public class HealthEndpointTests
             TimeProvider.System,
             TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
 
+        var symbolData = await SymbolDataTestSupport.LoadedProviderAsync(TimeProvider.System, SymbolDataTestSupport.Binance());
+
         var host = Host.CreateDefaultBuilder()
             .ConfigureWebHost(web => web
                 .UseKestrel()
@@ -41,6 +44,7 @@ public class HealthEndpointTests
             .ConfigureServices(services =>
             {
                 services.AddSingleton<CandleSeriesProvider>(series);
+                services.AddSingleton(symbolData);
                 services.AddWorkerHealth(configuration);
                 // The probe worker needs real Binance clients; only the endpoint and the checks are under test here.
                 services.Remove(services.Single(s => s.ImplementationType == typeof(BinanceConnectivityWorker)));

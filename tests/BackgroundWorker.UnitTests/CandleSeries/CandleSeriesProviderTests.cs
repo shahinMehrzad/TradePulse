@@ -1,5 +1,6 @@
 using Domain.ValueObjects;
 using BackgroundWorker.CandleSeries;
+using BackgroundWorker.Plans;
 using Domain.Enums;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Time.Testing;
@@ -39,7 +40,7 @@ public class CandleSeriesProviderTests
         var series = await provider.WaitForSeriesAsync(Ct);
 
         Assert.Equal(Btc4h, Assert.Single(series));
-        Assert.Equal((CandleSeriesStatus.Loaded, 1), (provider.Status, provider.Current.Count));
+        Assert.Equal((PlanStatus.Loaded, 1), (provider.Status, provider.Current.Count));
         Assert.Equal(_time.GetUtcNow().UtcDateTime, provider.LoadedAt);
     }
 
@@ -50,7 +51,7 @@ public class CandleSeriesProviderTests
 
         Assert.Empty(provider.Current);
         Assert.Null(provider.LoadedAt);
-        Assert.Equal(CandleSeriesStatus.Loading, provider.Status);
+        Assert.Equal(PlanStatus.Loading, provider.Status);
         Assert.False(provider.WaitForSeriesAsync(Ct).IsCompleted);
         await Task.CompletedTask;
     }
@@ -60,7 +61,7 @@ public class CandleSeriesProviderTests
     {
         using var provider = Provider();
         await provider.StartAsync(Ct);
-        await WaitUntilAsync(() => provider.Status == CandleSeriesStatus.WaitingForConfiguration);
+        await WaitUntilAsync(() => provider.Status == PlanStatus.WaitingForConfiguration);
         var waiting = provider.WaitForSeriesAsync(Ct);
 
         Assert.False(waiting.IsCompleted);
@@ -71,7 +72,7 @@ public class CandleSeriesProviderTests
         _time.Advance(CandleSeriesProvider.RetryDelay);
 
         Assert.Equal(Btc4h, Assert.Single(await waiting.WaitAsync(TimeSpan.FromSeconds(5), Ct)));
-        Assert.Equal(CandleSeriesStatus.Loaded, provider.Status);
+        Assert.Equal(PlanStatus.Loaded, provider.Status);
     }
 
     [Fact]
@@ -81,7 +82,7 @@ public class CandleSeriesProviderTests
         using var provider = Provider();
 
         await provider.StartAsync(Ct);
-        await WaitUntilAsync(() => provider.Status == CandleSeriesStatus.Failed);
+        await WaitUntilAsync(() => provider.Status == PlanStatus.Failed);
 
         Assert.Equal(nameof(InvalidOperationException), provider.LastError);
         Assert.DoesNotContain("secret", provider.LastError);
@@ -92,7 +93,7 @@ public class CandleSeriesProviderTests
         _time.Advance(CandleSeriesProvider.RetryDelay);
 
         await provider.WaitForSeriesAsync(Ct).WaitAsync(TimeSpan.FromSeconds(5), Ct);
-        Assert.Equal((CandleSeriesStatus.Loaded, null), (provider.Status, provider.LastError));
+        Assert.Equal((PlanStatus.Loaded, null), (provider.Status, provider.LastError));
     }
 
     [Fact]
@@ -101,7 +102,7 @@ public class CandleSeriesProviderTests
         _source.Failure = new InvalidOperationException();
         using var provider = Provider();
         await provider.StartAsync(Ct);
-        await WaitUntilAsync(() => provider.Status == CandleSeriesStatus.Failed);
+        await WaitUntilAsync(() => provider.Status == PlanStatus.Failed);
 
         _time.Advance(CandleSeriesProvider.RetryDelay - TimeSpan.FromSeconds(1));
         await Task.Delay(50, Ct);
@@ -121,7 +122,7 @@ public class CandleSeriesProviderTests
         await hanging.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
         _time.Advance(CandleSeriesProvider.AttemptTimeout);
 
-        await WaitUntilAsync(() => provider.Status == CandleSeriesStatus.Failed);
+        await WaitUntilAsync(() => provider.Status == PlanStatus.Failed);
         Assert.Equal(nameof(TaskCanceledException), provider.LastError);
     }
 
@@ -158,7 +159,7 @@ public class CandleSeriesProviderTests
     {
         using var provider = Provider();
         await provider.StartAsync(Ct);
-        await WaitUntilAsync(() => provider.Status == CandleSeriesStatus.WaitingForConfiguration);
+        await WaitUntilAsync(() => provider.Status == PlanStatus.WaitingForConfiguration);
         var waiting = provider.WaitForSeriesAsync(Ct);
 
         await provider.StopAsync(Ct);
@@ -171,13 +172,13 @@ public class CandleSeriesProviderTests
     {
         using var provider = Provider();
         await provider.StartAsync(Ct);
-        await WaitUntilAsync(() => provider.Status == CandleSeriesStatus.WaitingForConfiguration);
+        await WaitUntilAsync(() => provider.Status == PlanStatus.WaitingForConfiguration);
         using var impatient = new CancellationTokenSource();
 
         var waiting = provider.WaitForSeriesAsync(impatient.Token);
         await impatient.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
-        Assert.Equal(CandleSeriesStatus.WaitingForConfiguration, provider.Status);
+        Assert.Equal(PlanStatus.WaitingForConfiguration, provider.Status);
     }
 }

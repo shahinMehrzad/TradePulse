@@ -1,27 +1,27 @@
-using Domain.Services;
 using BackgroundWorker.Exchange.Binance;
 using BackgroundWorker.Health;
 using BackgroundWorker.Scheduling;
+using BackgroundWorker.SymbolData;
 using Binance.Net.Interfaces.Clients;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
-using Infrastructure.Configurations;
+using Domain.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace BackgroundWorker.Collection.FundingRates;
 
 /// <summary>
-/// Collects funding rate settlements (every 8 h, some symbols 4 h or 1 h) for USD-M futures.
-/// Polls hourly and resumes from the newest stored settlement; the full history is available from the API.
+/// Collects funding rate settlements (every 8 h, some symbols 4 h or 1 h) for USD-M futures, for the symbols the admin chose
+/// (see <see cref="SymbolDataPlans"/>). Polls hourly and resumes from the newest stored settlement; the full history is
+/// available from the API.
 /// </summary>
 public class BinanceFundingRateWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<BinanceFundingRateWorker> logger,
-    IOptions<BinanceFuturesDataConfigurations> configurations,
+    SymbolDataProvider symbolDataProvider,
     IBinanceRestClient binanceClient,
     BinanceRateLimiters rateLimiters,
     WorkerHealthState health) : BackgroundService
@@ -29,25 +29,49 @@ public class BinanceFundingRateWorker(
     private const int MaxLimit = 1000;
     private static readonly TimeSpan PollInterval = TimeSpan.FromHours(1);
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var symbols = configurations.Value.FundingRates.Values.ToList();
-        if (symbols.Count == 0)
+        try
         {
-            logger.LogWarning("No symbols configured for the funding rate worker.");
-            return Task.CompletedTask;
-        }
+            var plans = await symbolDataProvider.WaitForPlansAsync(stoppingToken);
+            var targets = SymbolDataPlans.FundingRatesForBinance(plans, (plan, reason) =>
+                logger.LogWarning("The funding rate is not collected for {Symbol}: {Reason}", plan.Symbol, reason));
 
-        return MarketClock.RunEveryIntervalAsync(PollInterval, ct => SyncAllAsync(symbols, ct), stoppingToken);
+            if (targets.Count == 0)
+            {
+                logger.LogInformation("No symbol asks for its funding rate; nothing to collect.");
+                return;
+            }
+
+            await EnsureTablesAsync(targets, stoppingToken);
+            await MarketClock.RunEveryIntervalAsync(PollInterval, ct => SyncAllAsync(targets, ct), stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
     }
 
-    private async Task SyncAllAsync(List<FundingRateConfiguration> symbols, CancellationToken ct)
+    private async Task EnsureTablesAsync(IReadOnlyList<FundingRateTarget> targets, CancellationToken ct)
     {
-        foreach (var symbol in symbols)
+        foreach (var target in targets)
+        {
+            var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, target.Symbol);
+
+            await TableCreation.EnsureWithRetryAsync(async token =>
+            {
+                using var scope = scopeFactory.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<IMarketDataRepository<FundingRate>>().EnsureTableExistsAsync(tableName, token);
+            }, tableName, logger, ct);
+        }
+    }
+
+    private async Task SyncAllAsync(IReadOnlyList<FundingRateTarget> targets, CancellationToken ct)
+    {
+        foreach (var target in targets)
         {
             try
             {
-                await SyncSymbolAsync(symbol, ct);
+                await SyncSymbolAsync(target, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -55,33 +79,33 @@ public class BinanceFundingRateWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Funding rate sync failed for {Symbol}", symbol.Name);
+                logger.LogError(ex, "Funding rate sync failed for {Symbol}", target.Symbol);
             }
         }
     }
 
-    private async Task SyncSymbolAsync(FundingRateConfiguration symbol, CancellationToken ct)
+    private async Task SyncSymbolAsync(FundingRateTarget target, CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IMarketDataRepository<FundingRate>>();
-        var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, symbol.Name);
+        var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, target.Symbol);
         var limiter = rateLimiters.For(MarketTypeEnum.Futures);
 
         var latest = await repository.GetLatestTimeAsync(tableName, ct);
-        var from = latest is null ? symbol.StartDate : latest.Value.AddMilliseconds(1);
+        var from = latest is null ? target.StartDate : latest.Value.AddMilliseconds(1);
 
         while (!ct.IsCancellationRequested && from < DateTime.UtcNow)
         {
             await limiter.AcquireAsync(1, ct);
 
             var result = await binanceClient.UsdFuturesApi.ExchangeData.GetFundingRatesAsync(
-                symbol.Name.ToString(), startTime: from, limit: MaxLimit, ct: ct);
+                target.Symbol.ToString(), startTime: from, limit: MaxLimit, ct: ct);
 
             if (!result.Success)
             {
                 health.RecordFailure(HealthComponents.FundingRateRequests, result.Error?.Message);
                 // Resumable: the next poll continues from the newest stored settlement.
-                logger.LogWarning("Funding rate request failed for {Symbol}: {Error}", symbol.Name, result.Error);
+                logger.LogWarning("Funding rate request failed for {Symbol}: {Error}", target.Symbol, result.Error);
                 return;
             }
 
@@ -92,7 +116,7 @@ public class BinanceFundingRateWorker(
 
             var rows = data.Select(r => new FundingRate(r.FundingTime, r.FundingRate, r.MarkPrice ?? 0m)).ToList();
             var inserted = await repository.BulkInsert(tableName, rows, ct);
-            logger.LogDebug("Inserted {Count} funding rates for {Symbol}", inserted, symbol.Name);
+            logger.LogDebug("Inserted {Count} funding rates for {Symbol}", inserted, target.Symbol);
 
             from = rows.Max(r => r.FundingTime).AddMilliseconds(1);
 
