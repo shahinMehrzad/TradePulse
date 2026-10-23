@@ -12,7 +12,7 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private record LoginResult(string AccessToken);
-    private record Row(int Id, int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate);
+    private record Row(int Id, int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest = false);
     private record Created(int Id);
     private record Problem(int Status, string? Title, string? Detail);
 
@@ -172,7 +172,123 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private static string DeleteUrl(int id) => $"/api/admin/configurations/delete-config/{id}";
+    // ---- Open interest flag. Symbols 12 to 14 are used by these cases only, so they cannot collide with the series above.
+
+    private static object WithFlag(int marketId, int symbolId, int timeFrameId, bool? collectOpenInterest) =>
+        new { exchangeId = 1, marketId, symbolId, timeFrameId, startDate = "2020-01-01T00:00:00", collectOpenInterest };
+
+    private static object EditWithFlag(int id, int marketId, int symbolId, int timeFrameId, bool? collectOpenInterest) =>
+        new { id, exchangeId = 1, marketId, symbolId, timeFrameId, startDate = "2021-06-01T00:00:00Z", collectOpenInterest };
+
+    private async Task<int> AddWithFlagAsync(HttpClient client, int symbolId, int timeFrameId, bool? collectOpenInterest)
+    {
+        var response = await client.PostAsJsonAsync(AddUrl, WithFlag(2, symbolId, timeFrameId, collectOpenInterest), Ct);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<Created>(Ct))!.Id;
+    }
+
+    [Fact]
+    public async Task AFuturesSeriesCanAskForOpenInterestAndTheFlagIsStored()
+    {
+        var client = await AdminAsync();
+
+        var id = await AddWithFlagAsync(client, symbolId: 12, timeFrameId: 3600, collectOpenInterest: true);
+
+        Assert.True(Assert.Single(await ListAsync(client), r => r.Id == id).CollectOpenInterest);
+    }
+
+    [Fact]
+    public async Task WithoutTheFlagOpenInterestIsOff()
+    {
+        var client = await AdminAsync();
+
+        var id = await AddAsync(client, symbolId: 12, timeFrameId: 14400);   // a client that does not know the field
+
+        Assert.False(Assert.Single(await ListAsync(client), r => r.Id == id).CollectOpenInterest);
+    }
+
+    [Fact]
+    public async Task ASpotSeriesWithoutOpenInterestIsFine()
+    {
+        var client = await AdminAsync();
+
+        var response = await client.PostAsJsonAsync(AddUrl, WithFlag(marketId: 1, symbolId: 12, timeFrameId: 3600, collectOpenInterest: false), Ct);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(1, 3600, "OpenInterest is not available on Binance Spot")]
+    [InlineData(2, 60, "does not support the 1M time frame")]
+    [InlineData(2, 28800, "does not support the 8H time frame")]
+    public async Task OpenInterestWhereTheMarketHasNoneIsRefusedWithTheReasonAndNothingIsSaved(int marketId, int timeFrameId, string reason)
+    {
+        var client = await AdminAsync();
+        var before = (await ListAsync(client)).Length;
+
+        var response = await client.PostAsJsonAsync(AddUrl, WithFlag(marketId, symbolId: 12, timeFrameId, collectOpenInterest: true), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(reason, (await response.Content.ReadFromJsonAsync<Problem>(Ct))!.Detail);
+        Assert.Equal(before, (await ListAsync(client)).Length);
+    }
+
+    [Fact]
+    public async Task AnUpdateThatLeavesTheFlagOutKeepsItAsItWas()
+    {
+        var client = await AdminAsync();
+        var id = await AddWithFlagAsync(client, symbolId: 13, timeFrameId: 3600, collectOpenInterest: true);
+
+        // The panel that does not know the field sends exactly this.
+        var response = await client.PutAsJsonAsync(UpdateUrl, Edit(id, symbolId: 13, timeFrameId: 3600), Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(Assert.Single(await ListAsync(client), r => r.Id == id).CollectOpenInterest);
+    }
+
+    [Fact]
+    public async Task AnUpdateCanSwitchOpenInterestOnAndOff()
+    {
+        var client = await AdminAsync();
+        var id = await AddAsync(client, symbolId: 13, timeFrameId: 7200);
+
+        (await client.PutAsJsonAsync(UpdateUrl, EditWithFlag(id, 2, 13, 7200, true), Ct)).EnsureSuccessStatusCode();
+        Assert.True(Assert.Single(await ListAsync(client), r => r.Id == id).CollectOpenInterest);
+
+        (await client.PutAsJsonAsync(UpdateUrl, EditWithFlag(id, 2, 13, 7200, false), Ct)).EnsureSuccessStatusCode();
+        Assert.False(Assert.Single(await ListAsync(client), r => r.Id == id).CollectOpenInterest);
+    }
+
+    [Theory]
+    [InlineData(2, 60, 3600)]      // a time frame Binance has no open interest for
+    [InlineData(1, 14400, 7200)]   // Spot has none at all
+    public async Task MovingASeriesWhereItsStoredOpenInterestCannotExistIsRefusedAndTheRowIsUntouched(int marketId, int timeFrameId, int storedTimeFrameId)
+    {
+        var client = await AdminAsync();
+        var id = await AddWithFlagAsync(client, symbolId: 14, timeFrameId: storedTimeFrameId, collectOpenInterest: true);
+        var before = Assert.Single(await ListAsync(client), r => r.Id == id);
+
+        // The flag is left out ("unchanged"), yet the series it belongs to changes underneath it.
+        var response = await client.PutAsJsonAsync(UpdateUrl, EditWithFlag(id, marketId, 14, timeFrameId, collectOpenInterest: null), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(before, Assert.Single(await ListAsync(client), r => r.Id == id));
+    }
+
+    [Fact]
+    public async Task MovingASeriesIsFineOnceTheFlagIsSwitchedOffInTheSameUpdate()
+    {
+        var client = await AdminAsync();
+        var id = await AddWithFlagAsync(client, symbolId: 14, timeFrameId: 21600, collectOpenInterest: true);
+
+        var response = await client.PutAsJsonAsync(UpdateUrl, EditWithFlag(id, 2, 14, 60, collectOpenInterest: false), Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var saved = Assert.Single(await ListAsync(client), r => r.Id == id);
+        Assert.Equal((60, false), (saved.TimeFrameId, saved.CollectOpenInterest));
+    }
+
+    private static string DeleteUrl(int id) =>$"/api/admin/configurations/delete-config/{id}";
 
     [Fact]
     public async Task DeletingWithoutATokenIsUnauthorized()

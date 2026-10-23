@@ -22,8 +22,11 @@ public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         var startDate = request.StartDate.AsUtc();
         if (startDate >= DateTime.UtcNow)
             throw new ConfigurationValidationException("StartDate must be in the past.");
+               
+        if (request.CollectOpenInterest)
+            OpenInterestValidation.EnsureSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
 
-        var existingConfiguration = await workerConfigurationRepository.GetConfiguration(request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, cancellationToken);
+        var existingConfiguration =await workerConfigurationRepository.GetConfiguration(request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, cancellationToken);
         if (existingConfiguration is not null)
             throw new ConfigurationConflictException("Configuration already exists.");
 
@@ -33,7 +36,8 @@ public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerC
             MarketId = request.MarketId,
             StartDate = startDate,
             TimeFrameId = request.TimeFrameId,
-            SymbolId = request.SymbolId
+            SymbolId = request.SymbolId,
+            CollectOpenInterest = request.CollectOpenInterest
         }, cancellationToken);
     }
 }

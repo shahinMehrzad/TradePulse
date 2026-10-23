@@ -28,6 +28,9 @@ namespace Infrastructure.Repositories
             await SaveAsync(cancellationToken);
         }
 
+        public async Task<CandleWorkerConfiguration?> GetConfigurationById(int configurationId, CancellationToken cancellationToken)
+            => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.Id == configurationId, cancellationToken);
+
         public async Task<CandleWorkerConfiguration?> GetConfiguration(int exchangeId, int marketId, int symbolId, int timeFrameId, CancellationToken cancellationToken)
             => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.ExchangeId == exchangeId && c.MarketId == marketId && c.SymbolId == symbolId && c.TimeFrameId == timeFrameId, cancellationToken);
 
@@ -42,6 +45,7 @@ namespace Infrastructure.Repositories
             config.SymbolId = configuration.SymbolId;
             config.TimeFrameId = configuration.TimeFrameId;
             config.StartDate = DateTime.SpecifyKind(configuration.StartDate, DateTimeKind.Unspecified);
+            config.CollectOpenInterest = configuration.CollectOpenInterest;
             await SaveAsync(cancellationToken);
 
             return config;

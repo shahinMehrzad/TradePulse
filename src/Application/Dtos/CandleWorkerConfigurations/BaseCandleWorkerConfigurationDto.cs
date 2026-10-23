@@ -7,4 +7,5 @@ public class BaseCandleWorkerConfigurationDto
     public int SymbolId { get; set; }
     public int TimeFrameId { get; set; }
     public DateTime StartDate { get; set; }
+    public bool CollectOpenInterest { get; set; } = false;
 }

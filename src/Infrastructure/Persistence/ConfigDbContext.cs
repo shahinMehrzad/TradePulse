@@ -60,6 +60,8 @@ public class ConfigDbContext : DbContext
             e.Property(x => x.StartDate).HasColumnType("timestamp");
             e.Property(x => x.CreateDate).HasColumnType("timestamp").HasDefaultValueSql("now() at time zone 'utc'");
 
+            e.Property(x => x.CollectOpenInterest).HasDefaultValue(false);
+
             // A lookup row must never silently take its configurations with it.
             e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
