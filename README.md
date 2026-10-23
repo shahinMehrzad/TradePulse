@@ -73,6 +73,14 @@ Read-only access to the stored closed candles; the route names the series and th
 
 Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 with the offending parameter, a series the collector never created is a 404. The endpoints talk to `ICandleReader`, so the cache is a decorator behind it.
 
+### Dashboard
+
+Also requires a bearer token. Built from the stored candles for the panel's home page.
+
+| Request | Returns |
+|---|---|
+| `GET /api/dashboard/admin/series?market=futures` | One card per exchange market symbol the collector gathers (`market` is optional): the collected `timeframes`, the `defaultTimeframe` (the shortest), and `current` for it: last close, 24 h change, high, low and volume, a 24-point `sparkline`, and `lagSeconds` since the newest candle closed. `status` is `ok`, `late` (a whole candle is overdue) or `empty` (no table or no rows yet; the other fields are null). |
+
 ### Authentication
 
 `POST /api/auth/login` issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret and the seeded admin credentials are **not** in the committed `appsettings.json`: Development gets throwaway values from `appsettings.Development.json`; anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes) and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.

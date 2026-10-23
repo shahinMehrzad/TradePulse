@@ -25,6 +25,7 @@ public static class DependencyInjection
 
         services.AddScoped<ICommandDispatcher, CommandDispatcher>();
         services.AddScoped<ICandleReader, CandleReader>();
+        services.TryAddSingleton(TimeProvider.System);
 
         return services;
     }

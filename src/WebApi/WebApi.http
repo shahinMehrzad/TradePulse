@@ -25,6 +25,11 @@ GET {{WebApi_HostAddress}}/api/candles/binance/futures/btcusdt/4h/latest?limit=7
 Authorization: Bearer {{token}}
 Accept: application/json
 
+### Dashboard cards: one per symbol with price, 24 h change, sparkline and data lag
+GET {{WebApi_HostAddress}}/api/admin/dashboard/series?market=futures
+Authorization: Bearer {{token}}
+Accept: application/json
+
 ### A page of 15m candles; follow nextFrom for the next one
 GET {{WebApi_HostAddress}}/api/candles/binance/futures/btcusdt/15m?from=2024-01-01T00:00:00Z&limit=500
 Authorization: Bearer {{token}}
