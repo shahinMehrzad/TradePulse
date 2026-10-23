@@ -1,4 +1,6 @@
+using Application.Interfaces;
 using Domain.Entities;
+using Infrastructure.Identity;
 using Domain.Repositories;
 using Infrastructure.Configurations;
 using Infrastructure.Persistence;
@@ -57,6 +59,9 @@ public static class DependencyInjection
             .AddSignInManager<SignInManager<ApplicationUser>>()
             .AddEntityFrameworkStores<AuthDbContext>()
             .AddDefaultTokenProviders();
+
+        services.AddScoped<IIdentityService, IdentityService>();
+        services.AddSingleton<IAccessTokenService, JwtAccessTokenService>();
 
         return services;
     }

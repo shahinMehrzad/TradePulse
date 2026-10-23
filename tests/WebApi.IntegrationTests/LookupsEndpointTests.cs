@@ -56,6 +56,9 @@ public class LookupsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task TheConfigSchemaLivesInTheTestDatabaseNotInTheLocalOne()
     {
         // Guards ApiFixture itself: without ConfigConnection the host would migrate and read the developer's own database.
+        // The app migrates the database when its host starts; do not rely on another test having started it first.
+        using var _ = api.CreateClient();
+
         await using var connection = new Npgsql.NpgsqlConnection(api.ConnectionString);
         await connection.OpenAsync(Ct);
         await using var command = new Npgsql.NpgsqlCommand("select count(*) from config.exchanges", connection);
