@@ -1,6 +1,7 @@
 using BackgroundWorker.Exchange.Binance;
 using Binance.Net.Enums;
 using Domain.Enums;
+using Domain.Services;
 
 namespace BackgroundWorker.UnitTests.Exchange;
 
@@ -39,6 +40,16 @@ public class BinancePeriodIntervalsTests
 
         foreach (var timeFrame in Enum.GetValues<TimeFrameEnum>())
             Assert.Equal(!unsupported.Contains(timeFrame), BinancePeriodIntervals.TryMap(timeFrame, out _));
+    }
+
+    [Fact]
+    public void TheDomainRuleForOpenInterestAndTheBinanceMappingAgree()
+    {
+        // MarketDataSupport is what the admin API validates against; this mapping is what the worker really sends to Binance.
+        // If they drift apart, an accepted configuration would fail at run time (or a valid one be refused).
+        var mapped = Enum.GetValues<TimeFrameEnum>().Where(t => BinancePeriodIntervals.TryMap(t, out _));
+
+        Assert.Equal(mapped, MarketDataSupport.GetTimeFrames(ExchangeEnum.Binance, MarketTypeEnum.Futures, MarketDataTypeEnum.OpenInterest));
     }
 
     [Fact]
