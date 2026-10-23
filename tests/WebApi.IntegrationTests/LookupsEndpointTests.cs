@@ -61,7 +61,7 @@ public class LookupsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
 
         Assert.Equal(["Candle"], support.Where(s => s.MarketId == 1).Select(s => s.DataType));
         var openInterest = Assert.Single(support, s => s.MarketId == 2 && s.DataType == "OpenInterest");
-        Assert.Equal([300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400], openInterest.TimeFrameIds);
+        Assert.Equal([300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400], openInterest.TimeFrameIds!);
         Assert.Null(Assert.Single(support, s => s.MarketId == 2 && s.DataType == "FundingRate").TimeFrameIds);
     }
 

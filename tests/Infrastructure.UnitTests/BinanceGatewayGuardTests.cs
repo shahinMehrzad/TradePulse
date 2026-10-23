@@ -1,5 +1,9 @@
+using Application.Exchange;
+using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Infrastructure.Exchange.Binance;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Infrastructure.UnitTests;
 
@@ -41,6 +45,32 @@ public class BinanceGatewayGuardTests
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => gateway.GetOpenInterestAsync(ExchangeEnum.Binance, SymbolEnum.BTCUSDT, timeFrame, From, Ct));
+    }
+
+    private sealed class NoListener : ILiveCandleListener, ILiquidationListener
+    {
+        public void OnMessage() { }
+        public void OnClosedCandle(CandleSeries series, Candle candle) { }
+        public void OnLiquidation(SymbolEnum symbol, Liquidation liquidation) { }
+        public void OnConnectionLost() { }
+        public void OnConnectionRestored(TimeSpan offlineFor) { }
+    }
+
+    [Fact]
+    public async Task TheLiveCandleStreamServesBinanceOnly()
+    {
+        var stream = new BinanceLiveCandleStream(client: null!);
+        var subscription = new LiveCandleSubscription((ExchangeEnum)99, MarketTypeEnum.Futures, TimeFrameEnum._1H, [SymbolEnum.BTCUSDT]);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => stream.SubscribeAsync(subscription, new NoListener(), Ct));
+    }
+
+    [Fact]
+    public async Task TheLiquidationStreamServesBinanceOnly()
+    {
+        var stream = new BinanceLiquidationStream(client: null!, NullLogger<BinanceLiquidationStream>.Instance);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => stream.SubscribeAsync((ExchangeEnum)99, [SymbolEnum.BTCUSDT], new NoListener(), Ct));
     }
 
     [Fact]

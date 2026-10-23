@@ -1,0 +1,177 @@
+using Application.Exchange;
+using BackgroundWorker.Collection.Liquidations;
+using BackgroundWorker.Health;
+using BackgroundWorker.UnitTests.SymbolData;
+using Domain.Entities;
+using Domain.Enums;
+using Domain.Repositories;
+using Domain.ValueObjects;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace BackgroundWorker.UnitTests.Collection;
+
+/// <summary>
+/// The liquidation worker against a fake exchange: what it subscribes to, and that what the exchange sends ends up stored,
+/// also when the worker is stopped with liquidations still queued. Real time is used for the writer's batching window.
+/// </summary>
+public class LiquidationWorkerTests
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private sealed class FakeLiquidationStream : ILiquidationStream
+    {
+        public List<IReadOnlyList<SymbolEnum>> Subscriptions { get; } = [];
+        public List<ILiquidationListener> Listeners { get; } = [];
+        public int Disposed;
+
+        public Task<ExchangeResult<IAsyncDisposable>> SubscribeAsync(
+            ExchangeEnum exchange, IReadOnlyList<SymbolEnum> symbols, ILiquidationListener listener, CancellationToken cancellationToken)
+        {
+            Subscriptions.Add(symbols);
+            Listeners.Add(listener);
+            return Task.FromResult(ExchangeResult<IAsyncDisposable>.Ok(new Handle(this)));
+        }
+
+        private sealed class Handle(FakeLiquidationStream owner) : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync()
+            {
+                Interlocked.Increment(ref owner.Disposed);
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
+
+    private sealed class RecordingRepository : IMarketDataRepository<Liquidation>
+    {
+        public List<string> Created { get; } = [];
+        public List<(string Table, List<Liquidation> Rows)> Inserts { get; } = [];
+
+        public Task EnsureTableExistsAsync(string tableName, CancellationToken cancellationToken)
+        {
+            lock (Created)
+                Created.Add(tableName);
+            return Task.CompletedTask;
+        }
+
+        public Task<int> BulkInsert(string tableName, IEnumerable<Liquidation> rows, CancellationToken cancellationToken)
+        {
+            lock (Inserts)
+                Inserts.Add((tableName, rows.ToList()));
+            return Task.FromResult(1);
+        }
+
+        public Task<DateTime?> GetLatestTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class Rig : IAsyncDisposable
+    {
+        public FakeLiquidationStream Stream { get; } = new();
+        public RecordingRepository Repository { get; } = new();
+        public WorkerHealthState Health { get; } = new(TimeProvider.System);
+        public BinanceLiquidationWorker Worker { get; private set; } = null!;
+
+        public static async Task<Rig> StartAsync(params SymbolDataPlan[] plans)
+        {
+            var rig = new Rig();
+            var scopes = new ServiceCollection().AddSingleton<IMarketDataRepository<Liquidation>>(rig.Repository)
+                .BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+            var provider = await SymbolDataTestSupport.LoadedProviderAsync(TimeProvider.System, plans);
+
+            rig.Worker = new BinanceLiquidationWorker(scopes, NullLogger<BinanceLiquidationWorker>.Instance, provider, rig.Stream, rig.Health);
+            await rig.Worker.StartAsync(Ct);
+            return rig;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Worker.StopAsync(CancellationToken.None);
+            Worker.Dispose();
+        }
+    }
+
+    private static Liquidation Sample(decimal price) =>
+        new(new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc), OrderSideEnum.Sell, "LIMIT", "IOC", "FILLED", 1m, price, price, 1m, 1m);
+
+    private static async Task WaitUntilAsync(Func<bool> condition, string what)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"timed out waiting for: {what}");
+            await Task.Delay(5, Ct);
+        }
+    }
+
+    [Fact]
+    public async Task ItCreatesTheTablesAndSubscribesToTheSymbolsThatAskedForLiquidationsOnly()
+    {
+        await using var rig = await Rig.StartAsync(
+            SymbolDataTestSupport.Binance(SymbolEnum.BTCUSDT, funding: false, liquidation: true),
+            SymbolDataTestSupport.Binance(SymbolEnum.ETHUSDT, funding: true, liquidation: false),
+            SymbolDataTestSupport.Binance(SymbolEnum.BNBUSDT, funding: true, liquidation: true));
+
+        await WaitUntilAsync(() => rig.Stream.Subscriptions.Count == 1, "the subscription");
+
+        Assert.Equal([SymbolEnum.BTCUSDT, SymbolEnum.BNBUSDT], rig.Stream.Subscriptions[0].Order(Comparer<SymbolEnum>.Create((a, b) => ((int)a).CompareTo((int)b))));
+        Assert.Equal(["binance_futures_btcusdt_liquidation", "binance_futures_bnbusdt_liquidation"], rig.Repository.Created.Order(StringComparer.Ordinal).Reverse());
+        Assert.True(rig.Health.Get(HealthComponents.LiquidationStream).Connected);
+    }
+
+    [Fact]
+    public async Task ALiquidationIsStoredInTheTableOfItsSymbolAndCountsAsAMessage()
+    {
+        await using var rig = await Rig.StartAsync(
+            SymbolDataTestSupport.Binance(SymbolEnum.BTCUSDT, funding: false, liquidation: true),
+            SymbolDataTestSupport.Binance(SymbolEnum.ETHUSDT, funding: false, liquidation: true));
+        await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "the subscription");
+        var listener = rig.Stream.Listeners[0];
+
+        listener.OnLiquidation(SymbolEnum.BTCUSDT, Sample(100m));
+        listener.OnLiquidation(SymbolEnum.ETHUSDT, Sample(200m));
+        listener.OnLiquidation(SymbolEnum.BTCUSDT, Sample(101m));
+
+        await WaitUntilAsync(() => rig.Repository.Inserts.Sum(i => i.Rows.Count) == 3, "all three being stored");
+        var btc = rig.Repository.Inserts.Where(i => i.Table == "binance_futures_btcusdt_liquidation").SelectMany(i => i.Rows).Select(r => r.Price);
+        Assert.Equal([100m, 101m], btc);   // order kept, and gathered per table
+        Assert.Equal([200m], rig.Repository.Inserts.Where(i => i.Table == "binance_futures_ethusdt_liquidation").SelectMany(i => i.Rows).Select(r => r.Price));
+        Assert.Equal(3, rig.Health.Get(HealthComponents.LiquidationStream).MessageCount);
+    }
+
+    [Fact]
+    public async Task ALostConnectionIsReportedUntilTheLibraryRestoresIt()
+    {
+        await using var rig = await Rig.StartAsync(SymbolDataTestSupport.Binance(funding: false, liquidation: true));
+        await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "the subscription");
+
+        rig.Stream.Listeners[0].OnConnectionLost();
+        Assert.False(rig.Health.Get(HealthComponents.LiquidationStream).Connected);
+
+        rig.Stream.Listeners[0].OnConnectionRestored(TimeSpan.FromSeconds(5));
+        Assert.True(rig.Health.Get(HealthComponents.LiquidationStream).Connected);
+    }
+
+    [Fact]
+    public async Task LiquidationsStillQueuedWhenTheWorkerStopsAreStoredNotLost()
+    {
+        var rig = await Rig.StartAsync(SymbolDataTestSupport.Binance(funding: false, liquidation: true));
+        await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "the subscription");
+
+        rig.Stream.Listeners[0].OnLiquidation(SymbolEnum.BTCUSDT, Sample(100m));
+        await rig.DisposeAsync();   // stops long before the writer's batching window is over
+
+        Assert.Equal([100m], rig.Repository.Inserts.SelectMany(i => i.Rows).Select(r => r.Price));
+        Assert.Equal(1, rig.Stream.Disposed);   // and the stream was unsubscribed
+    }
+
+    [Fact]
+    public async Task WhenNoSymbolAsksForLiquidationsItNeverSubscribes()
+    {
+        await using var rig = await Rig.StartAsync(SymbolDataTestSupport.Binance(funding: true, liquidation: false));
+        await Task.Delay(200, Ct);
+
+        Assert.Empty(rig.Stream.Subscriptions);
+        Assert.Empty(rig.Repository.Created);
+    }
+}

@@ -1,15 +1,11 @@
 using System.Threading.Channels;
-using Domain.ValueObjects;
+using Application.Exchange;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
-using Binance.Net.Enums;
-using Binance.Net.Interfaces;
-using Binance.Net.Interfaces.Clients;
-using CryptoExchange.Net.Objects.Sockets;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
-using Infrastructure.Configurations;
+using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -30,9 +26,9 @@ namespace BackgroundWorker.Collection.Candles;
 public class BinanceLiveCandleWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<BinanceLiveCandleWorker> logger,
-    IOptions<BinanceExchangeConfigurations> configurations,
+    IOptions<LiveCandleSettings> settings,
     CandleSeriesProvider seriesProvider,
-    IBinanceSocketClient socketClient,
+    ILiveCandleStream liveStream,
     CandleSyncCoordinator coordinator,
     WorkerHealthState health) : BackgroundService
 {
@@ -46,7 +42,7 @@ public class BinanceLiveCandleWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!configurations.Value.LiveCandles)
+        if (!settings.Value.LiveCandles)
         {
             logger.LogInformation("Live candle stream is disabled; REST sync only.");
             return;
@@ -71,10 +67,7 @@ public class BinanceLiveCandleWorker(
         var streams = series
             .GroupBy(p => (p.Series.MarketType, p.Series.Timeframe))
             .Select(g => new CandleStream(g.Key.MarketType, g.Key.Timeframe,
-                g.DistinctBy(p => p.Series.Symbol).ToDictionary(
-                    p => p.Series.Symbol.ToString(),
-                    p => p.Series.TableName,
-                    StringComparer.OrdinalIgnoreCase)))
+                g.DistinctBy(p => p.Series.Symbol).ToDictionary(p => p.Series.Symbol, p => p.Series.TableName)))
             .ToList();
 
         try
@@ -87,7 +80,7 @@ public class BinanceLiveCandleWorker(
             finally
             {
                 foreach (var subscription in subscriptions)
-                    await socketClient.UnsubscribeAsync(subscription);
+                    await subscription.DisposeAsync();
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -99,75 +92,62 @@ public class BinanceLiveCandleWorker(
         }
     }
 
-    private sealed record CandleStream(MarketTypeEnum Market, TimeFrameEnum Interval, Dictionary<string, string> TablesBySymbol)
+    private sealed record CandleStream(MarketTypeEnum Market, TimeFrameEnum Timeframe, Dictionary<SymbolEnum, string> TablesBySymbol)
     {
         public string Component => Market == MarketTypeEnum.Futures ? HealthComponents.CandleStreamFutures : HealthComponents.CandleStreamSpot;
     }
 
-    private async Task<UpdateSubscription> SubscribeAsync(CandleStream stream, CancellationToken ct)
+    /// <summary>Subscribes, trying again until it works: a stream that never started would silently leave the REST loop alone.</summary>
+    private async Task<IAsyncDisposable> SubscribeAsync(CandleStream stream, CancellationToken ct)
     {
-        var symbols = stream.TablesBySymbol.Keys.ToList();
-        var interval = (KlineInterval)stream.Interval;
-        void OnMessage(DataEvent<IBinanceStreamKlineData> message) => OnKline(stream, message.Data);
+        var subscription = new LiveCandleSubscription(ExchangeEnum.Binance, stream.Market, stream.Timeframe, [.. stream.TablesBySymbol.Keys]);
+        var listener = new StreamListener(stream, _queue.Writer, health, coordinator, logger);
 
         while (true)
         {
-            var result = stream.Market == MarketTypeEnum.Futures
-                ? await socketClient.UsdFuturesApi.ExchangeData.SubscribeToKlineUpdatesAsync(symbols, interval, OnMessage, ct: ct)
-                : await socketClient.SpotApi.ExchangeData.SubscribeToKlineUpdatesAsync(symbols, interval, OnMessage, ct);
+            var result = await liveStream.SubscribeAsync(subscription, listener, ct);
 
             if (result.Success)
             {
-                var subscription = result.Data;
-                subscription.ConnectionLost += () =>
-                {
-                    health.SetConnected(stream.Component, false);
-                    logger.LogWarning("Candle stream {Market} {Interval} lost, reconnecting", stream.Market, stream.Interval);
-                };
-                subscription.ConnectionRestored += offlineFor =>
-                {
-                    health.SetConnected(stream.Component, true);
-                    logger.LogInformation("Candle stream {Market} {Interval} restored after {Offline}; requesting resync",
-                        stream.Market, stream.Interval, offlineFor);
-                    coordinator.RequestResync();
-                };
                 health.SetConnected(stream.Component, true);
                 logger.LogInformation("Subscribed to {Interval} candles for {Market}: {Symbols}",
-                    stream.Interval, stream.Market, string.Join(", ", symbols));
-                return subscription;
+                    stream.Timeframe, stream.Market, string.Join(", ", stream.TablesBySymbol.Keys));
+                return result.Value;
             }
 
             health.SetConnected(stream.Component, false);
             logger.LogWarning("Candle stream subscription failed ({Market} {Interval}): {Error}. Retrying in {Delay}",
-                stream.Market, stream.Interval, result.Error, RetryDelay);
+                stream.Market, stream.Timeframe, result.Error, RetryDelay);
             await Task.Delay(RetryDelay, ct);
         }
     }
 
-    /// <summary>Socket callback: must stay cheap and must never block.</summary>
-    private void OnKline(CandleStream stream, IBinanceStreamKlineData message)
+    /// <summary>What the exchange tells about one stream. Every method runs on the socket's thread: cheap, never blocking.</summary>
+    private sealed class StreamListener(
+        CandleStream stream, ChannelWriter<(string Table, Candle Row)> queue,
+        WorkerHealthState health, CandleSyncCoordinator coordinator, ILogger logger) : ILiveCandleListener
     {
-        // Every message, closed or not, proves the stream is alive.
-        health.RecordMessage(stream.Component);
+        public void OnMessage() => health.RecordMessage(stream.Component);
 
-        var kline = message.Data;
-        if (!kline.Final || !stream.TablesBySymbol.TryGetValue(message.Symbol, out var table))
-            return;
+        public void OnClosedCandle(Domain.ValueObjects.CandleSeries series, Candle candle)
+        {
+            if (stream.TablesBySymbol.TryGetValue(series.Symbol, out var table))
+                queue.TryWrite((table, candle));
+        }
 
-        var row = new Candle(
-            openTime: kline.OpenTime,
-            openPrice: kline.OpenPrice,
-            highPrice: kline.HighPrice,
-            lowPrice: kline.LowPrice,
-            closePrice: kline.ClosePrice,
-            volume: kline.Volume,
-            closeTime: kline.CloseTime,
-            quoteAssetVolume: kline.QuoteVolume,
-            numberOfTrades: kline.TradeCount,
-            takerBuyBaseVolume: kline.TakerBuyBaseVolume,
-            takerBuyQuoteVolume: kline.TakerBuyQuoteVolume);
+        public void OnConnectionLost()
+        {
+            health.SetConnected(stream.Component, false);
+            logger.LogWarning("Candle stream {Market} {Interval} lost, reconnecting", stream.Market, stream.Timeframe);
+        }
 
-        _queue.Writer.TryWrite((table, row));
+        public void OnConnectionRestored(TimeSpan offlineFor)
+        {
+            health.SetConnected(stream.Component, true);
+            logger.LogInformation("Candle stream {Market} {Interval} restored after {Offline}; requesting resync",
+                stream.Market, stream.Timeframe, offlineFor);
+            coordinator.RequestResync();
+        }
     }
 
     private async Task WriteBatchesAsync(CancellationToken ct)

@@ -21,6 +21,11 @@ public static class BinanceExchangeRegistration
         services.AddSingleton<IFundingRateGateway, BinanceFundingRateGateway>();
         services.AddSingleton<IOpenInterestGateway, BinanceOpenInterestGateway>();
 
+        services.AddSingleton<ILiveCandleStream, BinanceLiveCandleStream>();
+        services.AddSingleton<ILiquidationStream, BinanceLiquidationStream>();
+
+        services.AddSingleton<IExchangeProbe, BinanceExchangeProbe>();
+
         return services;
     }
 }

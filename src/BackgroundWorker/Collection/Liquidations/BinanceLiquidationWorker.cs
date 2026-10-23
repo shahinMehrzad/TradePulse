@@ -1,10 +1,8 @@
 using System.Threading.Channels;
 using Domain.Services;
+using Application.Exchange;
 using BackgroundWorker.Health;
 using BackgroundWorker.SymbolData;
-using Binance.Net.Interfaces.Clients;
-using Binance.Net.Objects.Models.Futures.Socket;
-using CryptoExchange.Net.Objects.Sockets;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
@@ -28,7 +26,7 @@ public class BinanceLiquidationWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<BinanceLiquidationWorker> logger,
     SymbolDataProvider symbolDataProvider,
-    IBinanceSocketClient binanceSocketClient,
+    ILiquidationStream liquidationStream,
     WorkerHealthState health) : BackgroundService
 {
     private const int QueueCapacity = 50_000;
@@ -97,31 +95,20 @@ public class BinanceLiquidationWorker(
         }
     }
 
-    private async Task<SubscriptionHandle> SubscribeAsync(List<SymbolEnum> symbols, CancellationToken ct)
+    /// <summary>Subscribes, trying again until it works: a stream that never started would leave the table silently empty.</summary>
+    private async Task<IAsyncDisposable> SubscribeAsync(List<SymbolEnum> symbols, CancellationToken ct)
     {
-        var names = symbols.Select(s => s.ToString()).ToList();
+        var listener = new LiquidationListener(_queue.Writer, health, logger);
 
         while (true)
         {
-            var result = await binanceSocketClient.UsdFuturesApi.ExchangeData
-                .SubscribeToLiquidationUpdatesAsync(names, OnLiquidation, ct);
+            var result = await liquidationStream.SubscribeAsync(ExchangeEnum.Binance, symbols, listener, ct);
 
             if (result.Success)
             {
-                var subscription = result.Data;
-                subscription.ConnectionLost += () =>
-                {
-                    health.SetConnected(HealthComponents.LiquidationStream, false);
-                    logger.LogWarning("Liquidation stream connection lost, reconnecting");
-                };
-                subscription.ConnectionRestored += _ =>
-                {
-                    health.SetConnected(HealthComponents.LiquidationStream, true);
-                    logger.LogInformation("Liquidation stream connection restored");
-                };
                 health.SetConnected(HealthComponents.LiquidationStream, true);
-                logger.LogInformation("Subscribed to liquidation stream for {Symbols}", string.Join(", ", names));
-                return new SubscriptionHandle(binanceSocketClient, subscription);
+                logger.LogInformation("Subscribed to liquidation stream for {Symbols}", string.Join(", ", symbols));
+                return result.Value;
             }
 
             health.SetConnected(HealthComponents.LiquidationStream, false);
@@ -130,29 +117,27 @@ public class BinanceLiquidationWorker(
         }
     }
 
-    private void OnLiquidation(DataEvent<BinanceFuturesStreamLiquidation> message)
+    /// <summary>What the exchange tells about the stream. Every method runs on the socket's thread: cheap, never blocking.</summary>
+    private sealed class LiquidationListener(
+        ChannelWriter<(SymbolEnum Symbol, Liquidation Row)> queue, WorkerHealthState health, ILogger logger) : ILiquidationListener
     {
-        var order = message.Data;
-        if (!Enum.TryParse<SymbolEnum>(order.Symbol, out var symbol) || !Enum.IsDefined(symbol))
+        public void OnLiquidation(SymbolEnum symbol, Liquidation liquidation)
         {
-            logger.LogWarning("Ignoring liquidation for unknown symbol {Symbol}", order.Symbol);
-            return;
+            health.RecordMessage(HealthComponents.LiquidationStream);
+            queue.TryWrite((symbol, liquidation));
         }
 
-        var row = new Liquidation(
-            Time: order.Timestamp,
-            Side: order.Side == Binance.Net.Enums.OrderSide.Buy ? OrderSideEnum.Buy : OrderSideEnum.Sell,
-            OrderType: order.Type.ToString(),
-            TimeInForce: order.TimeInForce.ToString(),
-            Status: order.Status.ToString(),
-            Quantity: order.Quantity,
-            Price: order.Price,
-            AveragePrice: order.AveragePrice,
-            LastFilledQuantity: order.LastQuantityFilled,
-            AccumulatedQuantity: order.QuantityFilled);
+        public void OnConnectionLost()
+        {
+            health.SetConnected(HealthComponents.LiquidationStream, false);
+            logger.LogWarning("Liquidation stream connection lost, reconnecting");
+        }
 
-        health.RecordMessage(HealthComponents.LiquidationStream);
-        _queue.Writer.TryWrite((symbol, row));
+        public void OnConnectionRestored(TimeSpan offlineFor)
+        {
+            health.SetConnected(HealthComponents.LiquidationStream, true);
+            logger.LogInformation("Liquidation stream connection restored");
+        }
     }
 
     private async Task WriteBatchesAsync(CancellationToken ct)
@@ -227,11 +212,5 @@ public class BinanceLiquidationWorker(
         {
             logger.LogError(ex, "Could not store {Count} queued liquidations during shutdown", rest.Count);
         }
-    }
-
-    /// <summary>Unsubscribes this stream (and only this one) when disposed.</summary>
-    private sealed class SubscriptionHandle(IBinanceSocketClient client, CryptoExchange.Net.Objects.Sockets.UpdateSubscription subscription) : IAsyncDisposable
-    {
-        public async ValueTask DisposeAsync() => await client.UnsubscribeAsync(subscription);
     }
 }

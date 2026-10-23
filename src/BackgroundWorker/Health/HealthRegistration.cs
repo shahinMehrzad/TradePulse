@@ -1,8 +1,9 @@
 using System.Text.Json;
 using BackgroundWorker.CandleSeries;
+using BackgroundWorker.Collection.Candles;
 using BackgroundWorker.SymbolData;
+using Infrastructure.Health;
 using Domain.Enums;
-using Infrastructure.Configurations;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
@@ -28,7 +29,7 @@ public static class HealthRegistration
     public static IServiceCollection AddWorkerHealth(this IServiceCollection services, IConfiguration configuration)
     {
         var health = configuration.GetSection("Health").Get<HealthConfigurations>() ?? new HealthConfigurations();
-        var exchange = configuration.GetSection(nameof(BinanceExchangeConfigurations)).Get<BinanceExchangeConfigurations>() ?? new();
+        var liveCandles = configuration.GetSection(LiveCandleSettings.SectionName).Get<LiveCandleSettings>() ?? new();
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
@@ -56,7 +57,7 @@ public static class HealthRegistration
         services.AddSingleton<CandleFreshnessMonitor>();
         checks.AddTypeActivatedCheck<CandleFreshnessHealthCheck>(HealthComponents.CandleFreshness);
 
-        if (exchange.LiveCandles)
+        if (liveCandles.LiveCandles)
         {
             // Kline streams also push updates for the still-open candle, so even a quiet interval is never silent for long.
             var streamOptions = new WebSocketHealthOptions(StartupGrace, UnhealthyAfterDisconnected,

@@ -37,6 +37,7 @@ var host = builder.ConfigureServices((context, services) =>
     services.AddApplicationServices();
     services.AddInfrastructureServices(context.Configuration);
     services.AddBinanceExchange(context.Configuration);
+    services.Configure<LiveCandleSettings>(context.Configuration.GetSection(LiveCandleSettings.SectionName));
     services.AddSingleton<ICandleSeriesSource, DatabaseCandleSeriesSource>();
     services.AddSingleton<CandleSeriesProvider>();
     services.AddHostedService(provider => provider.GetRequiredService<CandleSeriesProvider>());
