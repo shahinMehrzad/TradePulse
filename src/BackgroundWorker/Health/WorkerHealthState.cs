@@ -11,6 +11,7 @@ public static class HealthComponents
     public const string CandleStreamFutures = "binance-candle-stream-futures";
     public const string CandleStreamSpot = "binance-candle-stream-spot";
     public const string CandleFreshness = "candle-freshness";
+    public const string CandleSeries = "candle-series";
     public const string FundingRateRequests = "funding-rate-requests";
     public const string OpenInterestRequests = "open-interest-requests";
 }

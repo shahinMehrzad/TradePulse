@@ -1,10 +1,7 @@
 using Application.Dtos.Candles;
-using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Application.Interfaces;
-
-/// <summary>Identifies one candle table. The table name is derived from it, never taken from the caller.</summary>
-public readonly record struct CandleSeries(ExchangeEnum Exchange, MarketTypeEnum MarketType, SymbolEnum Symbol, TimeFrameEnum Timeframe);
 
 /// <summary>
 /// Read side of the candle store. A seam on purpose: a caching decorator (memory / Redis) can wrap it later

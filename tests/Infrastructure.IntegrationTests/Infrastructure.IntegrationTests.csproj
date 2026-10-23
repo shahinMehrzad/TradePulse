@@ -6,6 +6,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BackgroundWorker\BackgroundWorker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="xunit.v3" Version="4.0.2" />
   </ItemGroup>
 
 </Project>

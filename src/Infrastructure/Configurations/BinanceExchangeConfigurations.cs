@@ -1,12 +1,9 @@
-﻿namespace Infrastructure.Configurations
+namespace Infrastructure.Configurations
 {
+    /// <summary>The Binance adapter's settings.</summary>
     public class BinanceExchangeConfigurations
     {
-        public Dictionary<string, BinanceSymbolConfigurations> Symbols { get; set; } = new Dictionary<string, BinanceSymbolConfigurations>();
+        /// <summary>The request weight the adapter may use per minute and market. Binance counts it per IP; see <c>BinanceWeightLimiter</c>.</summary>
         public int MaxLimit { get; set; } = 200;
-
-        /// <summary>Receive closed candles from the WebSocket the moment they close. The REST loop runs either way as the safety net.</summary>
-        public bool LiveCandles { get; set; } = true;
-
     }
 }

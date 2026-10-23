@@ -1,7 +1,7 @@
 using System.Globalization;
 using Application.Dtos.Candles;
 using Application.Interfaces;
-using Application.Services;
+using Domain.ValueObjects;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Options;
 
@@ -22,7 +22,7 @@ public sealed class CachedCandleReader(
 
     public async Task<CandlePage> GetRangeAsync(CandleSeries series, DateTime? from, DateTime? to, int limit, CancellationToken cancellationToken)
     {
-        var key = $"candles:{Table(series)}:range:{Stamp(from)}:{Stamp(to)}:{limit}";
+        var key = $"candles:{series.TableName}:range:{Stamp(from)}:{Stamp(to)}:{limit}";
 
         return await cache.GetOrCreateAsync(
             key,
@@ -34,7 +34,7 @@ public sealed class CachedCandleReader(
 
     public async Task<IReadOnlyList<CandleResponse>> GetLatestAsync(CandleSeries series, int limit, DateTime? upTo, CancellationToken cancellationToken)
     {
-        var key = $"candles:{Table(series)}:latest:{limit}:{Stamp(upTo)}";
+        var key = $"candles:{series.TableName}:latest:{limit}:{Stamp(upTo)}";
 
         var window = await cache.GetOrCreateAsync(
             key,
@@ -61,7 +61,6 @@ public sealed class CachedCandleReader(
         };
     }
 
-    private static string Table(CandleSeries s) => TableNameRegistry.GetCandleTableName(s.Exchange, s.MarketType, s.Symbol, s.Timeframe);
 
     // Ticks, not a formatted date: one canonical key per instant whatever DateTimeKind the caller used.
     private static string Stamp(DateTime? value) =>

@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Infrastructure.Helpers;
 using Npgsql;
 using NpgsqlTypes;
 

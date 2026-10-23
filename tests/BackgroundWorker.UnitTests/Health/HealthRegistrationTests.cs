@@ -1,4 +1,8 @@
 using BackgroundWorker.Health;
+using BackgroundWorker.UnitTests.CandleSeries;
+using BackgroundWorker.UnitTests.SymbolData;
+using Domain.Enums;
+using Infrastructure.Configurations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -17,17 +21,27 @@ public class HealthRegistrationTests
             }.Concat(values).ToDictionary())
             .Build();
 
-    private static ServiceProvider Build(IConfiguration configuration)
+    private static async Task<ServiceProvider> BuildAsync(IConfiguration configuration)
     {
         var services = new ServiceCollection();
         services.AddLogging();
+
+        // The series are chosen at run time (in the database); a provider that already knows one futures and one spot series stands for that.
+        services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(
+            TimeProvider.System,
+            TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H),
+            TestPlans.Binance(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H)));
+
+        services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
+            TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: true)));
+
         services.AddWorkerHealth(configuration);
         return services.BuildServiceProvider();
     }
 
     private static async Task<HashSet<string>> RegisteredChecksAsync(IConfiguration configuration)
     {
-        await using var provider = Build(configuration);
+        await using var provider = await BuildAsync(configuration);
         var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);
         return report.Entries.Keys.ToHashSet();
     }
@@ -36,44 +50,50 @@ public class HealthRegistrationTests
     public async Task EveryRegisteredCheckCanBeBuiltAndRun()
     {
         // AddTypeActivatedCheck only fails when the check is created, so run the real service end to end.
-        var config = Config(new()
-        {
-            ["BinanceExchangeConfigurations:Symbols:a:Name"] = "BTCUSDT",
-            ["BinanceExchangeConfigurations:Symbols:a:Interval"] = "_1H",
-            ["BinanceExchangeConfigurations:Symbols:a:MarketType"] = "Spot",
-            ["BinanceFuturesDataConfigurations:FundingRates:a:Name"] = "BTCUSDT",
-            ["BinanceFuturesDataConfigurations:OpenInterests:a:Name"] = "BTCUSDT",
-            ["BinanceFuturesDataConfigurations:Liquidations:a:Name"] = "BTCUSDT",
-        });
-        await using var provider = Build(config);
+        await using var provider = await BuildAsync(Config(new()));
 
         var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);
 
         Assert.All(report.Entries.Values, e => Assert.NotNull(e.Description));
         Assert.Equal(HealthStatus.Unhealthy, report.Entries["database"].Status);
+        // What to collect is chosen at run time (in the database), so every component has its check from the start; the ones
+        // that depend on the choice only judge what is actually collected.
         Assert.Equal(
             new[]
             {
-                "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket", "binance-liquidation-stream", "binance-spot-rest",
-                "candle-freshness", "candle-requests", "database", "funding-rate-requests", "open-interest-requests",
+                "binance-candle-stream-futures", "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket",
+                "binance-liquidation-stream", "binance-spot-rest", "candle-freshness", "candle-requests", "candle-series", "database",
+                "funding-rate-requests", "open-interest-requests",
             },
             report.Entries.Keys.Order());
     }
 
     [Fact]
-    public async Task OnlyConfiguredComponentsGetAChecks()
+    public async Task WithoutAnyLiquidationChosenTheLiquidationStreamIsNotInUseAndNotAProblem()
     {
-        // No spot symbols, no futures data: nothing to monitor beyond the always-on probe and the database.
-        var checks = await RegisteredChecksAsync(Config(new()
-        {
-            ["BinanceExchangeConfigurations:Symbols:a:Name"] = "BTCUSDT",
-            ["BinanceExchangeConfigurations:Symbols:a:Interval"] = "_1H",
-            ["BinanceExchangeConfigurations:Symbols:a:MarketType"] = "Futures",
-        }));
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(
+            TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H)));
+        services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
+            TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: false)));
+        services.AddWorkerHealth(Config(new()));
+        await using var provider = services.BuildServiceProvider();
 
-        Assert.Equal(
-            new[] { "binance-candle-stream-futures", "binance-futures-rest", "binance-futures-websocket", "candle-freshness", "candle-requests", "database" },
-            checks.Order());
+        var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(HealthStatus.Healthy, report.Entries["binance-liquidation-stream"].Status);
+        Assert.Equal("No liquidations configured", report.Entries["binance-liquidation-stream"].Description);
+    }
+
+    [Fact]
+    public async Task WithoutLiveCandlesThereAreNoCandleStreamChecks()
+    {
+        var checks = await RegisteredChecksAsync(Config(new() { ["BinanceExchangeConfigurations:LiveCandles"] = "false" }));
+
+        Assert.DoesNotContain("binance-candle-stream-futures", checks);
+        Assert.DoesNotContain("binance-candle-stream-spot", checks);
+        Assert.Contains("candle-series", checks);
     }
 
     [Fact]

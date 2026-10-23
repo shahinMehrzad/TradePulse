@@ -1,7 +1,7 @@
-using Application.Services;
+using Domain.Services;
+using BackgroundWorker.CandleSeries;
 using Domain.Enums;
 using Domain.Repositories;
-using Infrastructure.Configurations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -19,7 +19,7 @@ public sealed record TableFreshness(string Table, DateTime? LatestOpen, int Cand
 /// database answer (health checks are re-created on every run) and remembers the previous observation to see progress.
 /// </summary>
 public sealed class CandleFreshnessMonitor(
-    IServiceScopeFactory scopeFactory, IOptions<BinanceExchangeConfigurations> configurations, TimeProvider timeProvider)
+    IServiceScopeFactory scopeFactory, CandleSeriesProvider seriesProvider, TimeProvider timeProvider)
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(30);
 
@@ -47,11 +47,11 @@ public sealed class CandleFreshnessMonitor(
             var repository = scope.ServiceProvider.GetRequiredService<ICandleRepository>();
 
             var result = new List<TableFreshness>();
-            foreach (var symbol in configurations.Value.Symbols.Values
-                         .DistinctBy(s => (s.MarketType, s.Name, s.Interval)))
+            foreach (var plan in seriesProvider.Current
+                         .DistinctBy(p => p.Series))
             {
-                var table = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
-                var interval = TimeSpan.FromSeconds((int)symbol.Interval);
+                var table = plan.Series.TableName;
+                var interval = plan.Series.Interval;
 
                 var latest = (await repository.GetLatestOpenDataTime(table, ct))?.UtcDateTime;
                 var progressing = latest is not null
@@ -62,8 +62,13 @@ public sealed class CandleFreshnessMonitor(
                 result.Add(new TableFreshness(table, latest, CandlesBehind(latest, interval, now), progressing));
             }
 
-            _cached = result;
-            _cachedAt = now;
+            // Nothing to measure yet (the series are not known) is not worth remembering: the answer changes the moment they are.
+            if (result.Count > 0)
+            {
+                _cached = result;
+                _cachedAt = now;
+            }
+
             return result;
         }
         finally
@@ -108,6 +113,10 @@ public sealed class CandleFreshnessHealthCheck(CandleFreshnessMonitor monitor, T
             // Only the exception type is reported; messages can contain host names.
             return HealthCheckResult.Unhealthy($"Cannot read candle freshness ({ex.GetType().Name})");
         }
+
+        // Which series exist is the candle-series check's business; with none there is simply nothing to measure.
+        if (tables.Count == 0)
+            return HealthCheckResult.Healthy("No candle series to check");
 
         var starting = timeProvider.GetUtcNow().UtcDateTime - monitor.StartedAt <= StartupGrace;
         var data = new Dictionary<string, object>();

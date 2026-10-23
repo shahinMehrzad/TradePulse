@@ -1,5 +1,5 @@
 using Domain.Entities;
-using Domain.Repositories;
+using Domain.Exceptions;
 using Infrastructure.Repositories;
 using Npgsql;
 

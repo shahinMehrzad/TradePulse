@@ -4,13 +4,17 @@ using Infrastructure;
 using WebApi.Authentication;
 using WebApi.Controllers;
 using WebApi.Endpoints;
+using WebApi.ErrorHandling;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 
 builder.Services.AddDataProtection();
 builder.Services.AddApplicationServices();
+builder.Services.AddAuthApplicationServices();
 
 // Candle reads go through a HybridCache (memory, plus Redis when a connection string is configured).
 if (builder.Configuration.GetValue("CandleCache:Enabled", true))
@@ -49,6 +53,8 @@ if (corsOrigins.Length > 0)
 }
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {

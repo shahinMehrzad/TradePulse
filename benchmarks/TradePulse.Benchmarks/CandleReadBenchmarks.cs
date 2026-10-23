@@ -5,6 +5,7 @@ using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;

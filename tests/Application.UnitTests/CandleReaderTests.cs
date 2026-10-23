@@ -2,6 +2,7 @@ using Application.Interfaces;
 using Application.Queries.Candles;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Application.UnitTests;
 

@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - TradePulse</title>
+    <link rel="icon" href="~/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="~/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="~/lib/tabler/css/tabler.min.css" asp-append-version="true" />
 </head>
 <body>
@@ -11,6 +13,11 @@
         <header class="navbar navbar-expand-md d-print-none">
             <div class="container-xl">
                 <a class="navbar-brand d-flex align-items-center gap-2 text-primary" asp-page="/Index"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="text-body fw-bold">TradePulse</span></a>
+                <ul class="navbar-nav flex-row me-auto ms-4">
+                    <li class="nav-item"><a class="nav-link" asp-page="/Index">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" asp-page="/Series">Collector series</a></li>
+                    <li class="nav-item"><a class="nav-link" asp-page="/SymbolData">Funding &amp; liquidations</a></li>
+                </ul>
                 <div class="navbar-nav flex-row order-md-last align-items-center">
                     <span class="nav-link text-secondary">@User.Identity?.Name</span>
                     <form method="post" asp-page="/Logout" class="ms-2">
@@ -33,6 +40,7 @@
         </div>
     </div>
     <script src="~/lib/tabler/js/tabler.min.js" asp-append-version="true"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
