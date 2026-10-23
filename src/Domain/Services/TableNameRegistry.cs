@@ -1,6 +1,6 @@
 using Domain.Enums;
 
-namespace Application.Services
+namespace Domain.Services
 {
     /// <summary>
     /// The only place table names are built. Names are interpolated into SQL and shared with other services,

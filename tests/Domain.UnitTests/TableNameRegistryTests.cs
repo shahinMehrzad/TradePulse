@@ -1,8 +1,8 @@
 using System.Text.RegularExpressions;
-using Application.Services;
+using Domain.Services;
 using Domain.Enums;
 
-namespace Application.UnitTests;
+namespace Domain.UnitTests;
 
 public partial class TableNameRegistryTests
 {

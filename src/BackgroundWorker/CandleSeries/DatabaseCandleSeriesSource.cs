@@ -1,7 +1,7 @@
 using Application.Interfaces;
 using Application.Queries.AdminConfigurations;
 using Domain.Entities;
-using Infrastructure.Configurations;
+using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -10,7 +10,7 @@ namespace BackgroundWorker.CandleSeries;
 /// <summary>Reads the series through the same query handler the admin API lists them with.</summary>
 public sealed class DatabaseCandleSeriesSource(IServiceScopeFactory scopeFactory, ILogger<DatabaseCandleSeriesSource> logger) : ICandleSeriesSource
 {
-    public async Task<IReadOnlyList<BinanceSymbolConfigurations>> LoadAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<CandleSeriesPlan>> LoadAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher>();

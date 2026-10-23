@@ -1,5 +1,5 @@
 using System.Threading.Channels;
-using Application.Services;
+using Domain.ValueObjects;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using Binance.Net.Enums;
@@ -52,10 +52,10 @@ public class BinanceLiveCandleWorker(
             return;
         }
 
-        IReadOnlyList<BinanceSymbolConfigurations> series;
+        IReadOnlyList<CandleSeriesPlan> series;
         try
         {
-            series = await seriesProvider.WaitForSeriesAsync(stoppingToken);
+            series = (await seriesProvider.WaitForSeriesAsync(stoppingToken)).ForExchange(ExchangeEnum.Binance).ToList();
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -69,11 +69,11 @@ public class BinanceLiveCandleWorker(
 
         // One subscription per market and interval, each covering all of its symbols.
         var streams = series
-            .GroupBy(s => (s.MarketType, s.Interval))
-            .Select(g => new CandleStream(g.Key.MarketType, g.Key.Interval,
-                g.DistinctBy(s => s.Name).ToDictionary(
-                    s => s.Name.ToString(),
-                    s => TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, s.MarketType, s.Name, s.Interval),
+            .GroupBy(p => (p.Series.MarketType, p.Series.Timeframe))
+            .Select(g => new CandleStream(g.Key.MarketType, g.Key.Timeframe,
+                g.DistinctBy(p => p.Series.Symbol).ToDictionary(
+                    p => p.Series.Symbol.ToString(),
+                    p => p.Series.TableName,
                     StringComparer.OrdinalIgnoreCase)))
             .ToList();
 

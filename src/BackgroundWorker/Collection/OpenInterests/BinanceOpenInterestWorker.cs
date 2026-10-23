@@ -1,4 +1,4 @@
-using Application.Services;
+using Domain.Services;
 using BackgroundWorker.Exchange.Binance;
 using BackgroundWorker.Health;
 using BackgroundWorker.Scheduling;

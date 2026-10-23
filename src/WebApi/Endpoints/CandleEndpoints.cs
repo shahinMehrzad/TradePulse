@@ -4,6 +4,7 @@ using Application.Interfaces;
 using Application.Queries.Candles;
 using Domain.Enums;
 using Domain.Exceptions;
+using Domain.ValueObjects;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace WebApi.Endpoints;

@@ -52,7 +52,7 @@ public class BinanceConnectivityWorker(
                 async token => { var r = await restClient.UsdFuturesApi.ExchangeData.PingAsync(token); return (r.Success, r.Error?.Message); }, ct);
 
             // Spot is only pinged while a spot series is being collected (the series are known after startup).
-            if (seriesProvider.Current.Any(s => s.MarketType == MarketTypeEnum.Spot))
+            if (seriesProvider.Current.ForExchange(ExchangeEnum.Binance).Any(s => s.Series.MarketType == MarketTypeEnum.Spot))
             {
                 await PingAsync(HealthComponents.SpotRest, MarketTypeEnum.Spot,
                     async token => { var r = await restClient.SpotApi.ExchangeData.PingAsync(token); return (r.Success, r.Error?.Message); }, ct);

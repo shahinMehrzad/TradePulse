@@ -28,8 +28,8 @@ public class HealthRegistrationTests
         // The series are chosen at run time (in the database); a provider that already knows one futures and one spot series stands for that.
         services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(
             TimeProvider.System,
-            new BinanceSymbolConfigurations { Name = SymbolEnum.BTCUSDT, Interval = TimeFrameEnum._1H, MarketType = MarketTypeEnum.Futures },
-            new BinanceSymbolConfigurations { Name = SymbolEnum.BTCUSDT, Interval = TimeFrameEnum._1H, MarketType = MarketTypeEnum.Spot }));
+            TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H),
+            TestPlans.Binance(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H)));
 
         services.AddWorkerHealth(configuration);
         return services.BuildServiceProvider();

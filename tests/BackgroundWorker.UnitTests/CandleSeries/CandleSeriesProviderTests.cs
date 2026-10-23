@@ -1,3 +1,4 @@
+using Domain.ValueObjects;
 using BackgroundWorker.CandleSeries;
 using Domain.Enums;
 using Infrastructure.Configurations;
@@ -9,8 +10,8 @@ public class CandleSeriesProviderTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static BinanceSymbolConfigurations Btc4h { get; } =
-        new() { Name = SymbolEnum.BTCUSDT, Interval = TimeFrameEnum._4H, MarketType = MarketTypeEnum.Futures };
+    private static CandleSeriesPlan Btc4h { get; } =
+        TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly FakeCandleSeriesSource _source = new();
@@ -37,7 +38,7 @@ public class CandleSeriesProviderTests
         await provider.StartAsync(Ct);
         var series = await provider.WaitForSeriesAsync(Ct);
 
-        Assert.Same(Btc4h, Assert.Single(series));
+        Assert.Equal(Btc4h, Assert.Single(series));
         Assert.Equal((CandleSeriesStatus.Loaded, 1), (provider.Status, provider.Current.Count));
         Assert.Equal(_time.GetUtcNow().UtcDateTime, provider.LoadedAt);
     }
@@ -69,7 +70,7 @@ public class CandleSeriesProviderTests
         _source.Series.Add(Btc4h);
         _time.Advance(CandleSeriesProvider.RetryDelay);
 
-        Assert.Same(Btc4h, Assert.Single(await waiting.WaitAsync(TimeSpan.FromSeconds(5), Ct)));
+        Assert.Equal(Btc4h, Assert.Single(await waiting.WaitAsync(TimeSpan.FromSeconds(5), Ct)));
         Assert.Equal(CandleSeriesStatus.Loaded, provider.Status);
     }
 
@@ -128,7 +129,7 @@ public class CandleSeriesProviderTests
     {
         public TaskCompletionSource Started { get; } = new();
 
-        public async Task<IReadOnlyList<BinanceSymbolConfigurations>> LoadAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<CandleSeriesPlan>> LoadAsync(CancellationToken cancellationToken)
         {
             Started.TrySetResult();
             await Task.Delay(Timeout.Infinite, cancellationToken);

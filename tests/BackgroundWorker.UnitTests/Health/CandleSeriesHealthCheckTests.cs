@@ -1,3 +1,4 @@
+using Domain.ValueObjects;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
@@ -14,8 +15,8 @@ public class CandleSeriesHealthCheckTests
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
 
-    private static BinanceSymbolConfigurations Series(MarketTypeEnum market) =>
-        new() { Name = SymbolEnum.BTCUSDT, Interval = TimeFrameEnum._1H, MarketType = market };
+    private static CandleSeriesPlan Series(MarketTypeEnum market) =>
+        TestPlans.Binance(market, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
 
     private static Task<HealthCheckResult> Run(IHealthCheck check) => check.CheckHealthAsync(new HealthCheckContext(), Ct);
 

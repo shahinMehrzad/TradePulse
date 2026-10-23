@@ -1,5 +1,5 @@
 using System.Threading.Channels;
-using Application.Services;
+using Domain.Services;
 using BackgroundWorker.Health;
 using Binance.Net.Interfaces.Clients;
 using Binance.Net.Objects.Models.Futures.Socket;

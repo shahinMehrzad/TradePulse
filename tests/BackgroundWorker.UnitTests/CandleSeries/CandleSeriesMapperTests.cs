@@ -23,7 +23,7 @@ public class CandleSeriesMapperTests
     {
         var series = Assert.Single(CandleSeriesMapper.ToSeries([Row(market: 2, symbol: 3, timeFrame: 3600)]));
 
-        Assert.Equal((MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H), (series.MarketType, series.Name, series.Interval));
+        Assert.Equal((MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H), (series.Series.MarketType, series.Series.Symbol, series.Series.Timeframe));
     }
 
     [Fact]
@@ -36,7 +36,7 @@ public class CandleSeriesMapperTests
     }
 
     [Theory]
-    [InlineData(2, 2, 3, 3600, "only Binance")]        // another exchange
+    [InlineData(99, 2, 3, 3600, "unknown exchange")]
     [InlineData(1, 99, 3, 3600, "unknown market")]
     [InlineData(1, 2, 999, 3600, "unknown symbol")]
     [InlineData(1, 2, 3, 12345, "unknown time frame")]
@@ -80,5 +80,14 @@ public class CandleSeriesMapperTests
         var series = CandleSeriesMapper.ToSeries(rows);
 
         Assert.Equal(rows.Count, series.Count);
+    }
+
+    [Fact]
+    public void EachExchangePicksItsOwnPlans()
+    {
+        var binance = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        var other = binance with { Series = binance.Series with { Exchange = (ExchangeEnum)2 } };
+
+        Assert.Equal([binance], new[] { binance, other }.ForExchange(ExchangeEnum.Binance));
     }
 }

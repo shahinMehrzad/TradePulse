@@ -1,4 +1,4 @@
-using Application.Services;
+using Domain.ValueObjects;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Exchange.Binance;
 using BackgroundWorker.Health;
@@ -42,11 +42,11 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         try
         {
             // The admin chooses the series; with none chosen (or the database unreachable) there is nothing to do but wait.
-            var series = await seriesProvider.WaitForSeriesAsync(stoppingToken);
+            var series = (await seriesProvider.WaitForSeriesAsync(stoppingToken)).ForExchange(ExchangeEnum.Binance).ToList();
             await EnsureTablesAsync(series, stoppingToken);
 
             var groups = series
-                .GroupBy(s => (int)s.Interval)
+                .GroupBy(p => (int)p.Series.Timeframe)
                 .ToList();
 
             await Task.WhenAll(groups.Select(g =>
@@ -61,11 +61,11 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
     /// Creates the table of every series that does not have one yet (idempotent). A database error is retried, not
     /// thrown: an exception out of a worker would stop the whole host.
     /// </summary>
-    private async Task EnsureTablesAsync(IReadOnlyList<BinanceSymbolConfigurations> series, CancellationToken ct)
+    private async Task EnsureTablesAsync(IReadOnlyList<CandleSeriesPlan> series, CancellationToken ct)
     {
-        foreach (var symbol in series)
+        foreach (var plan in series)
         {
-            var tableName = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
+            var tableName = plan.Series.TableName;
 
             while (true)
             {
@@ -84,12 +84,12 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         }
     }
 
-    private async Task RunIntervalLoopAsync(TimeSpan interval, List<BinanceSymbolConfigurations> symbols, CancellationToken ct)
+    private async Task RunIntervalLoopAsync(TimeSpan interval, List<CandleSeriesPlan> plans, CancellationToken ct)
     {
         try
         {
-            await SyncAllSymbolsAsync(symbols, ct);
-            await RepairGapsAsync(symbols, ct);
+            await SyncAllSymbolsAsync(plans, ct);
+            await RepairGapsAsync(plans, ct);
             var lastGapCheck = DateTime.UtcNow;
             var resyncRequests = coordinator.Register();
 
@@ -98,17 +98,17 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 // The boundary sync always runs, even when the live stream delivered the candle (the watchdog):
                 // it is one cheap request per symbol and ON CONFLICT DO NOTHING makes the overlap harmless.
                 var resync = await WaitForBoundaryOrResyncAsync(interval, resyncRequests, ct);
-                await SyncAllSymbolsAsync(symbols, ct);
+                await SyncAllSymbolsAsync(plans, ct);
 
                 if (resync)
                 {
                     // The live stream was down for a while; fill what it missed, including holes before newer live candles.
-                    await RepairGapsAsync(symbols, ct);
+                    await RepairGapsAsync(plans, ct);
                     lastGapCheck = DateTime.UtcNow;
                 }
                 else if (DateTime.UtcNow - lastGapCheck >= GapCheckPeriod)
                 {
-                    await RepairGapsAsync(symbols, ct);
+                    await RepairGapsAsync(plans, ct);
                     lastGapCheck = DateTime.UtcNow;
                 }
             }
@@ -139,16 +139,16 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         return true;
     }
 
-    private async Task SyncAllSymbolsAsync(List<BinanceSymbolConfigurations> symbols, CancellationToken ct)
+    private async Task SyncAllSymbolsAsync(List<CandleSeriesPlan> plans, CancellationToken ct)
     {
         await Parallel.ForEachAsync(
-            symbols,
+            plans,
             new ParallelOptions { MaxDegreeOfParallelism = MaxParallelSymbols, CancellationToken = ct },
-            async (symbol, token) =>
+            async (plan, token) =>
             {
                 try
                 {
-                    await SyncSymbolAsync(symbol, token);
+                    await SyncSymbolAsync(plan, token);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
@@ -156,40 +156,40 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Sync failed for {Symbol}", symbol.Name);
+                    logger.LogError(ex, "Sync failed for {Symbol}", plan.Series.Symbol);
                 }
             });
     }
 
-    private async Task SyncSymbolAsync(BinanceSymbolConfigurations symbol, CancellationToken ct)
+    private async Task SyncSymbolAsync(CandleSeriesPlan plan, CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<ICandleRepository>();
 
-        var tableName = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
-        var intervalSpan = TimeSpan.FromSeconds((int)symbol.Interval);
+        var tableName = plan.Series.TableName;
+        var intervalSpan = plan.Series.Interval;
 
         // A failure here must surface: treating it as "table is empty" would re-download the whole history.
         var lastOpen = await repository.GetLatestOpenDataTime(tableName, ct);
-        var from = lastOpen is null ? symbol.StartDate : lastOpen.Value.UtcDateTime + intervalSpan;
+        var from = lastOpen is null ? plan.StartDate : lastOpen.Value.UtcDateTime + intervalSpan;
 
-        var fetch = await FetchRangeAsync(symbol, repository, tableName, from, to: null, ct);
+        var fetch = await FetchRangeAsync(plan, repository, tableName, from, to: null, ct);
 
         // Only a complete pass makes the table safe for live candles (see CandleSyncCoordinator).
         if (fetch.Completed)
             coordinator.MarkReady(tableName);
     }
 
-    private async Task RepairGapsAsync(List<BinanceSymbolConfigurations> symbols, CancellationToken ct)
+    private async Task RepairGapsAsync(List<CandleSeriesPlan> plans, CancellationToken ct)
     {
         await Parallel.ForEachAsync(
-            symbols,
+            plans,
             new ParallelOptions { MaxDegreeOfParallelism = MaxParallelSymbols, CancellationToken = ct },
-            async (symbol, token) =>
+            async (plan, token) =>
             {
                 try
                 {
-                    await RepairSymbolGapsAsync(symbol, token);
+                    await RepairSymbolGapsAsync(plan, token);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
@@ -197,23 +197,23 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Gap repair failed for {Symbol}", symbol.Name);
+                    logger.LogError(ex, "Gap repair failed for {Symbol}", plan.Series.Symbol);
                 }
             });
     }
 
-    private async Task RepairSymbolGapsAsync(BinanceSymbolConfigurations symbol, CancellationToken ct)
+    private async Task RepairSymbolGapsAsync(CandleSeriesPlan plan, CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<ICandleRepository>();
 
-        var tableName = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
-        var intervalSpan = TimeSpan.FromSeconds((int)symbol.Interval);
+        var tableName = plan.Series.TableName;
+        var intervalSpan = plan.Series.Interval;
 
-        var gaps = await repository.GetGapsAsync(tableName, intervalSpan, symbol.StartDate, ct);
+        var gaps = await repository.GetGapsAsync(tableName, intervalSpan, plan.StartDate, ct);
         foreach (var gap in gaps)
         {
-            var (inserted, _) = await FetchRangeAsync(symbol, repository, tableName,
+            var (inserted, _) = await FetchRangeAsync(plan, repository, tableName,
                 gap.FirstMissingOpenTime, gap.LastMissingOpenTime, ct);
 
             // Binance itself has no candle for some periods (maintenance, no trades); those stay open and are retried next run.
@@ -232,12 +232,12 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
     /// fetched to its end (false when the request kept failing and the work was given up).
     /// </summary>
     private async Task<(int Inserted, bool Completed)> FetchRangeAsync(
-        BinanceSymbolConfigurations symbol, ICandleRepository repository, string tableName,
+        CandleSeriesPlan plan, ICandleRepository repository, string tableName,
         DateTime from, DateTime? to, CancellationToken ct)
     {
-        var intervalSpan = TimeSpan.FromSeconds((int)symbol.Interval);
-        var limiter = rateLimiters.For(symbol.MarketType);
-        var weight = GetKlineWeight(symbol.MarketType, MaxKlineLimit);
+        var intervalSpan = plan.Series.Interval;
+        var limiter = rateLimiters.For(plan.Series.MarketType);
+        var weight = GetKlineWeight(plan.Series.MarketType, MaxKlineLimit);
         var retry = 0;
         var totalInserted = 0;
 
@@ -249,18 +249,18 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             await limiter.AcquireAsync(weight, ct);
 
             // Binance treats endTime as inclusive on open time.
-            var result = symbol.MarketType == MarketTypeEnum.Futures
+            var result = plan.Series.MarketType == MarketTypeEnum.Futures
                 ? await _binanceClient.UsdFuturesApi.ExchangeData.GetKlinesAsync(
-                    symbol.Name.ToString(), (KlineInterval)symbol.Interval,
+                    plan.Series.Symbol.ToString(), (KlineInterval)plan.Series.Timeframe,
                     startTime: from, endTime: to, limit: MaxKlineLimit, ct: ct)
                 : await _binanceClient.SpotApi.ExchangeData.GetKlinesAsync(
-                    symbol.Name.ToString(), (KlineInterval)symbol.Interval,
+                    plan.Series.Symbol.ToString(), (KlineInterval)plan.Series.Timeframe,
                     startTime: from, endTime: to, limit: MaxKlineLimit, ct: ct);
 
             if (!result.Success)
             {
                 health.RecordFailure(HealthComponents.CandleRequests, result.Error?.Message);
-                logger.LogWarning("Kline request failed for {Symbol}: {Error}", symbol.Name, result.Error);
+                logger.LogWarning("Kline request failed for {Symbol}: {Error}", plan.Series.Symbol, result.Error);
                 if (++retry > MaxRetries)
                     return (totalInserted, false);
                 await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retry)), ct); // exponential backoff
@@ -292,7 +292,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 takerBuyQuoteVolume: k.TakerBuyQuoteVolume)).ToList();
 
             totalInserted += await repository.BulkInsert(tableName, candles, ct);
-            logger.LogDebug("Inserted {Count} candles for {Symbol}", candles.Count, symbol.Name);
+            logger.LogDebug("Inserted {Count} candles for {Symbol}", candles.Count, plan.Series.Symbol);
 
             from = closed[^1].OpenTime + intervalSpan;
 

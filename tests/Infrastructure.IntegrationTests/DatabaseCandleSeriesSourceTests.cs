@@ -79,7 +79,7 @@ public class DatabaseCandleSeriesSourceTests(PostgresFixture postgres)
         Assert.Equal(
             [(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H, new DateTime(2020, 1, 1)),
              (MarketTypeEnum.Spot, SymbolEnum.ETHUSDT, TimeFrameEnum._1H, new DateTime(2021, 5, 5))],
-            series.Select(s => (s.MarketType, s.Name, s.Interval, s.StartDate)).OrderBy(s => s.MarketType == MarketTypeEnum.Spot));
+            series.Select(s => (s.Series.MarketType, s.Series.Symbol, s.Series.Timeframe, s.StartDate)).OrderBy(s => s.MarketType == MarketTypeEnum.Spot));
         Assert.All(series, s => Assert.Equal(DateTimeKind.Utc, s.StartDate.Kind));
     }
 

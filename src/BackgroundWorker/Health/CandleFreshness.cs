@@ -1,4 +1,4 @@
-using Application.Services;
+using Domain.Services;
 using BackgroundWorker.CandleSeries;
 using Domain.Enums;
 using Domain.Repositories;
@@ -48,11 +48,11 @@ public sealed class CandleFreshnessMonitor(
             var repository = scope.ServiceProvider.GetRequiredService<ICandleRepository>();
 
             var result = new List<TableFreshness>();
-            foreach (var symbol in seriesProvider.Current
-                         .DistinctBy(s => (s.MarketType, s.Name, s.Interval)))
+            foreach (var plan in seriesProvider.Current
+                         .DistinctBy(p => p.Series))
             {
-                var table = TableNameRegistry.GetCandleTableName(ExchangeEnum.Binance, symbol.MarketType, symbol.Name, symbol.Interval);
-                var interval = TimeSpan.FromSeconds((int)symbol.Interval);
+                var table = plan.Series.TableName;
+                var interval = plan.Series.Interval;
 
                 var latest = (await repository.GetLatestOpenDataTime(table, ct))?.UtcDateTime;
                 var progressing = latest is not null

@@ -35,7 +35,7 @@ public sealed class MarketGatedHealthCheck(
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        if (!series.Current.Any(s => s.MarketType == market))
+        if (!series.Current.ForExchange(ExchangeEnum.Binance).Any(s => s.Series.MarketType == market))
             return HealthCheckResult.Healthy($"No {market} candle series configured");
 
         var result = await inner.CheckHealthAsync(context, cancellationToken);

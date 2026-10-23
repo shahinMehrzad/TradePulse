@@ -1,4 +1,4 @@
-using Infrastructure.Configurations;
+using Domain.ValueObjects;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -31,16 +31,16 @@ public sealed class CandleSeriesProvider(ICandleSeriesSource source, TimeProvide
     public static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan AttemptTimeout = TimeSpan.FromSeconds(15);
 
-    private readonly TaskCompletionSource<IReadOnlyList<BinanceSymbolConfigurations>> _loaded =
+    private readonly TaskCompletionSource<IReadOnlyList<CandleSeriesPlan>> _loaded =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private volatile IReadOnlyList<BinanceSymbolConfigurations> _current = [];
+    private volatile IReadOnlyList<CandleSeriesPlan> _current = [];
     private volatile CandleSeriesStatus _status = CandleSeriesStatus.Loading;
     private volatile string? _lastError;
     private long _loadedAtTicks;
 
     /// <summary>The series being collected; empty until <see cref="Status"/> is <see cref="CandleSeriesStatus.Loaded"/>.</summary>
-    public IReadOnlyList<BinanceSymbolConfigurations> Current => _current;
+    public IReadOnlyList<CandleSeriesPlan> Current => _current;
 
     public CandleSeriesStatus Status => _status;
 
@@ -51,7 +51,7 @@ public sealed class CandleSeriesProvider(ICandleSeriesSource source, TimeProvide
     public DateTime? LoadedAt => Interlocked.Read(ref _loadedAtTicks) is > 0 and var ticks ? new DateTime(ticks, DateTimeKind.Utc) : null;
 
     /// <summary>Completes with the series as soon as there is at least one. Cancelling the token (shutdown) cancels the wait.</summary>
-    public Task<IReadOnlyList<BinanceSymbolConfigurations>> WaitForSeriesAsync(CancellationToken cancellationToken) =>
+    public Task<IReadOnlyList<CandleSeriesPlan>> WaitForSeriesAsync(CancellationToken cancellationToken) =>
         _loaded.Task.WaitAsync(cancellationToken);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -82,7 +82,7 @@ public sealed class CandleSeriesProvider(ICandleSeriesSource source, TimeProvide
     }
 
     /// <returns>The series, or null when they could not be read. Only shutdown throws.</returns>
-    private async Task<IReadOnlyList<BinanceSymbolConfigurations>?> TryLoadAsync(CancellationToken stoppingToken)
+    private async Task<IReadOnlyList<CandleSeriesPlan>?> TryLoadAsync(CancellationToken stoppingToken)
     {
         // A read that hangs (a database that accepts the connection and then says nothing) counts as a failure.
         using var timeout = new CancellationTokenSource(AttemptTimeout, timeProvider);
