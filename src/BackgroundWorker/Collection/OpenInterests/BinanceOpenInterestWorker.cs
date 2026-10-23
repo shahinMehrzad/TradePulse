@@ -3,6 +3,7 @@ using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using BackgroundWorker.Scheduling;
 using Domain.Entities;
+using Domain.Enums;
 using Domain.Repositories;
 using Domain.Services;
 using Domain.ValueObjects;
@@ -23,7 +24,8 @@ public class BinanceOpenInterestWorker(
     ILogger<BinanceOpenInterestWorker> logger,
     CandleSeriesProvider seriesProvider,
     IOpenInterestGateway gateway,
-    WorkerHealthState health) : BackgroundService
+    WorkerHealthState health,
+    CollectionStats stats) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -119,6 +121,7 @@ public class BinanceOpenInterestWorker(
                 return;
 
             var inserted = await repository.BulkInsert(tableName, page.Items, ct);
+            stats.Stored(MarketDataTypeEnum.OpenInterest, inserted);
             logger.LogDebug("Inserted {Count} open interest rows for {Symbol} {Interval}", inserted, series.Symbol, series.Timeframe);
 
             from = page.Items.Max(r => r.Time).AddMilliseconds(1);

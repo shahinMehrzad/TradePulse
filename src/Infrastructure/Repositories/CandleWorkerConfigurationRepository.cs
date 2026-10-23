@@ -28,9 +28,6 @@ namespace Infrastructure.Repositories
             await SaveAsync(cancellationToken);
         }
 
-        public async Task<CandleWorkerConfiguration?> GetConfigurationById(int configurationId, CancellationToken cancellationToken)
-            => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.Id == configurationId, cancellationToken);
-
         public async Task<CandleWorkerConfiguration?> GetConfiguration(int exchangeId, int marketId, int symbolId, int timeFrameId, CancellationToken cancellationToken)
             => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.ExchangeId == exchangeId && c.MarketId == marketId && c.SymbolId == symbolId && c.TimeFrameId == timeFrameId, cancellationToken);
 
@@ -69,7 +66,7 @@ namespace Infrastructure.Repositories
             }
         }
 
-        public async Task<IEnumerable<CandleWorkerConfiguration>> GetConfigurationList(CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<CandleWorkerConfiguration>> GetConfigurationList(CancellationToken cancellationToken)
             => await context.CandleWorkerConfigurations.OrderBy(c => c.Symbol.Name)
                 .ThenBy(c => c.Id).AsNoTracking().ToListAsync(cancellationToken);
 

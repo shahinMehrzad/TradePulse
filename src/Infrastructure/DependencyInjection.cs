@@ -24,7 +24,6 @@ public static class DependencyInjection
         services.AddScoped<IMarketDataRepository<FundingRate>>(_ => new TimeSeriesRepository<FundingRate>(connectionString, new FundingRateTable()));
         services.AddScoped<IMarketDataRepository<OpenInterest>>(_ => new TimeSeriesRepository<OpenInterest>(connectionString, new OpenInterestTable()));
         services.AddScoped<IMarketDataRepository<Liquidation>>(_ => new TimeSeriesRepository<Liquidation>(connectionString, new LiquidationTable()));
-        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<ILookupsRepository, LookupsRepository>();
         services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();
         services.AddScoped<ISymbolDataConfigurationRepository, SymbolDataConfigurationRepository>();
@@ -50,6 +49,8 @@ public static class DependencyInjection
             {
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "auth");
             }));
+
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
         services.AddIdentityCore<ApplicationUser>()
             .AddRoles<ApplicationRole>()

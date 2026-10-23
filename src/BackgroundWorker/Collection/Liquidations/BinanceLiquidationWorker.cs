@@ -27,7 +27,8 @@ public class BinanceLiquidationWorker(
     ILogger<BinanceLiquidationWorker> logger,
     SymbolDataProvider symbolDataProvider,
     ILiquidationStream liquidationStream,
-    WorkerHealthState health) : BackgroundService
+    WorkerHealthState health,
+    CollectionStats stats) : BackgroundService
 {
     private const int QueueCapacity = 50_000;
     private const int MaxBatchSize = 1_000;
@@ -187,6 +188,7 @@ public class BinanceLiquidationWorker(
         {
             var tableName = TableNameRegistry.GetLiquidationTableName(ExchangeEnum.Binance, group.Key);
             var inserted = await repository.BulkInsert(tableName, group.Select(g => g.Row).ToList(), ct);
+            stats.Stored(MarketDataTypeEnum.Liquidation, inserted);
             logger.LogDebug("Inserted {Count} liquidations for {Symbol}", inserted, group.Key);
         }
     }

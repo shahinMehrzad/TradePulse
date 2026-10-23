@@ -15,7 +15,7 @@ public sealed class DatabaseCandleSeriesSource(IServiceScopeFactory scopeFactory
         using var scope = scopeFactory.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher>();
 
-        var rows = await dispatcher.SendAsync<GetCandleWorkerConfigurationsQuery, IEnumerable<CandleWorkerConfiguration>>(
+        var rows = await dispatcher.SendAsync<GetCandleWorkerConfigurationsQuery, IReadOnlyList<CandleWorkerConfiguration>>(
             new GetCandleWorkerConfigurationsQuery(), cancellationToken);
 
         return CandleSeriesMapper.ToSeries(rows, (row, reason) =>

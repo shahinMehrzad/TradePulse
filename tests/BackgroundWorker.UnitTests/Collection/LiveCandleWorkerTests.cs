@@ -53,8 +53,11 @@ public class LiveCandleWorkerTests
         public Task<int> BulkInsert(string tableName, IEnumerable<Candle> candles, CancellationToken cancellationToken)
         {
             lock (Inserts)
-                Inserts.Add((tableName, candles.ToList()));
-            return Task.FromResult(1);
+            {
+                var list = candles.ToList();
+                Inserts.Add((tableName, list));
+                return Task.FromResult(list.Count);
+            }
         }
 
         public Task<IEnumerable<Candle>> GetHistoryAsync(string tableName, DateTime? from, DateTime? to, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -71,6 +74,7 @@ public class LiveCandleWorkerTests
         public RecordingCandleRepository Repository { get; } = new();
         public CandleSyncCoordinator Coordinator { get; } = new();
         public WorkerHealthState Health { get; } = new(TimeProvider.System);
+        public CollectionStats Stats { get; } = new();
         public BinanceLiveCandleWorker Worker { get; private set; } = null!;
 
         public static async Task<Rig> StartAsync(bool liveCandles = true, params CandleSeriesPlan[] series)
@@ -82,7 +86,7 @@ public class LiveCandleWorkerTests
             rig.Worker = new BinanceLiveCandleWorker(
                 scopes, NullLogger<BinanceLiveCandleWorker>.Instance,
                 Options.Create(new LiveCandleSettings { LiveCandles = liveCandles }),
-                provider, rig.Stream, rig.Coordinator, rig.Health);
+                provider, rig.Stream, rig.Coordinator, rig.Health, rig.Stats);
 
             await rig.Worker.StartAsync(Ct);
             return rig;
@@ -154,6 +158,7 @@ public class LiveCandleWorkerTests
         var (table, rows) = rig.Repository.Inserts[0];
         Assert.Equal(FuturesBtc1h, table);
         Assert.Same(candle, Assert.Single(rows));
+        Assert.Equal(1, rig.Stats.TakeSinceLastCall().Candles);   // and counted for the summary
     }
 
     [Fact]
@@ -167,6 +172,7 @@ public class LiveCandleWorkerTests
         await Task.Delay(400, Ct);   // far longer than the writer's batching window
 
         Assert.Empty(rig.Repository.Inserts);
+        Assert.Equal(0, rig.Stats.TakeSinceLastCall().Candles);   // held back is not stored
     }
 
     [Fact]

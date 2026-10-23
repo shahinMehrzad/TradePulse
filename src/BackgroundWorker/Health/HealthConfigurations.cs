@@ -18,4 +18,7 @@ public class HealthConfigurations
 
     /// <summary>Connected but no liquidation for this long is reported as degraded. Liquidations are bursty, so keep it generous.</summary>
     public int LiquidationMaxSilenceMinutes { get; set; } = 60;
+
+    /// <summary>How often the collector writes its one-line summary to the log (what it stored, how fresh it is). 0 turns it off.</summary>
+    public int SummaryIntervalMinutes { get; set; } = 10;
 }

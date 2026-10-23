@@ -18,7 +18,8 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         CandleSeriesProvider seriesProvider,
         ICandleGateway candleGateway,
         CandleSyncCoordinator coordinator,
-        WorkerHealthState health) : BackgroundService
+        WorkerHealthState health,
+        CollectionStats stats) : BackgroundService
 {
     private const int MaxParallelSymbols = 4;
     private const int MaxRetries = 5;
@@ -260,7 +261,9 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             if (closed.Count == 0)
                 return (totalInserted, true);
 
-            totalInserted += await repository.BulkInsert(tableName, closed, ct);
+            var inserted = await repository.BulkInsert(tableName, closed, ct);
+            stats.Stored(MarketDataTypeEnum.Candle, inserted);
+            totalInserted += inserted;
             logger.LogDebug("Inserted {Count} candles for {Symbol}", closed.Count, plan.Series.Symbol);
 
             from = closed[^1].TimeRange.OpenTime + intervalSpan;

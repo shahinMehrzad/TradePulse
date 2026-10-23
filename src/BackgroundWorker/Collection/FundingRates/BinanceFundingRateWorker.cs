@@ -22,7 +22,8 @@ public class BinanceFundingRateWorker(
     ILogger<BinanceFundingRateWorker> logger,
     SymbolDataProvider symbolDataProvider,
     IFundingRateGateway gateway,
-    WorkerHealthState health) : BackgroundService
+    WorkerHealthState health,
+    CollectionStats stats) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromHours(1);
 
@@ -108,6 +109,7 @@ public class BinanceFundingRateWorker(
                 return;
 
             var inserted = await repository.BulkInsert(tableName, page.Items, ct);
+            stats.Stored(MarketDataTypeEnum.FundingRate, inserted);
             logger.LogDebug("Inserted {Count} funding rates for {Symbol}", inserted, target.Symbol);
 
             from = page.Items.Max(r => r.FundingTime).AddMilliseconds(1);

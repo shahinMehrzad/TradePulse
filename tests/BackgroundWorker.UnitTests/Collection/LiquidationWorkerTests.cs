@@ -58,8 +58,11 @@ public class LiquidationWorkerTests
         public Task<int> BulkInsert(string tableName, IEnumerable<Liquidation> rows, CancellationToken cancellationToken)
         {
             lock (Inserts)
-                Inserts.Add((tableName, rows.ToList()));
-            return Task.FromResult(1);
+            {
+                var list = rows.ToList();
+                Inserts.Add((tableName, list));
+                return Task.FromResult(list.Count);
+            }
         }
 
         public Task<DateTime?> GetLatestTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -70,6 +73,7 @@ public class LiquidationWorkerTests
         public FakeLiquidationStream Stream { get; } = new();
         public RecordingRepository Repository { get; } = new();
         public WorkerHealthState Health { get; } = new(TimeProvider.System);
+        public CollectionStats Stats { get; } = new();
         public BinanceLiquidationWorker Worker { get; private set; } = null!;
 
         public static async Task<Rig> StartAsync(params SymbolDataPlan[] plans)
@@ -79,7 +83,7 @@ public class LiquidationWorkerTests
                 .BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
             var provider = await SymbolDataTestSupport.LoadedProviderAsync(TimeProvider.System, plans);
 
-            rig.Worker = new BinanceLiquidationWorker(scopes, NullLogger<BinanceLiquidationWorker>.Instance, provider, rig.Stream, rig.Health);
+            rig.Worker = new BinanceLiquidationWorker(scopes, NullLogger<BinanceLiquidationWorker>.Instance, provider, rig.Stream, rig.Health, rig.Stats);
             await rig.Worker.StartAsync(Ct);
             return rig;
         }
@@ -137,6 +141,7 @@ public class LiquidationWorkerTests
         Assert.Equal([100m, 101m], btc);   // order kept, and gathered per table
         Assert.Equal([200m], rig.Repository.Inserts.Where(i => i.Table == "binance_futures_ethusdt_liquidation").SelectMany(i => i.Rows).Select(r => r.Price));
         Assert.Equal(3, rig.Health.Get(HealthComponents.LiquidationStream).MessageCount);
+        Assert.Equal(3, rig.Stats.TakeSinceLastCall().Liquidations);
     }
 
     [Fact]
@@ -163,6 +168,7 @@ public class LiquidationWorkerTests
 
         Assert.Equal([100m], rig.Repository.Inserts.SelectMany(i => i.Rows).Select(r => r.Price));
         Assert.Equal(1, rig.Stream.Disposed);   // and the stream was unsubscribed
+        Assert.Equal(1, rig.Stats.TakeSinceLastCall().Liquidations);
     }
 
     [Fact]

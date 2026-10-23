@@ -30,7 +30,8 @@ public class BinanceLiveCandleWorker(
     CandleSeriesProvider seriesProvider,
     ILiveCandleStream liveStream,
     CandleSyncCoordinator coordinator,
-    WorkerHealthState health) : BackgroundService
+    WorkerHealthState health,
+    CollectionStats stats) : BackgroundService
 {
     private const int QueueCapacity = 10_000;
     private const int MaxBatchSize = 500;
@@ -202,6 +203,7 @@ public class BinanceLiveCandleWorker(
             }
 
             var inserted = await repository.BulkInsert(group.Key, group.Select(g => g.Row).ToList(), ct);
+            stats.Stored(MarketDataTypeEnum.Candle, inserted);
             logger.LogDebug("Inserted {Count} live candles into {Table}", inserted, group.Key);
         }
     }

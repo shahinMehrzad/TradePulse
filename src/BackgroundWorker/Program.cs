@@ -1,13 +1,5 @@
-using Application;
-using BackgroundWorker.CandleSeries;
-using BackgroundWorker.Collection.Candles;
-using BackgroundWorker.Collection.FundingRates;
-using BackgroundWorker.Collection.Liquidations;
-using BackgroundWorker.Collection.OpenInterests;
-using Infrastructure.Exchange.Binance;
+using BackgroundWorker;
 using BackgroundWorker.Health;
-using BackgroundWorker.SymbolData;
-using Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,27 +24,6 @@ if (health.Enabled)
         .Configure(app => app.UseHealthEndpoints()));
 }
 
-var host = builder.ConfigureServices((context, services) =>
-{
-    services.AddApplicationServices();
-    services.AddInfrastructureServices(context.Configuration);
-    services.AddBinanceExchange(context.Configuration);
-    services.Configure<LiveCandleSettings>(context.Configuration.GetSection(LiveCandleSettings.SectionName));
-    services.AddSingleton<ICandleSeriesSource, DatabaseCandleSeriesSource>();
-    services.AddSingleton<CandleSeriesProvider>();
-    services.AddHostedService(provider => provider.GetRequiredService<CandleSeriesProvider>());
-    services.AddSingleton<ISymbolDataSource, DatabaseSymbolDataSource>();
-    services.AddSingleton<SymbolDataProvider>();
-    services.AddHostedService(provider => provider.GetRequiredService<SymbolDataProvider>());
-    services.AddSingleton<BinanceRateLimiters>();
-    services.AddSingleton<CandleSyncCoordinator>();
-    services.AddWorkerHealth(context.Configuration);
-
-    services.AddHostedService<BinanceCandleWorker>();
-    services.AddHostedService<BinanceLiveCandleWorker>();
-    services.AddHostedService<BinanceFundingRateWorker>();
-    services.AddHostedService<BinanceOpenInterestWorker>();
-    services.AddHostedService<BinanceLiquidationWorker>();
-}).Build();
+var host = builder.ConfigureServices((context, services) => services.AddCollector(context.Configuration)).Build();
 
 await host.RunAsync();
