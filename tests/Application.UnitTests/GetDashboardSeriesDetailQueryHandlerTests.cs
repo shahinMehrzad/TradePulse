@@ -109,6 +109,27 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     }
 
     [Fact]
+    public async Task TheNumberOfCandlesTheSummaryCoversCanBeChosen()
+    {
+        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        _candles.PerTable["binance_futures_btcusdt_1h"] = [.. Enumerable.Range(0, 30).Select(i =>
+        {
+            var open = NineOClock - TimeSpan.FromHours(29 - i);
+            return new Candle(open, 100m + i, 110m + i, 90m + i, 100m + i, 1m, open.AddHours(1).AddMilliseconds(-1), 0m, 1, 0m, 0m);
+        })];
+        var query = new GetDashboardSeriesDetailQuery(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, null, Candles: 5);
+
+        var current = (await Handler.HandleAsync(query, Ct)).Current;
+        var byDefault = (await Handler.HandleAsync(Query(), Ct)).Current;
+
+        Assert.Equal(5, current.Sparkline!.Count);
+        Assert.Equal(NineOClock.AddHours(-4), current.WindowStart);
+        Assert.Equal(Now.UtcDateTime, current.WindowEnd);
+        Assert.Equal(5m, current.Volume);
+        Assert.Equal(DashboardSnapshotBuilder.SparklinePoints, byDefault.Sparkline!.Count); // without it, the same 24 as the cards
+    }
+
+    [Fact]
     public async Task SpotHasNoRelatedData()
     {
         Configure(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);

@@ -74,4 +74,21 @@ public record DashboardCard(
 public record DashboardSnapshot(
     string Timeframe, string Status, int? LagSeconds, DateTime? LastOpenTime,
     decimal? LastClose, decimal? ChangePercent, decimal? High, decimal? Low, decimal? Volume,
-    IReadOnlyList<decimal>? Sparkline);
+    DateTime? WindowStart, DateTime? WindowEnd, IReadOnlyList<decimal>? Sparkline);
+
+/// <summary>A card plus the data collected around the symbol (funding rate, open interest, liquidations).</summary>
+public record DashboardDetail(
+    string Exchange, string Market, string Symbol,
+    IReadOnlyList<string> Timeframes, string DefaultTimeframe,
+    DashboardSnapshot Current,
+    IReadOnlyList<DashboardRelated> Related)
+    : DashboardCard(Exchange, Market, Symbol, Timeframes, DefaultTimeframe, Current);
+
+/// <summary><c>DataType</c> is <c>fundingrate</c>, <c>openinterest</c> or <c>liquidation</c>; status as in <see cref="DashboardSnapshot"/>.</summary>
+public record DashboardRelated(string DataType, string Status, int? LagSeconds, DateTime? LastTime);
+
+/// <summary>The part of a stored candle the chart draws. Times are UTC.</summary>
+public record ChartCandle(DateTime OpenTime, decimal Open, decimal High, decimal Low, decimal Close, decimal Volume);
+
+/// <summary>One page of the candle range answer; the panel asks for a range that fits one page.</summary>
+public record ChartCandlePage(IReadOnlyList<ChartCandle> Items);

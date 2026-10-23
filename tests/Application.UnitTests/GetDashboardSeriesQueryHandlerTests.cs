@@ -135,45 +135,70 @@ public class GetDashboardSeriesQueryHandlerTests
     }
 
     [Fact]
-    public async Task ChangeHighLowAndVolumeCoverTheLast24HoursAndTheSparklineTheLast24Closes()
+    public async Task EverythingOnACardDescribesTheSame24NewestCandles()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
-        Store("binance_futures_btcusdt_1h", 48, NineOClock, TimeSpan.FromHours(1)); // closes 100 .. 147
+        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._15M);
+        Store("binance_futures_btcusdt_15m", 100, Now.UtcDateTime.AddMinutes(-15), TimeSpan.FromMinutes(15)); // closes 100 .. 199
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
 
-        Assert.Equal(147m, current.LastClose);
-        Assert.Equal(Math.Round((147m / 123m - 1m) * 100m, 2), current.ChangePercent); // against the close 24 candles back
-        Assert.Equal(149m, current.High);   // newest candle: close + 2
-        Assert.Equal(121m, current.Low);    // the oldest candle of the window (close 124): close - 3
-        Assert.Equal(240m, current.Volume); // 24 candles x 10
+        Assert.Equal(199m, current.LastClose);
         Assert.Equal(24, current.Sparkline!.Count);
-        Assert.Equal(124m, current.Sparkline[0]);
-        Assert.Equal(147m, current.Sparkline[^1]);
+        Assert.Equal(176m, current.Sparkline[0]);                                         // closes 176 .. 199
+        Assert.Equal(199m, current.Sparkline[^1]);
+        Assert.Equal(Math.Round((199m / 176m - 1m) * 100m, 2), current.ChangePercent);    // first point of the line to its last
+        Assert.Equal(201m, current.High);                                                 // newest candle: close + 2
+        Assert.Equal(173m, current.Low);                                                  // oldest of the 24 (close 176): close - 3
+        Assert.Equal(240m, current.Volume);                                               // 24 candles x 10
+        Assert.Equal(Now.UtcDateTime.AddHours(-6), current.WindowStart);                  // 24 candles of 15 minutes: the first one opened 6 h ago
+        Assert.Equal(Now.UtcDateTime, current.WindowEnd);                                 // the newest closed just now
     }
 
-    [Fact]
-    public async Task ANewSeriesWithFewerCandlesThanAWindowMeasuresFromTheFirstOpen()
+    [Theory]
+    [InlineData(true)]   // rising line
+    [InlineData(false)]  // falling line
+    public async Task TheChangeHasTheDirectionOfTheLine(bool rising)
     {
         Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
-        Store("binance_futures_btcusdt_1h", 3, NineOClock, TimeSpan.FromHours(1)); // opens 99, closes 100 .. 102
+        var lastOpen = NineOClock;
+        _candles.PerTable["binance_futures_btcusdt_1h"] = [.. Enumerable.Range(0, 30).Select(i =>
+        {
+            var open = lastOpen - TimeSpan.FromHours(29 - i);
+            var close = rising ? 100m + i : 200m - i; // 30 candles; only the newest 24 are shown
+            return new Candle(open, close, close + 1, close - 1, close, 1m, open.AddHours(1).AddMilliseconds(-1), 0m, 1, 0m, 0m);
+        })];
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
 
-        Assert.Equal(Math.Round((102m / 99m - 1m) * 100m, 2), current.ChangePercent);
-        Assert.Equal(3, current.Sparkline!.Count);
+        Assert.Equal(rising, current.ChangePercent > 0);
+        Assert.Equal(rising, current.Sparkline![^1] > current.Sparkline[0]);
     }
 
     [Fact]
-    public async Task ADailySeriesComparesWithThePreviousCandle()
+    public async Task ANewSeriesWithFewerCandlesThanThatShowsWhatItHas()
     {
-        Configure(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1D);
-        Store("binance_spot_btcusdt_1d", 30, Now.UtcDateTime.AddDays(-1), TimeSpan.FromDays(1)); // closes 100 .. 129
+        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Store("binance_futures_btcusdt_1h", 3, NineOClock, TimeSpan.FromHours(1)); // closes 100 .. 102
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
 
-        Assert.Equal(Math.Round((129m / 128m - 1m) * 100m, 2), current.ChangePercent);
-        Assert.Equal(DashboardSnapshotBuilder.SparklinePoints, current.Sparkline!.Count);
+        Assert.Equal(Math.Round((102m / 100m - 1m) * 100m, 2), current.ChangePercent);
+        Assert.Equal(3, current.Sparkline!.Count);
+        Assert.Equal(NineOClock.AddHours(-2), current.WindowStart);
+        Assert.Equal(Now.UtcDateTime, current.WindowEnd);
+    }
+
+    [Fact]
+    public async Task ASingleCandleIsMeasuredFromItsOwnOpen()
+    {
+        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Store("binance_futures_btcusdt_1h", 1, NineOClock, TimeSpan.FromHours(1)); // open 99, close 100
+
+        var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
+
+        Assert.Equal(Math.Round((100m / 99m - 1m) * 100m, 2), current.ChangePercent);
+        Assert.Equal(NineOClock, current.WindowStart);
+        Assert.Equal(Now.UtcDateTime, current.WindowEnd);
     }
 
     [Fact]

@@ -10,7 +10,7 @@ using Domain.ValueObjects;
 
 namespace Application.Queries.Dashboard;
 
-public readonly record struct GetDashboardSeriesDetailQuery(ExchangeEnum Exchange, MarketTypeEnum Market, SymbolEnum Symbol, TimeFrameEnum? Timeframe);
+public readonly record struct GetDashboardSeriesDetailQuery(ExchangeEnum Exchange, MarketTypeEnum Market, SymbolEnum Symbol, TimeFrameEnum? Timeframe, int? Candles = null);
 
 public sealed class GetDashboardSeriesDetailQueryHandler(ICandleWorkerConfigurationRepository configurations, ISymbolDataConfigurationRepository symbolData,
     IMarketDataRepository<FundingRate> fundingRates, IMarketDataRepository<OpenInterest> openInterests, IMarketDataRepository<Liquidation> liquidations,
@@ -42,7 +42,7 @@ public sealed class GetDashboardSeriesDetailQueryHandler(ICandleWorkerConfigurat
         return new DashboardSeriesDetail(
             request.Exchange.ToRouteName(), request.Market.ToRouteName(), request.Symbol.ToRouteName(),
             [.. timeFrames.Select(t => t.ToRouteName())], timeFrames[0].ToRouteName(),
-            await snapshots.BuildAsync(series, now, cancellationToken), related);
+            await snapshots.BuildAsync(series, now, request.Candles ?? DashboardSnapshotBuilder.SparklinePoints, cancellationToken), related);
     }
 
     private async Task<IReadOnlyList<DashboardRelatedData>> RelatedAsync(

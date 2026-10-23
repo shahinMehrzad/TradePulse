@@ -44,7 +44,7 @@ public sealed class GetDashboardSeriesQueryHandler(ICandleWorkerConfigurationRep
                 items[i] = new DashboardSeriesItem(
                     card.Exchange.ToRouteName(), card.Market.ToRouteName(), card.Symbol.ToRouteName(),
                     [.. card.TimeFrames.Select(t => t.ToRouteName())], series.Timeframe.ToRouteName(),
-                    await snapshots.BuildAsync(series, now, ct));
+                    await snapshots.BuildAsync(series, now, DashboardSnapshotBuilder.SparklinePoints, ct));
             });
 
         return new DashboardSeriesResponse(now, items);

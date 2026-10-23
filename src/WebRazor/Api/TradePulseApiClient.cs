@@ -41,6 +41,52 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await response.Content.ReadFromJsonAsync<DashboardResponse>(cancellationToken);
     }
 
+    /// <param name="timeframe">e.g. "4h"; the shortest collected one when null.</param>
+    /// <param name="candles">How many of the newest candles the figures cover; the API's default (what the dashboard cards use) when null.</param>
+    /// <returns>
+    /// The card with its related data. <c>Detail</c> is null when the API does not collect that series or time frame (404);
+    /// <c>SessionRejected</c> when it no longer accepts the session.
+    /// </returns>
+    public async Task<(DashboardDetail? Detail, bool SessionRejected)> GetDashboardDetailAsync(
+        string exchange, string market, string symbol, string? timeframe, int? candles, CancellationToken cancellationToken)
+    {
+        var url = $"api/admin/dashboard/series/{Uri.EscapeDataString(exchange)}/{Uri.EscapeDataString(market)}/{Uri.EscapeDataString(symbol)}";
+        var query = new List<string>(2);
+        if (!string.IsNullOrWhiteSpace(timeframe))
+            query.Add($"timeframe={Uri.EscapeDataString(timeframe)}");
+        if (candles is { } count)
+            query.Add($"candles={count}");
+        if (query.Count > 0)
+            url += "?" + string.Join('&', query);
+
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (IsRejected(response))
+            return (null, true);
+        // 400 too: a hand-edited address with a name the API does not know is "no such series" to the panel.
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+            return (null, false);
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<DashboardDetail>(cancellationToken), false);
+    }
+
+    /// <summary>The stored candles with <c>from &lt;= open time &lt;= to</c>, oldest first (at most one page of 500); empty when the collector has stored none yet.</summary>
+    public async Task<IReadOnlyList<ChartCandle>> GetCandlesAsync(
+        string exchange, string market, string symbol, string timeframe, DateTime from, DateTime to, CancellationToken cancellationToken)
+    {
+        var url = $"api/candles/{Uri.EscapeDataString(exchange)}/{Uri.EscapeDataString(market)}/{Uri.EscapeDataString(symbol)}/{Uri.EscapeDataString(timeframe)}"
+            + $"?from={Uri.EscapeDataString(Iso(from))}&to={Uri.EscapeDataString(Iso(to))}&limit=500";
+
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return [];
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ChartCandlePage>(cancellationToken))?.Items ?? [];
+    }
+
+    private static string Iso(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>The public lookup lists and the market data rules, fetched together.</summary>
     public async Task<Lookups> GetLookupsAsync(CancellationToken cancellationToken)
     {

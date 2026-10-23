@@ -41,5 +41,22 @@ namespace WebRazor.Pages
 
             return Page();
         }
+
+        /// <summary>One card in another time frame, as the HTML the page swaps in (see dashboard.js). Plain status codes: the script only needs to know whether it worked.</summary>
+        public async Task<IActionResult> OnGetCardAsync(string exchange, string market, string symbol, string timeframe, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var (detail, sessionRejected) = await api.GetDashboardDetailAsync(exchange, market, symbol, timeframe, null, cancellationToken);
+                if (sessionRejected)
+                    return Unauthorized();
+
+                return detail is null ? NotFound() : Partial("_SeriesCard", detail);
+            }
+            catch (HttpRequestException)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway);
+            }
+        }
     }
 }

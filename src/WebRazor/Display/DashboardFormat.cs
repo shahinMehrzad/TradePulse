@@ -24,6 +24,25 @@ public static class DashboardFormat
         return span.Hours == 0 ? $"{(int)span.TotalDays} d" : $"{(int)span.TotalDays} d {span.Hours} h";
     }
 
+    /// <summary>How much time a card's figures cover: "6 h" for 24 candles of 15 minutes.</summary>
+    public static string Window(DateTime start, DateTime end) => Lag((int)(end - start).TotalSeconds);
+
+    /// <summary>"just now", "7 min ago", "1 h 4 min ago": how long ago the newest candle closed.</summary>
+    public static string Ago(int seconds) => seconds < 60 ? "just now" : Lag(seconds) + " ago";
+
+    /// <summary>A moment on a chart's edge, UTC: "10-23 09:15", or just the date for time frames of a day or more.</summary>
+    public static string ChartTime(DateTime time, string timeframe) =>
+        time.ToString(timeframe.EndsWith('d') || timeframe.EndsWith('w') ? "MM-dd" : "MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+    /// <summary>The name the panel gives the API's data type words.</summary>
+    public static string DataTypeLabel(string dataType) => dataType switch
+    {
+        "fundingrate" => "Funding rate",
+        "openinterest" => "Open interest",
+        "liquidation" => "Liquidations",
+        _ => dataType
+    };
+
     /// <summary>Tabler badge colours for the API's status words.</summary>
     public static string StatusBadge(string status) => status switch
     {

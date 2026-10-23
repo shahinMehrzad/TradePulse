@@ -28,8 +28,11 @@ namespace WebApi.Controllers.Admin
         }
 
         [HttpGet("series/{exchange}/{market}/{symbol}")]
-        public async Task<IActionResult> GetSeriesDetail(string exchange, string market, string symbol, [FromQuery] string? timeframe, CancellationToken cancellationToken)
+        public async Task<IActionResult> GetSeriesDetail(string exchange, string market, string symbol, [FromQuery] string? timeframe, [FromQuery] int? candles, CancellationToken cancellationToken)
         {
+            if (candles is < 2 or > DashboardSnapshotBuilder.MaxPoints)
+                ModelState.AddModelError(nameof(candles), $"candles must be between 2 and {DashboardSnapshotBuilder.MaxPoints}.");
+
             TryParseName(nameof(exchange), exchange, out ExchangeEnum parsedExchange);
             TryParseName(nameof(market), market, out MarketTypeEnum parsedMarket);
             TryParseName(nameof(symbol), symbol, out SymbolEnum parsedSymbol);
@@ -42,7 +45,7 @@ namespace WebApi.Controllers.Admin
                 return ValidationProblem(ModelState);
 
             return Ok(await dispatcher.SendAsync<GetDashboardSeriesDetailQuery, DashboardSeriesDetail>(
-                new GetDashboardSeriesDetailQuery(parsedExchange, parsedMarket, parsedSymbol, parsedTimeframe), cancellationToken));
+                new GetDashboardSeriesDetailQuery(parsedExchange, parsedMarket, parsedSymbol, parsedTimeframe, candles), cancellationToken));
         }
 
         private bool TryParseName<T>(string parameter, string value, out T result) where T : struct, Enum

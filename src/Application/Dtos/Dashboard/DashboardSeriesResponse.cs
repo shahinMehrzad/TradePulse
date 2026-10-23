@@ -10,7 +10,7 @@ public record DashboardSeriesItem(
 public sealed record DashboardSnapshot(
     string Timeframe, string Status, int? LagSeconds, DateTime? LastOpenTime,
     decimal? LastClose, decimal? ChangePercent, decimal? High, decimal? Low, decimal? Volume,
-    IReadOnlyList<decimal>? Sparkline);
+    DateTime? WindowStart, DateTime? WindowEnd, IReadOnlyList<decimal>? Sparkline);
 
 public sealed record DashboardSeriesDetail(
     string Exchange, string Market, string Symbol,

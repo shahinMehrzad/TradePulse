@@ -1,4 +1,4 @@
-﻿@page
+@page
 @model IndexModel
 @{
     ViewData["Title"] = "Dashboard";
@@ -41,7 +41,7 @@
 }
 else
 {
-    <div class="row row-cards">
+    <div class="row row-cards" data-series-grid>
         @foreach (var card in Model.Cards)
         {
             <div class="col-sm-6 col-lg-6 col-xl-4 col-xxl-3">
@@ -49,4 +49,8 @@ else
             </div>
         }
     </div>
+}
+
+@section Scripts {
+    <script src="~/js/dashboard.js" asp-append-version="true"></script>
 }
