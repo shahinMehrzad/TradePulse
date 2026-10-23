@@ -4,7 +4,7 @@ using BackgroundWorker.Collection.Candles;
 using BackgroundWorker.Collection.FundingRates;
 using BackgroundWorker.Collection.Liquidations;
 using BackgroundWorker.Collection.OpenInterests;
-using BackgroundWorker.Exchange.Binance;
+using Infrastructure.Exchange.Binance;
 using BackgroundWorker.Health;
 using BackgroundWorker.SymbolData;
 using Infrastructure;
@@ -36,6 +36,7 @@ var host = builder.ConfigureServices((context, services) =>
 {
     services.AddApplicationServices();
     services.AddInfrastructureServices(context.Configuration);
+    services.AddBinanceExchange(context.Configuration);
     services.AddSingleton<ICandleSeriesSource, DatabaseCandleSeriesSource>();
     services.AddSingleton<CandleSeriesProvider>();
     services.AddHostedService(provider => provider.GetRequiredService<CandleSeriesProvider>());

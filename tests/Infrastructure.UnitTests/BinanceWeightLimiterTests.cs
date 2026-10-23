@@ -1,7 +1,7 @@
-using BackgroundWorker.Exchange.Binance;
+using Infrastructure.Exchange.Binance;
 using Microsoft.Extensions.Time.Testing;
 
-namespace BackgroundWorker.UnitTests.Exchange;
+namespace Infrastructure.UnitTests;
 
 public class BinanceWeightLimiterTests
 {

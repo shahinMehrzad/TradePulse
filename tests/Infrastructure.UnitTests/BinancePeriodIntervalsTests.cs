@@ -1,9 +1,9 @@
-using BackgroundWorker.Exchange.Binance;
+using Infrastructure.Exchange.Binance;
 using Binance.Net.Enums;
 using Domain.Enums;
 using Domain.Services;
 
-namespace BackgroundWorker.UnitTests.Exchange;
+namespace Infrastructure.UnitTests;
 
 public class BinancePeriodIntervalsTests
 {

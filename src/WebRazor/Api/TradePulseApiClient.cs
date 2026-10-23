@@ -8,6 +8,8 @@ namespace WebRazor.Api;
 public sealed class TradePulseApiClient(HttpClient http)
 {
     private const string SeriesRoot = "api/admin/configurations";
+    private const string NotFoundSeries = "That series does not exist (anymore). Reload the page.";
+    private const string NotFoundSymbolData = "That setting does not exist (anymore). Reload the page.";
 
     private static bool IsRejected(HttpResponseMessage response) =>
         response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
@@ -23,16 +25,17 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await response.Content.ReadFromJsonAsync<AdminInfo>(cancellationToken);
     }
 
-    /// <summary>The four public lookup lists, fetched together.</summary>
+    /// <summary>The public lookup lists and the market data rules, fetched together.</summary>
     public async Task<Lookups> GetLookupsAsync(CancellationToken cancellationToken)
     {
         var exchanges = http.GetFromJsonAsync<List<Lookup>>("api/lookups/exchanges", cancellationToken);
         var markets = http.GetFromJsonAsync<List<Lookup>>("api/lookups/markets", cancellationToken);
         var symbols = http.GetFromJsonAsync<List<SymbolLookup>>("api/lookups/symbols", cancellationToken);
         var timeFrames = http.GetFromJsonAsync<List<TimeFrameLookup>>("api/lookups/time-frames", cancellationToken);
-        await Task.WhenAll(exchanges, markets, symbols, timeFrames);
+        var support = http.GetFromJsonAsync<List<MarketDataSupportEntry>>("api/lookups/market-data-support", cancellationToken);
+        await Task.WhenAll(exchanges, markets, symbols, timeFrames, support);
 
-        return new Lookups(exchanges.Result ?? [], markets.Result ?? [], symbols.Result ?? [], timeFrames.Result ?? []);
+        return new Lookups(exchanges.Result ?? [], markets.Result ?? [], symbols.Result ?? [], timeFrames.Result ?? [], support.Result ?? []);
     }
 
     /// <param name="keyword">Matched by the API against the exchange, market, symbol and time frame names.</param>
@@ -58,33 +61,65 @@ public sealed class TradePulseApiClient(HttpClient http)
     public async Task<ApiResult> AddSeriesAsync(SeriesRequest request, CancellationToken cancellationToken)
     {
         using var response = await http.PostAsJsonAsync($"{SeriesRoot}/add-config", request, cancellationToken);
-        return await ToResultAsync(response, cancellationToken);
+        return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }
 
     public async Task<ApiResult> UpdateSeriesAsync(int id, SeriesRequest request, CancellationToken cancellationToken)
     {
         using var response = await http.PutAsJsonAsync(
             $"{SeriesRoot}/update-config",
-            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, request.StartDate },
+            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest },
             cancellationToken);
-        return await ToResultAsync(response, cancellationToken);
+        return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }
 
     public async Task<ApiResult> DeleteSeriesAsync(int id, CancellationToken cancellationToken)
     {
         using var response = await http.DeleteAsync($"{SeriesRoot}/delete-config/{id}", cancellationToken);
-        return await ToResultAsync(response, cancellationToken);
+        return await ToResultAsync(response, NotFoundSeries, cancellationToken);
+    }
+
+    /// <returns>The funding rate and liquidation settings of every symbol, or null when the session is no longer accepted by the API.</returns>
+    public async Task<IReadOnlyList<SymbolDataSetting>?> GetSymbolDataAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync($"{SeriesRoot}/symbol-data", cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<SymbolDataSetting>>(cancellationToken) ?? [];
+    }
+
+    public async Task<ApiResult> AddSymbolDataAsync(SymbolDataRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync($"{SeriesRoot}/add-symbol-data", request, cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
+    }
+
+    public async Task<ApiResult> UpdateSymbolDataAsync(int id, SymbolDataRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await http.PutAsJsonAsync(
+            $"{SeriesRoot}/update-symbol-data",
+            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.CollectFundingRate, request.FundingStartDate, request.CollectLiquidation },
+            cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
+    }
+
+    public async Task<ApiResult> DeleteSymbolDataAsync(int id, CancellationToken cancellationToken)
+    {
+        using var response = await http.DeleteAsync($"{SeriesRoot}/delete-symbol-data/{id}", cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
     }
 
     /// <summary>Success, or the reasons the API gave (a ProblemDetails <c>detail</c>, or the <c>errors</c> of a validation problem).</summary>
-    private static async Task<ApiResult> ToResultAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<ApiResult> ToResultAsync(HttpResponseMessage response, string notFound, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
             return new ApiResult(true, []);
         if (IsRejected(response))
             return new ApiResult(false, [], SessionRejected: true);
         if (response.StatusCode == HttpStatusCode.NotFound)
-            return new ApiResult(false, ["That series does not exist (anymore). Reload the page."]);
+            return new ApiResult(false, [notFound]);
 
         var reasons = await ReadReasonsAsync(response, cancellationToken);
         return new ApiResult(false, reasons.Count > 0 ? reasons : [$"The API answered {(int)response.StatusCode}."]);

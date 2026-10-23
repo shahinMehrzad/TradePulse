@@ -16,6 +16,7 @@
                 <ul class="navbar-nav flex-row me-auto ms-4">
                     <li class="nav-item"><a class="nav-link" asp-page="/Index">Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link" asp-page="/Series">Collector series</a></li>
+                    <li class="nav-item"><a class="nav-link" asp-page="/SymbolData">Funding &amp; liquidations</a></li>
                 </ul>
                 <div class="navbar-nav flex-row order-md-last align-items-center">
                     <span class="nav-link text-secondary">@User.Identity?.Name</span>
@@ -39,6 +40,7 @@
         </div>
     </div>
     <script src="~/lib/tabler/js/tabler.min.js" asp-append-version="true"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

@@ -1,8 +1,7 @@
-using BackgroundWorker.Exchange.Binance;
+using Application.Exchange;
 using BackgroundWorker.Health;
 using BackgroundWorker.Scheduling;
 using BackgroundWorker.SymbolData;
-using Binance.Net.Interfaces.Clients;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
@@ -22,11 +21,9 @@ public class BinanceFundingRateWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<BinanceFundingRateWorker> logger,
     SymbolDataProvider symbolDataProvider,
-    IBinanceRestClient binanceClient,
-    BinanceRateLimiters rateLimiters,
+    IFundingRateGateway gateway,
     WorkerHealthState health) : BackgroundService
 {
-    private const int MaxLimit = 1000;
     private static readonly TimeSpan PollInterval = TimeSpan.FromHours(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -89,38 +86,33 @@ public class BinanceFundingRateWorker(
         using var scope = scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IMarketDataRepository<FundingRate>>();
         var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, target.Symbol);
-        var limiter = rateLimiters.For(MarketTypeEnum.Futures);
 
         var latest = await repository.GetLatestTimeAsync(tableName, ct);
         var from = latest is null ? target.StartDate : latest.Value.AddMilliseconds(1);
 
         while (!ct.IsCancellationRequested && from < DateTime.UtcNow)
         {
-            await limiter.AcquireAsync(1, ct);
-
-            var result = await binanceClient.UsdFuturesApi.ExchangeData.GetFundingRatesAsync(
-                target.Symbol.ToString(), startTime: from, limit: MaxLimit, ct: ct);
+            var result = await gateway.GetFundingRatesAsync(ExchangeEnum.Binance, target.Symbol, from, ct);
 
             if (!result.Success)
             {
-                health.RecordFailure(HealthComponents.FundingRateRequests, result.Error?.Message);
+                health.RecordFailure(HealthComponents.FundingRateRequests, result.Error);
                 // Resumable: the next poll continues from the newest stored settlement.
                 logger.LogWarning("Funding rate request failed for {Symbol}: {Error}", target.Symbol, result.Error);
                 return;
             }
 
             health.RecordSuccess(HealthComponents.FundingRateRequests);
-            var data = result.Data.ToList();
-            if (data.Count == 0)
+            var page = result.Value;
+            if (page.Items.Count == 0)
                 return;
 
-            var rows = data.Select(r => new FundingRate(r.FundingTime, r.FundingRate, r.MarkPrice ?? 0m)).ToList();
-            var inserted = await repository.BulkInsert(tableName, rows, ct);
+            var inserted = await repository.BulkInsert(tableName, page.Items, ct);
             logger.LogDebug("Inserted {Count} funding rates for {Symbol}", inserted, target.Symbol);
 
-            from = rows.Max(r => r.FundingTime).AddMilliseconds(1);
+            from = page.Items.Max(r => r.FundingTime).AddMilliseconds(1);
 
-            if (data.Count < MaxLimit)
+            if (!page.HasMore)
                 return;
         }
     }

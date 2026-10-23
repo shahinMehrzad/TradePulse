@@ -1,5 +1,4 @@
 using BackgroundWorker.CandleSeries;
-using BackgroundWorker.Exchange.Binance;
 using Domain.Enums;
 using Domain.Services;
 using Domain.ValueObjects;
@@ -24,9 +23,6 @@ public static class OpenInterestPlans
 
             if (!MarketDataSupport.TryValidate(series.Exchange, series.MarketType, MarketDataTypeEnum.OpenInterest, series.Timeframe, out var reason))
                 onRefused?.Invoke(plan, reason);
-            // The rule above and Binance's own period list are kept equal by a test; this is the safety net if they ever drift.
-            else if (!BinancePeriodIntervals.TryMap(series.Timeframe, out _))
-                onRefused?.Invoke(plan, "Binance has no such open interest period");
             else
                 selected.Add(plan);
         }

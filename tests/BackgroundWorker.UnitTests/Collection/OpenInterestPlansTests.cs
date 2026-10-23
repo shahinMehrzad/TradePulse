@@ -1,7 +1,6 @@
 using BackgroundWorker.Collection.OpenInterests;
 using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Enums;
-using Domain.Services;
 using Domain.ValueObjects;
 
 namespace BackgroundWorker.UnitTests.Collection;
@@ -70,13 +69,5 @@ public class OpenInterestPlansTests
         var plan = Plan();
 
         Assert.Single(OpenInterestPlans.SelectForBinance([plan, plan]));
-    }
-
-    [Fact]
-    public void EveryTimeFrameTheRuleAllowsIsOneBinanceCanServe()
-    {
-        // The safety net inside SelectForBinance must never be what turns an allowed series away.
-        foreach (var timeFrame in MarketDataSupport.GetTimeFrames(ExchangeEnum.Binance, MarketTypeEnum.Futures, MarketDataTypeEnum.OpenInterest))
-            Assert.Single(OpenInterestPlans.SelectForBinance([Plan(timeFrame: timeFrame)]));
     }
 }

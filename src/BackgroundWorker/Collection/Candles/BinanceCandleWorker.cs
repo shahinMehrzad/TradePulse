@@ -1,20 +1,14 @@
-using Domain.ValueObjects;
+using Application.Exchange;
 using BackgroundWorker.CandleSeries;
-using BackgroundWorker.Exchange.Binance;
 using BackgroundWorker.Health;
 using BackgroundWorker.Scheduling;
-using Binance.Net.Clients;
-using Binance.Net.Enums;
-using Binance.Net.Interfaces.Clients;
-using CryptoExchange.Net.SharedApis;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
-using Infrastructure.Configurations;
+using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Threading.Channels;
 
 namespace BackgroundWorker.Collection.Candles;
@@ -22,15 +16,10 @@ namespace BackgroundWorker.Collection.Candles;
 public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         ILogger<BinanceCandleWorker> logger,
         CandleSeriesProvider seriesProvider,
-        IBinanceRestClient binanceRestClient,
-        IBinanceSocketClient binanceSocketClient,
-        BinanceRateLimiters rateLimiters,
+        ICandleGateway candleGateway,
         CandleSyncCoordinator coordinator,
         WorkerHealthState health) : BackgroundService
 {
-    private readonly IBinanceRestClient _binanceClient = binanceRestClient;
-    private readonly IBinanceSocketClient _binanceSocketClient = binanceSocketClient;
-    private const int MaxKlineLimit = 1000;
     private const int MaxParallelSymbols = 4;
     private const int MaxRetries = 5;
 
@@ -236,8 +225,6 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         DateTime from, DateTime? to, CancellationToken ct)
     {
         var intervalSpan = plan.Series.Interval;
-        var limiter = rateLimiters.For(plan.Series.MarketType);
-        var weight = GetKlineWeight(plan.Series.MarketType, MaxKlineLimit);
         var retry = 0;
         var totalInserted = 0;
 
@@ -246,20 +233,11 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             if (from + intervalSpan > DateTime.UtcNow || (to is not null && from > to))
                 return (totalInserted, true);
 
-            await limiter.AcquireAsync(weight, ct);
-
-            // Binance treats endTime as inclusive on open time.
-            var result = plan.Series.MarketType == MarketTypeEnum.Futures
-                ? await _binanceClient.UsdFuturesApi.ExchangeData.GetKlinesAsync(
-                    plan.Series.Symbol.ToString(), (KlineInterval)plan.Series.Timeframe,
-                    startTime: from, endTime: to, limit: MaxKlineLimit, ct: ct)
-                : await _binanceClient.SpotApi.ExchangeData.GetKlinesAsync(
-                    plan.Series.Symbol.ToString(), (KlineInterval)plan.Series.Timeframe,
-                    startTime: from, endTime: to, limit: MaxKlineLimit, ct: ct);
+            var result = await candleGateway.GetCandlesAsync(plan.Series, from, to, ct);
 
             if (!result.Success)
             {
-                health.RecordFailure(HealthComponents.CandleRequests, result.Error?.Message);
+                health.RecordFailure(HealthComponents.CandleRequests, result.Error);
                 logger.LogWarning("Kline request failed for {Symbol}: {Error}", plan.Series.Symbol, result.Error);
                 if (++retry > MaxRetries)
                     return (totalInserted, false);
@@ -269,51 +247,28 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
             health.RecordSuccess(HealthComponents.CandleRequests);
             retry = 0;
-            var data = result.Data.ToList();
-            if (data.Count == 0)
+            var page = result.Value;
+            if (page.Items.Count == 0)
                 return (totalInserted, true);
 
+            // Only closed candles are stored. Usually only the very last one of the newest page is still open, so the common
+            // case (everything closed) is checked once and allocates nothing.
             var now = DateTime.UtcNow;
-            var closed = data.Where(k => k.CloseTime < now).ToList();
+            var closed = page.Items[^1].TimeRange.CloseTime < now
+                ? page.Items
+                : page.Items.Where(c => c.TimeRange.CloseTime < now).ToList();
             if (closed.Count == 0)
                 return (totalInserted, true);
 
-            var candles = closed.Select(k => new Candle(
-                openTime: k.OpenTime,
-                openPrice: k.OpenPrice,
-                highPrice: k.HighPrice,
-                lowPrice: k.LowPrice,
-                closePrice: k.ClosePrice,
-                volume: k.Volume,
-                closeTime: k.CloseTime,
-                quoteAssetVolume: k.QuoteVolume,
-                numberOfTrades: k.TradeCount,
-                takerBuyBaseVolume: k.TakerBuyBaseVolume,
-                takerBuyQuoteVolume: k.TakerBuyQuoteVolume)).ToList();
+            totalInserted += await repository.BulkInsert(tableName, closed, ct);
+            logger.LogDebug("Inserted {Count} candles for {Symbol}", closed.Count, plan.Series.Symbol);
 
-            totalInserted += await repository.BulkInsert(tableName, candles, ct);
-            logger.LogDebug("Inserted {Count} candles for {Symbol}", candles.Count, plan.Series.Symbol);
+            from = closed[^1].TimeRange.OpenTime + intervalSpan;
 
-            from = closed[^1].OpenTime + intervalSpan;
-
-            if (data.Count < MaxKlineLimit)
+            if (!page.HasMore)
                 return (totalInserted, true);
         }
 
         return (totalInserted, false); // only reached when cancelled
-    }
-
-    private static int GetKlineWeight(MarketTypeEnum market, int limit)
-    {
-        if (market == MarketTypeEnum.Spot)
-            return 2;
-
-        return limit switch
-        {
-            < 100 => 1,
-            < 500 => 2,
-            <= 1000 => 5,
-            _ => 10,
-        };
     }
 }

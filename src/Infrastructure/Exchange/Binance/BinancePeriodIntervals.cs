@@ -1,14 +1,14 @@
 using Binance.Net.Enums;
 using Domain.Enums;
 
-namespace BackgroundWorker.Exchange.Binance;
+namespace Infrastructure.Exchange.Binance;
 
 /// <summary>
 /// Maps our timeframes onto the "period" values accepted by Binance's futures statistics endpoints
 /// (open interest history, long/short ratios). Not every timeframe exists there (no 1s, 1m, 3m, 8h),
 /// so the mapping is explicit instead of a numeric cast.
 /// </summary>
-public static class BinancePeriodIntervals
+internal static class BinancePeriodIntervals
 {
     public static bool TryMap(TimeFrameEnum timeFrame, out PeriodInterval period)
     {

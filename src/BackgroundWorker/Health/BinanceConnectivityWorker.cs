@@ -1,5 +1,5 @@
 using BackgroundWorker.CandleSeries;
-using BackgroundWorker.Exchange.Binance;
+using Infrastructure.Exchange.Binance;
 using Binance.Net.Interfaces.Clients;
 using Domain.Enums;
 using Infrastructure.Configurations;

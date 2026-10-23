@@ -38,10 +38,7 @@ public static class DependencyInjection
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "config");
             }));
 
-        services.Configure<BinanceExchangeConfigurations>(configuration.GetSection(nameof(BinanceExchangeConfigurations)));
         services.Configure<JwtConfigurations>(configuration.GetSection(nameof(JwtConfigurations)));
-
-        services.AddBinance();
 
         return services;
     }

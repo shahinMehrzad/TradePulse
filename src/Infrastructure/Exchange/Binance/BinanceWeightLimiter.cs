@@ -1,4 +1,4 @@
-namespace BackgroundWorker.Exchange.Binance;
+namespace Infrastructure.Exchange.Binance;
 
 public sealed class BinanceWeightLimiter(int maxWeightPerMinute, TimeProvider? timeProvider = null)
 {

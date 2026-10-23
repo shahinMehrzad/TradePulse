@@ -59,6 +59,9 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
         [Required(ErrorMessage = "Enter the date to collect from.")]
         [DataType(DataType.Date)]
         public DateTime? StartDate { get; set; }
+
+        /// <summary>Also collect the open interest of this series. The API refuses it where the market has none.</summary>
+        public bool CollectOpenInterest { get; set; }
     }
 
     public SelectList ExchangeItems => new(Lookups.Exchanges, nameof(Lookup.Id), nameof(Lookup.Name), Input.ExchangeId);
@@ -72,6 +75,25 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     public string MarketName(int id) => Lookups.Markets.FirstOrDefault(x => x.Id == id)?.Name ?? $"#{id}";
     public string SymbolName(int id) => Lookups.Symbols.FirstOrDefault(x => x.Id == id)?.Name ?? $"#{id}";
     public string TimeFrameName(int id) => Lookups.TimeFrames.FirstOrDefault(x => x.Id == id)?.FriendlyName ?? $"#{id}";
+
+    /// <summary>Whether the series the form describes right now can carry open interest (the checkbox is disabled when not).</summary>
+    public bool OpenInterestAvailable => Lookups.Supports(Input.ExchangeId, Input.MarketId, "OpenInterest", Input.TimeFrameId);
+
+    /// <summary>Says where open interest exists, from the rules the API publishes.</summary>
+    public string OpenInterestRule
+    {
+        get
+        {
+            var entries = Lookups.MarketDataSupport.Where(s => s.DataType == "OpenInterest" && s.TimeFrameIds is not null).ToList();
+            if (entries.Count == 0)
+                return "Not available on any market.";
+
+            var markets = string.Join(" and ", entries.Select(e => MarketName(e.MarketId)).Distinct());
+            var ids = entries.SelectMany(e => e.TimeFrameIds!).ToHashSet();
+            var frames = Lookups.TimeFrames.Where(t => ids.Contains(t.Id)).OrderBy(t => t.IntervalToSeconds).Select(t => t.FriendlyName);
+            return $"{markets} only, at {string.Join(", ", frames)}.";
+        }
+    }
 
     /// <summary>The Edit button links here with <c>?edit=id</c>, which fills the form with that series.</summary>
     public async Task<IActionResult> OnGetAsync(int? edit, CancellationToken cancellationToken)
@@ -96,7 +118,8 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
                     MarketId = series.MarketId,
                     SymbolId = series.SymbolId,
                     TimeFrameId = series.TimeFrameId,
-                    StartDate = series.StartDate
+                    StartDate = series.StartDate,
+                    CollectOpenInterest = series.CollectOpenInterest
                 };
         }
 
@@ -112,7 +135,8 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
             // The date input has no time or zone; the API reads a "Z" date as UTC, which is what is meant.
             var request = new SeriesRequest(
                 Input.ExchangeId, Input.MarketId, Input.SymbolId, Input.TimeFrameId,
-                DateTime.SpecifyKind(Input.StartDate!.Value.Date, DateTimeKind.Utc));
+                DateTime.SpecifyKind(Input.StartDate!.Value.Date, DateTimeKind.Utc),
+                Input.CollectOpenInterest);
 
             var result = await CallAsync(() => IsEditing
                 ? api.UpdateSeriesAsync(Input.Id, request, cancellationToken)
@@ -124,7 +148,7 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
             if (result.Success)
             {
                 Saved = IsEditing ? "The series was changed." : "The series was added.";
-                Input = new SeriesForm();
+                ResetForm();
             }
             else
             {
@@ -137,6 +161,9 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
     public async Task<IActionResult> OnPostDeleteAsync(int id, CancellationToken cancellationToken)
     {
+        // The form is not part of this request. Binding still fills Input.Id from the "id" of the removed row (an empty prefix is
+        // tried when nothing is posted under "Input"), which would turn the next "add" into a change of a row that is gone.
+        ResetForm();
         PageNumber = Math.Max(1, PageNumber);
 
         var result = await CallAsync(() => api.DeleteSeriesAsync(id, cancellationToken));
@@ -149,6 +176,16 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
             Errors = result.Errors;
 
         return await LoadAsync(cancellationToken) ?? Page();
+    }
+
+    /// <summary>
+    /// Back to an empty "add" form. The posted values have to go too: a tag helper shows what was posted (the hidden id, the old
+    /// choices) in preference to the model, so resetting <see cref="Input"/> alone would leave the form still pointing at the old row.
+    /// </summary>
+    private void ResetForm()
+    {
+        ModelState.Clear();
+        Input = new SeriesForm();
     }
 
     /// <summary>A write that could not reach the API is shown as an error, not as a crash.</summary>

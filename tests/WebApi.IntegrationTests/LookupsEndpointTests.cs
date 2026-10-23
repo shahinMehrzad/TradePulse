@@ -52,6 +52,19 @@ public class LookupsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         Assert.Equal(["_1D"], onlyMin.Select(x => x.Name));
     }
 
+    private record Support(int ExchangeId, int MarketId, string DataType, int[]? TimeFrameIds);
+
+    [Fact]
+    public async Task MarketDataSupportIsPublicAndTellsWhatEachMarketProvides()
+    {
+        var support = await GetAsync<Support>("/api/lookups/market-data-support");
+
+        Assert.Equal(["Candle"], support.Where(s => s.MarketId == 1).Select(s => s.DataType));
+        var openInterest = Assert.Single(support, s => s.MarketId == 2 && s.DataType == "OpenInterest");
+        Assert.Equal([300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400], openInterest.TimeFrameIds);
+        Assert.Null(Assert.Single(support, s => s.MarketId == 2 && s.DataType == "FundingRate").TimeFrameIds);
+    }
+
     [Fact]
     public async Task TheConfigSchemaLivesInTheTestDatabaseNotInTheLocalOne()
     {

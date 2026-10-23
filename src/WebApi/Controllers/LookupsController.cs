@@ -23,6 +23,11 @@ namespace WebApi.Controllers
         public async Task<IActionResult> GetSymbols([FromQuery]string? keyword, CancellationToken cancellationToken)
             => Ok(await dispatcher.SendAsync<GetSymbolsQuery, IEnumerable<SymbolsResponseDto>>(new GetSymbolsQuery(keyword), cancellationToken));
 
+        // Which data each exchange market provides (and at which time frames): lets the panel offer only what the admin API accepts.
+        [HttpGet("market-data-support")]
+        public async Task<IActionResult> GetMarketDataSupport(CancellationToken cancellationToken)
+            => Ok(await dispatcher.SendAsync<GetMarketDataSupportQuery, IReadOnlyList<MarketDataSupportResponseDto>>(new GetMarketDataSupportQuery(), cancellationToken));
+
         [HttpGet("time-frames")]
         public async Task<IActionResult> GetTimeFrames([FromQuery] int minInterval, int? maxInterval, CancellationToken cancellationToken)
             => Ok(await dispatcher.SendAsync<GetTimeFramesQuery, IEnumerable<TimeFramesResponseDto>>(new GetTimeFramesQuery(minInterval, maxInterval ?? int.MaxValue), cancellationToken));
