@@ -75,11 +75,12 @@ Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 wi
 
 ### Dashboard
 
-Also requires a bearer token. Built from the stored candles for the panel's home page.
+Admin only (bearer token with the admin role). Built from the stored candles for the panel home page.
 
 | Request | Returns |
 |---|---|
-| `GET /api/dashboard/admin/series?market=futures` | One card per exchange market symbol the collector gathers (`market` is optional): the collected `timeframes`, the `defaultTimeframe` (the shortest), and `current` for it: last close, 24 h change, high, low and volume, a 24-point `sparkline`, and `lagSeconds` since the newest candle closed. `status` is `ok`, `late` (a whole candle is overdue) or `empty` (no table or no rows yet; the other fields are null). |
+| `GET /api/admin/dashboard/series?market=futures` | One card per exchange market symbol the collector gathers (`market` is optional): the collected `timeframes`, the `defaultTimeframe` (the shortest), and `current` for it: last close, 24 h change, high, low and volume, a 24-point `sparkline`, and `lagSeconds` since the newest candle closed. `status` is `ok`, `late` (a whole candle is overdue) or `empty` (no table or no rows yet; the other fields are null). |
+| `GET /api/admin/dashboard/series/binance/futures/btcusdt?timeframe=4h` | The same card for one chosen time frame (the shortest collected when omitted), plus `related`: the funding rate, open interest and liquidations the admin chose to collect, each `ok`, `late` or `empty` with its lag. Futures only. `404` when the series or that time frame is not collected, `400` for an unknown name. |
 
 ### Authentication
 
@@ -90,6 +91,8 @@ Also requires a bearer token. Built from the stored candles for the panel's home
 ### Admin panel (`WebRazor`)
 
 A Tabler-based panel that only the seeded administrator can enter. It references no other project and computes nothing: every page asks WebApi over HTTP (`Api:BaseUrl`). Sign-in posts to `POST /api/auth/login`, then `GET /api/admin/me` (which needs the admin role and answers 403 to anyone else) decides whether the user may enter. The API tokens stay on the panel's server (`SessionTokenStore`, in memory, so a restart signs the admin out); the browser only gets an `HttpOnly`, `SameSite=Strict` cookie holding an opaque session id, and the access token is refreshed shortly before it expires. Sessions last 8 hours.
+
+The **Dashboard** page shows one card per symbol the collector gathers (from `GET /api/admin/dashboard/series`): market, time frame, last price, 24 h change, a sparkline drawn on the server as inline SVG (the panel's content security policy allows no inline script), and whether the data is `ok`, `late` or `empty` with its lag. A market filter narrows the grid.
 
 The **Collector series** page lists the candle series stored through the API (`/api/admin/configurations/...`) and adds, changes and removes them. Dropdowns come from the public `/api/lookups/...` lists, which mirror the enums. The collector collects exactly this list, see [Candle series](#candle-series-chosen-in-the-database).
 The **Funding & liquidations** page does the same for the data without a time frame, per symbol. The series form carries the open interest checkbox. Both pages offer only what the API would accept: WebApi publishes the rules (`GET /api/lookups/market-data-support`, the same `MarketDataSupport` that refuses an impossible choice), the page embeds them and a few lines of `site.js` disable the checkboxes that do not apply. The API stays the guard; without JavaScript it answers with the reason.

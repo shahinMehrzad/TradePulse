@@ -66,6 +66,8 @@ public class LiquidationWorkerTests
         }
 
         public Task<DateTime?> GetLatestTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class Rig : IAsyncDisposable

@@ -25,6 +25,22 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await response.Content.ReadFromJsonAsync<AdminInfo>(cancellationToken);
     }
 
+    /// <param name="market">"spot" or "futures"; null for all markets.</param>
+    /// <returns>The dashboard cards, or null when the session is no longer accepted by the API.</returns>
+    public async Task<DashboardResponse?> GetDashboardSeriesAsync(string? market, CancellationToken cancellationToken)
+    {
+        var url = "api/admin/dashboard/series";
+        if (!string.IsNullOrWhiteSpace(market))
+            url += $"?market={Uri.EscapeDataString(market)}";
+
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DashboardResponse>(cancellationToken);
+    }
+
     /// <summary>The public lookup lists and the market data rules, fetched together.</summary>
     public async Task<Lookups> GetLookupsAsync(CancellationToken cancellationToken)
     {

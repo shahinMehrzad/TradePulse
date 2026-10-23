@@ -60,3 +60,18 @@ public record SymbolDataSetting(
 /// <summary>What the panel sends to add or change a symbol's funding rate and liquidations. <c>FundingStartDate</c> is a UTC date.</summary>
 public record SymbolDataRequest(
     int ExchangeId, int MarketId, int SymbolId, bool CollectFundingRate, DateTime? FundingStartDate, bool CollectLiquidation);
+
+/// <summary>The dashboard's answer: one card per exchange market symbol (names are lowercase, as in the candle routes).</summary>
+public record DashboardResponse(DateTime GeneratedAt, IReadOnlyList<DashboardCard> Items);
+
+/// <summary><c>Timeframes</c> are the ones the collector gathers for the symbol, shortest first; <c>Current</c> is the default one.</summary>
+public record DashboardCard(
+    string Exchange, string Market, string Symbol,
+    IReadOnlyList<string> Timeframes, string DefaultTimeframe,
+    DashboardSnapshot Current);
+
+/// <summary>Status is <c>ok</c>, <c>late</c> or <c>empty</c>; everything but the time frame and status is null when it is empty.</summary>
+public record DashboardSnapshot(
+    string Timeframe, string Status, int? LagSeconds, DateTime? LastOpenTime,
+    decimal? LastClose, decimal? ChangePercent, decimal? High, decimal? Low, decimal? Volume,
+    IReadOnlyList<decimal>? Sparkline);

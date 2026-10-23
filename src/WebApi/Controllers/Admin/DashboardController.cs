@@ -2,6 +2,7 @@ using Application.Dtos.Dashboard;
 using Application.Interfaces;
 using Application.Queries.Dashboard;
 using Domain.Enums;
+using Domain.Extensions;
 using Microsoft.AspNetCore.Mvc;
 
 namespace WebApi.Controllers.Admin
@@ -24,6 +25,33 @@ namespace WebApi.Controllers.Admin
             }
 
             return Ok(await dispatcher.SendAsync<GetDashboardSeriesQuery, DashboardSeriesResponse>(new GetDashboardSeriesQuery(parsedMarket), cancellationToken));
+        }
+
+        [HttpGet("series/{exchange}/{market}/{symbol}")]
+        public async Task<IActionResult> GetSeriesDetail(string exchange, string market, string symbol, [FromQuery] string? timeframe, CancellationToken cancellationToken)
+        {
+            TryParseName(nameof(exchange), exchange, out ExchangeEnum parsedExchange);
+            TryParseName(nameof(market), market, out MarketTypeEnum parsedMarket);
+            TryParseName(nameof(symbol), symbol, out SymbolEnum parsedSymbol);
+
+            TimeFrameEnum? parsedTimeframe = null;
+            if (!string.IsNullOrWhiteSpace(timeframe) && TryParseName(nameof(timeframe), timeframe, out TimeFrameEnum frame))
+                parsedTimeframe = frame;
+
+            if (!ModelState.IsValid)
+                return ValidationProblem(ModelState);
+
+            return Ok(await dispatcher.SendAsync<GetDashboardSeriesDetailQuery, DashboardSeriesDetail>(
+                new GetDashboardSeriesDetailQuery(parsedExchange, parsedMarket, parsedSymbol, parsedTimeframe), cancellationToken));
+        }
+
+        private bool TryParseName<T>(string parameter, string value, out T result) where T : struct, Enum
+        {
+            if (EnumExtensions.TryParseRouteName(value, out result))
+                return true;
+
+            ModelState.AddModelError(parameter, $"'{value}' is not a known {parameter}. Known: {string.Join(", ", Enum.GetValues<T>().Select(v => v.ToRouteName()))}.");
+            return false;
         }
     }
 }

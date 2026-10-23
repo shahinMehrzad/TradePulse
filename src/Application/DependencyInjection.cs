@@ -1,5 +1,6 @@
 ﻿using Application.Interfaces;
 using Application.Queries.Candles;
+using Application.Queries.Dashboard;
 using Application.Services;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Configuration;
@@ -26,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandDispatcher, CommandDispatcher>();
         services.AddScoped<ICandleReader, CandleReader>();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<DashboardSnapshotBuilder>();
 
         return services;
     }

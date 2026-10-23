@@ -1,0 +1,44 @@
+@using WebRazor.Api
+@using WebRazor.Display
+@model DashboardCard
+@{
+    var now = Model.Current;
+    var isEmpty = now.Status == "empty";
+    var up = (now.ChangePercent ?? 0m) >= 0m;
+    var tone = up ? "text-success" : "text-danger";
+    var (line, area) = Sparkline.Build(now.Sparkline ?? []);
+    var others = Model.Timeframes.Where(t => t != now.Timeframe).ToList();
+}
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="fw-bold">
+                @Model.Symbol.ToUpperInvariant()
+                <span class="badge @(Model.Market == "futures" ? "bg-blue-lt text-blue" : "bg-secondary-lt text-secondary") ms-1">@Model.Market</span>
+            </div>
+            <span class="badge bg-secondary-lt text-secondary" title="@(others.Count == 0 ? "The only time frame collected" : "Also collected: " + string.Join(", ", others))">@now.Timeframe</span>
+        </div>
+
+        @if (isEmpty)
+        {
+            <div class="h2 mt-2 mb-0 text-secondary">-</div>
+            <div class="text-secondary small my-3" style="min-height: 52px">No @now.Timeframe candles stored yet</div>
+        }
+        else
+        {
+            <div class="d-flex justify-content-between align-items-baseline mt-2">
+                <div class="h2 mb-0">@DashboardFormat.Price(now.LastClose!.Value)</div>
+                <span class="badge @(up ? "bg-success-lt" : "bg-danger-lt") @tone">@(up ? "▲" : "▼") @DashboardFormat.Change(now.ChangePercent!.Value)</span>
+            </div>
+            <svg class="@tone d-block w-100 my-2" viewBox="0 0 @Sparkline.Width @Sparkline.Height" preserveAspectRatio="none" height="@Sparkline.Height" role="img" aria-label="Last @(now.Sparkline?.Count) closes of @Model.Symbol.ToUpperInvariant() @now.Timeframe">
+                <polygon points="@area" fill="currentColor" fill-opacity="0.15" stroke="none" />
+                <polyline points="@line" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+            </svg>
+        }
+
+        <div class="d-flex justify-content-between align-items-center text-secondary small">
+            <span>@(isEmpty ? "" : $"H {DashboardFormat.Price(now.High!.Value)} · L {DashboardFormat.Price(now.Low!.Value)}")</span>
+            <span class="badge @DashboardFormat.StatusBadge(now.Status)">@DashboardFormat.StatusLabel(now.Status)@(now.LagSeconds is { } lag ? " · " + DashboardFormat.Lag(lag) : "")</span>
+        </div>
+    </div>
+</div>

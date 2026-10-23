@@ -18,7 +18,7 @@ public class GetDashboardSeriesQueryHandlerTests
     private readonly FakeCandleRepository _candles = new();
     private readonly FakeTimeProvider _time = new(Now);
 
-    private GetDashboardSeriesQueryHandler Handler => new(_configurations, new CandleReader(_candles), _time);
+    private GetDashboardSeriesQueryHandler Handler => new(_configurations, new DashboardSnapshotBuilder(new CandleReader(_candles)), _time);
 
     private void Configure(MarketTypeEnum market, SymbolEnum symbol, TimeFrameEnum timeFrame) =>
         _configurations.Configurations.Add(new CandleWorkerConfiguration
@@ -173,7 +173,7 @@ public class GetDashboardSeriesQueryHandlerTests
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
 
         Assert.Equal(Math.Round((129m / 128m - 1m) * 100m, 2), current.ChangePercent);
-        Assert.Equal(GetDashboardSeriesQueryHandler.SparklinePoints, current.Sparkline!.Count);
+        Assert.Equal(DashboardSnapshotBuilder.SparklinePoints, current.Sparkline!.Count);
     }
 
     [Fact]
