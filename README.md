@@ -92,6 +92,7 @@ Planned, not built yet:
 
 - Event publishing (`CandleClosed`) through **RabbitMQ** using an outbox, and **Redis** for latest-candle caching.
 - Candle read API extras (streaming, CSV/Parquet export, cache invalidation from `CandleClosed` events instead of TTL).
+- Series list in the panel with sortable columns, dropdown filters and a page size (the API side, OData, already exists).
 - A dashboard the admin can arrange: card order, a default time frame per card, hiding a card.
 - Re-checking recent candles for exchange-side revisions.
 - More exchanges and symbols behind a common collector abstraction.

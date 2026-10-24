@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<ICandleReader, CandleReader>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<DashboardSnapshotBuilder>();
+        services.AddScoped<AuditTrail>();
 
         return services;
     }

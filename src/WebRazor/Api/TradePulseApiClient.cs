@@ -121,11 +121,57 @@ public sealed class TradePulseApiClient(HttpClient http)
     }
 
     /// <summary>Case-insensitive match of the keyword against the exchange, market, symbol and symbol description.</summary>
-    internal static string KeywordFilter(string keyword)
+    internal static string KeywordFilter(string keyword) => ContainsAny(keyword, "exchange", "market", "symbol", "symbolDescription");
+
+    /// <summary>A text in an OData filter: a quote inside it is written twice.</summary>
+    private static string Quote(string text) => $"'{text.Replace("'", "''")}'";
+
+    private static string ContainsAny(string text, params string[] fields)
     {
-        var term = keyword.Trim().ToLowerInvariant().Replace("'", "''"); // a quote inside an OData string is written twice
-        return string.Join(" or ", new[] { "exchange", "market", "symbol", "symbolDescription" }.Select(field => $"contains(tolower({field}),'{term}')"));
+        var term = Quote(text.Trim().ToLowerInvariant());
+        return "(" + string.Join(" or ", fields.Select(field => $"contains(tolower({field}),{term})")) + ")";
     }
+
+    /// <returns>One page of the audit log, or null when the session is no longer accepted by the API.</returns>
+    public async Task<AuditPage?> GetAuditLogAsync(AuditQuery query, CancellationToken cancellationToken)
+    {
+        var filters = AuditFilters(query);
+        var url = $"api/admin/audit-log?$orderby=occurredAt {(query.NewestFirst ? "desc" : "asc")},id {(query.NewestFirst ? "desc" : "asc")}"
+            + $"&$top={query.PageSize}&$skip={(query.PageNumber - 1) * query.PageSize}";
+        if (filters.Count > 0)
+            url += $"&$filter={Uri.EscapeDataString(string.Join(" and ", filters))}";
+
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        var wire = await response.Content.ReadFromJsonAsync<AuditPageWire>(cancellationToken);
+        var total = wire?.Count ?? 0;
+        return new AuditPage(wire?.Value ?? [], query.PageNumber, query.PageSize, total, (int)Math.Ceiling(total / (double)query.PageSize));
+    }
+
+    /// <summary>The parts of the filter the query asks for. Action and entity are matched exactly, the rest by contents or range.</summary>
+    internal static List<string> AuditFilters(AuditQuery query)
+    {
+        var filters = new List<string>();
+        if (!string.IsNullOrWhiteSpace(query.Action))
+            filters.Add($"action eq {Quote(query.Action.Trim())}");
+        if (!string.IsNullOrWhiteSpace(query.EntityType))
+            filters.Add($"entityType eq {Quote(query.EntityType.Trim())}");
+        if (!string.IsNullOrWhiteSpace(query.User))
+            filters.Add(ContainsAny(query.User, "userName"));
+        if (!string.IsNullOrWhiteSpace(query.Search))
+            filters.Add(ContainsAny(query.Search, "summary", "details"));
+        if (query.From is { } from)
+            filters.Add($"occurredAt ge {Iso(from.Date)}");
+        if (query.To is { } to)
+            filters.Add($"occurredAt lt {Iso(to.Date.AddDays(1))}");   // the whole last day
+        return filters;
+    }
+
+    /// <summary>The API's OData answer: one page of log lines and the number of lines that matched.</summary>
+    private sealed record AuditPageWire(int Count, List<AuditEntry>? Value);
 
     /// <summary>The API's OData answer: one page of rows and the number of rows that matched.</summary>
     private sealed record SeriesPageWire(int Count, List<CandleWorkerSeries>? Value);

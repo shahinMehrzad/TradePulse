@@ -10,6 +10,9 @@ internal sealed class FakeCandleWorkerConfigurationRepository : ICandleWorkerCon
     public Task<IReadOnlyList<CandleWorkerConfiguration>> GetConfigurationList(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<CandleWorkerConfiguration>>(Configurations.ToList());
 
+    public Task<CandleWorkerConfiguration?> GetConfigurationById(int id, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
     public Task<CandleWorkerConfiguration?> GetConfiguration(int exchangeId, int marketId, int symbolId, int timeFrameId, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 

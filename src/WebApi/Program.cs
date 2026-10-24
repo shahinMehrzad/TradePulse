@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Application;
+using Application.Interfaces;
 using Infrastructure;
 using Microsoft.AspNetCore.OData;
 using WebApi.Authentication;
@@ -34,6 +35,10 @@ if (builder.Configuration.GetValue("CandleCache:Enabled", true))
 builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
+
+// The audit log names the signed-in user; this replaces the collector's default ("system") that the line above registers.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 
 // Login is the one anonymous door to the admin account: throttle it per client IP.
 builder.Services.AddRateLimiter(options =>

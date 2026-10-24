@@ -28,6 +28,9 @@ namespace Infrastructure.Repositories
             await SaveAsync(cancellationToken);
         }
 
+        public async Task<CandleWorkerConfiguration?> GetConfigurationById(int id, CancellationToken cancellationToken)
+            => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
+
         public async Task<CandleWorkerConfiguration?> GetConfiguration(int exchangeId, int marketId, int symbolId, int timeFrameId, CancellationToken cancellationToken)
             => await context.CandleWorkerConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.ExchangeId == exchangeId && c.MarketId == marketId && c.SymbolId == symbolId && c.TimeFrameId == timeFrameId, cancellationToken);
 

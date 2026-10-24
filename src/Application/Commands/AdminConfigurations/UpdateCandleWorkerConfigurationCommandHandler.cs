@@ -4,10 +4,11 @@ using Domain.Entities;
 using Domain.Exceptions;
 using Domain.Extensions;
 using Domain.Repositories;
+using Application.Services;
 
 namespace Application.Commands.AdminConfigurations;
 
-public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerConfigurationRepository workerConfigurationRepository)
+public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerConfigurationRepository workerConfigurationRepository, AuditTrail audit)
     : ICommandHandler<UpdateCandleWorkerConfigurationDto, CandleWorkerConfiguration>
 {
     public async Task<CandleWorkerConfiguration> HandleAsync(UpdateCandleWorkerConfigurationDto request, CancellationToken cancellationToken)
@@ -28,7 +29,10 @@ public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         if (request.CollectOpenInterest)
             OpenInterestValidation.EnsureSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
 
-        return await workerConfigurationRepository.UpdateCandleWorkerConfiguration(new CandleWorkerConfiguration
+        // A row that does not exist is reported by the update itself.
+        var before = await workerConfigurationRepository.GetConfigurationById(request.Id, cancellationToken);
+
+        var updated = await workerConfigurationRepository.UpdateCandleWorkerConfiguration(new CandleWorkerConfiguration
         {
             ExchangeId = request.ExchangeId,
             Id = request.Id,
@@ -38,5 +42,10 @@ public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerC
             StartDate = startDate,
             CollectOpenInterest = request.CollectOpenInterest
         }, cancellationToken);
+
+        if (before is not null && AuditDescriptions.Changes(before, updated) is { } changes)
+            await audit.RecordAsync(AuditAction.Updated, AuditEntityTypes.CandleSeries, updated.Id, AuditDescriptions.Summary(updated), changes, cancellationToken);
+
+        return updated;
     }
 }
