@@ -6,7 +6,7 @@ namespace WebApi.IntegrationTests;
 
 public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
 {
-    private const string ListUrl = "/api/admin/configurations/candle-worker";
+    private const string ListUrl = "/api/admin/configurations/candle-worker/odata";
     private const string AddUrl = "/api/admin/configurations/add-config";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -31,12 +31,12 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
         return client;
     }
 
-    private record Page(int TotalItemsCount, int TotalPages, int ItemsPerPage, int CurrentPage, Row[] Data);
+    private record Page(int Count, Row[] Value);
 
     // The biggest page the API allows: these tests look at the whole list (they add far fewer rows than that), the paging
-    // itself is covered by CandleWorkerConfigurationPagingTests.
+    // itself is covered by CandleWorkerConfigurationODataTests.
     private static async Task<Row[]> ListAsync(HttpClient client) =>
-        (await client.GetFromJsonAsync<Page>($"{ListUrl}?PageNumber=1&PageSize=100", Ct))!.Data;
+        (await client.GetFromJsonAsync<Page>($"{ListUrl}?$top=100", Ct))!.Value;
 
     [Fact]
     public async Task WithoutATokenBothEndpointsAreUnauthorized()

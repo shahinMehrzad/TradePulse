@@ -21,7 +21,7 @@ public abstract class EfReadModel<T> : IReadModel<T>
     /// <c>CandleRepository</c> does.
     /// </summary>
     private static IQueryable<T> Prepare(IQueryable<T> query) =>
-        query.Provider.CreateQuery<T>(new UnspecifiedDateTimeVisitor().Visit(query.Expression));
+        query.Provider.CreateQuery<T>(new UnspecifiedDateTimeVisitor().Visit(query.Expression)!);
 
     /// <summary>
     /// A date from the caller is a constant, or a closure field holding one, possibly converted from a DateTimeOffset: whatever

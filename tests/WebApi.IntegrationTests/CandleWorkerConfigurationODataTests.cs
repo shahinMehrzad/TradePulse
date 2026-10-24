@@ -109,6 +109,8 @@ public class CandleWorkerConfigurationODataTests(ApiFixture api) : IClassFixture
     [InlineData("symbol eq 'ETHUSDT'", 1)]
     [InlineData("contains(tolower(symbol),'btc')", 12)]
     [InlineData("market eq 'Spot'", 1)]
+    [InlineData("contains(tolower(exchange),'binance') or contains(tolower(symbolDescription),'eth')", 13)] // what the panel's search sends
+    [InlineData("contains(tolower(symbol),'it''s')", 0)]                                                   // a quote is written twice
     [InlineData("intervalSeconds ge 3600 and market eq 'Futures'", 6)]
     [InlineData("collectOpenInterest eq true", 0)]
     [InlineData("startDate ge 2020-01-01T00:00:00Z", 13)]
@@ -123,6 +125,27 @@ public class CandleWorkerConfigurationODataTests(ApiFixture api) : IClassFixture
         var page = await GetPageAsync(client, $"$filter={Uri.EscapeDataString(filter)}");
 
         Assert.Equal((expected, expected), (page.Count, page.Value.Length));
+    }
+
+    [Fact]
+    public async Task APageBeyondTheEndIsEmptyButStillReportsTheCount()
+    {
+        var client = await SeededAdminAsync();
+
+        var page = await GetPageAsync(client, "$top=4&$skip=100");
+
+        Assert.Equal((13, 0), (page.Count, page.Value.Length));
+    }
+
+    [Fact]
+    public async Task TheRowsOfOneSymbolCanBeSortedShortestTimeFrameFirst()
+    {
+        // What the panel asks for; the order they were added in (and their ids) must not matter.
+        var client = await SeededAdminAsync();
+
+        var page = await GetPageAsync(client, "$filter=symbol eq 'BTCUSDT'&$orderby=symbol,intervalSeconds,id&$top=100");
+
+        Assert.Equal(BtcTimeFrames.Order(), page.Value.Select(r => r.IntervalSeconds));
     }
 
     [Fact]

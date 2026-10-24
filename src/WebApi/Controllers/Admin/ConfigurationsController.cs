@@ -14,11 +14,6 @@ namespace WebApi.Controllers.Admin
 {
     public class ConfigurationsController(ICommandDispatcher dispatcher) : AdminControllerBase
     {
-        [HttpGet("candle-worker")]
-        public async Task<IActionResult> GetCandleWorkerConfigurations([FromQuery] GetPaginationCandleWorkerConfigurationsQuery payload, CancellationToken cancellationToken)
-            => Ok(await dispatcher.SendAsync<GetPaginationCandleWorkerConfigurationsQuery, PaginationResponseDto<CandleWorkerConfiguration>>
-                (payload, cancellationToken));
-
         /// <summary>
         /// The candle series list with OData query options: <c>$filter</c>, <c>$orderby</c>, <c>$top</c>, <c>$skip</c>, <c>$count</c>.
         /// Answers <c>{ count, value }</c>, where count is the number of rows matching the filter before paging.

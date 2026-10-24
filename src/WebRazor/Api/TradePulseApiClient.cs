@@ -104,9 +104,11 @@ public sealed class TradePulseApiClient(HttpClient http)
     /// <returns>One page of the configured series, or null when the session is no longer accepted by the API.</returns>
     public async Task<SeriesPage?> GetSeriesAsync(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
     {
-        var url = $"{SeriesRoot}/candle-worker?pageNumber={pageNumber}&pageSize={pageSize}";
+        // OData: the keyword becomes a $filter over the names, the list is sorted like the panel always showed it, and
+        // $count comes back as "count" (the number of matches before paging).
+        var url = $"{SeriesRoot}/candle-worker/odata?$orderby=symbol,intervalSeconds,id&$top={pageSize}&$skip={(pageNumber - 1) * pageSize}";
         if (!string.IsNullOrWhiteSpace(keyword))
-            url += $"&keyword={Uri.EscapeDataString(keyword.Trim())}";
+            url += $"&$filter={Uri.EscapeDataString(KeywordFilter(keyword))}";
 
         using var response = await http.GetAsync(url, cancellationToken);
         if (IsRejected(response))
@@ -114,11 +116,19 @@ public sealed class TradePulseApiClient(HttpClient http)
 
         response.EnsureSuccessStatusCode();
         var wire = await response.Content.ReadFromJsonAsync<SeriesPageWire>(cancellationToken);
-        return new SeriesPage(wire?.Data ?? [], pageNumber, pageSize, wire?.TotalItemsCount ?? 0, wire?.TotalPages ?? 0);
+        var total = wire?.Count ?? 0;
+        return new SeriesPage(wire?.Value ?? [], pageNumber, pageSize, total, (int)Math.Ceiling(total / (double)pageSize));
     }
 
-    /// <summary>The API's paged answer (<c>PaginationResponseDto</c>).</summary>
-    private sealed record SeriesPageWire(int TotalItemsCount, int TotalPages, int ItemsPerPage, int CurrentPage, List<CandleWorkerSeries>? Data);
+    /// <summary>Case-insensitive match of the keyword against the exchange, market, symbol and symbol description.</summary>
+    internal static string KeywordFilter(string keyword)
+    {
+        var term = keyword.Trim().ToLowerInvariant().Replace("'", "''"); // a quote inside an OData string is written twice
+        return string.Join(" or ", new[] { "exchange", "market", "symbol", "symbolDescription" }.Select(field => $"contains(tolower({field}),'{term}')"));
+    }
+
+    /// <summary>The API's OData answer: one page of rows and the number of rows that matched.</summary>
+    private sealed record SeriesPageWire(int Count, List<CandleWorkerSeries>? Value);
 
     public async Task<ApiResult> AddSeriesAsync(SeriesRequest request, CancellationToken cancellationToken)
     {
