@@ -32,8 +32,14 @@ public class SymbolDataProviderTests
         await provider.StartAsync(Ct);
         await WaitUntilAsync(() => provider.Status == PlanStatus.WaitingForConfiguration);
 
+        // The status is set before the provider starts waiting for its next read, so one jump right now could be lost:
+        // move the clock until the new plan has been picked up.
         source.Plans.Add(SymbolDataTestSupport.Binance());
-        _time.Advance(SymbolDataProvider.RetryDelay);
+        await WaitUntilAsync(() =>
+        {
+            _time.Advance(SymbolDataProvider.RetryDelay);
+            return provider.Status == PlanStatus.Loaded;
+        });
 
         var plans = await provider.WaitForPlansAsync(Ct).WaitAsync(TimeSpan.FromSeconds(5), Ct);
         Assert.Equal(source.Plans, plans);

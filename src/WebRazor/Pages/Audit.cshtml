@@ -1,0 +1,128 @@
+@page
+@model AuditModel
+@{
+    ViewData["Title"] = "Audit log";
+}
+
+<div class="alert alert-info" role="alert">
+    Every change made to the collector settings (candle series, funding rate and liquidations) is listed here with who made it. Times are UTC.
+</div>
+
+@if (Model.Error is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.Error</div>
+}
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Changes (@Model.TotalItems)</h3>
+    </div>
+    <div class="card-body border-bottom">
+        <form method="get" asp-page="/Audit" class="row g-2 align-items-end">
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label" for="Action">Action</label>
+                <select id="Action" name="Action" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    @foreach (var action in AuditModel.Actions)
+                    {
+                        <option value="@action" selected="@(Model.Action == action)">@action</option>
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label" for="EntityType">Setting</label>
+                <select id="EntityType" name="EntityType" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    @foreach (var (key, label) in AuditModel.EntityTypes)
+                    {
+                        <option value="@key" selected="@(Model.EntityType == key)">@label</option>
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label" for="User">User</label>
+                <input id="User" type="search" name="User" value="@Model.UserFilter" class="form-control form-control-sm" placeholder="Name contains..." />
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label" for="Search">Text</label>
+                <input id="Search" type="search" name="Search" value="@Model.Search" class="form-control form-control-sm" placeholder="Setting or details..." />
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label" for="From">From (UTC)</label>
+                <input id="From" type="date" name="From" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label" for="To">To (UTC)</label>
+                <input id="To" type="date" name="To" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label" for="PageSize">Per page</label>
+                <select id="PageSize" name="PageSize" class="form-select form-select-sm">
+                    @foreach (var size in AuditModel.PageSizes)
+                    {
+                        <option value="@size" selected="@(Model.PageSize == size)">@size</option>
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-md-3 col-xl-2 d-flex gap-2">
+                <input type="hidden" name="NewestFirst" value="@Model.NewestFirst" />
+                <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+                @if (Model.IsFiltered)
+                {
+                    <a class="btn btn-sm btn-ghost-secondary" asp-page="/Audit">Clear</a>
+                }
+            </div>
+        </form>
+    </div>
+
+    @if (Model.Entries.Count == 0)
+    {
+        <div class="card-body text-secondary">
+            @(Model.IsFiltered ? "No changes match these filters." : "Nothing has been changed yet.")
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table card-table table-vcenter">
+                <thead>
+                    <tr>
+                        <th>
+                            <a asp-page="/Audit" asp-all-route-data="Model.RouteValues(newestFirst: !Model.NewestFirst)" class="text-reset text-decoration-none" title="Reverse the order">
+                                Time (UTC) @(Model.NewestFirst ? "▼" : "▲")
+                            </a>
+                        </th>
+                        <th>User</th><th>Action</th><th>Setting</th><th>Which</th><th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in Model.Entries)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@entry.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@entry.UserName</td>
+                            <td><span class="badge @AuditModel.BadgeClass(entry.Action)">@entry.Action</span></td>
+                            <td>@AuditModel.EntityName(entry.EntityType)</td>
+                            <td class="fw-bold">@entry.Summary</td>
+                            <td class="text-secondary">@entry.Details</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.TotalPages > 1)
+        {
+            <div class="card-footer d-flex align-items-center">
+                <span class="text-secondary">Page @Model.PageNumber of @Model.TotalPages</span>
+                <ul class="pagination m-0 ms-auto">
+                    <li class="page-item @(Model.HasPrevious ? "" : "disabled")">
+                        <a class="page-link" asp-page="/Audit" asp-all-route-data="Model.RouteValues(Math.Max(1, Model.PageNumber - 1))">Previous</a>
+                    </li>
+                    <li class="page-item @(Model.HasNext ? "" : "disabled")">
+                        <a class="page-link" asp-page="/Audit" asp-all-route-data="Model.RouteValues(Model.PageNumber + 1)">Next</a>
+                    </li>
+                </ul>
+            </div>
+        }
+    }
+</div>

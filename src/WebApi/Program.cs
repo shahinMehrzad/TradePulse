@@ -1,13 +1,19 @@
 using System.Threading.RateLimiting;
 using Application;
+using Application.Interfaces;
 using Infrastructure;
+using Microsoft.AspNetCore.OData;
 using WebApi.Authentication;
 using WebApi.Controllers;
 using WebApi.Endpoints;
 using WebApi.ErrorHandling;
+using WebApi.OData;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddControllers();
+// OData only parses and applies query options (see ODataQueryExecutor); there are no OData routes or $metadata.
+// Select/Expand/Apply stay off here and are rejected by ODataQueryExecutor as well.
+builder.Services.AddControllers().AddOData(options =>
+    options.Filter().OrderBy().Count().SetMaxTop(ODataQueryExecutor.MaxTop));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
@@ -29,6 +35,10 @@ if (builder.Configuration.GetValue("CandleCache:Enabled", true))
 builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
+
+// The audit log names the signed-in user; this replaces the collector's default ("system") that the line above registers.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 
 // Login is the one anonymous door to the admin account: throttle it per client IP.
 builder.Services.AddRateLimiter(options =>

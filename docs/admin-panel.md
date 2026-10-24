@@ -10,4 +10,6 @@ The **Collector series** page lists the candle series stored through the API (`/
 
 The **Funding & liquidations** page does the same for the data without a time frame, per symbol. The series form carries the open interest checkbox. Both pages offer only what the API would accept: WebApi publishes the rules (`GET /api/lookups/market-data-support`, the same `MarketDataSupport` that refuses an impossible choice), the page embeds them and a few lines of `site.js` disable the checkboxes that do not apply. The API stays the guard; without JavaScript it answers with the reason.
 
+The **Audit log** page lists every change to those settings (who, when, which setting, what was different). It filters by action, setting, user, a text in the setting or details and a range of dates, sorts by time with a click on the column title, and pages 10 to 100 lines at a time; the choices are in the address, so a filtered view can be bookmarked. It asks WebApi's OData endpoint for exactly that, see [Admin lists](api.md#admin-lists-odata-and-the-audit-log).
+
 WebApi side: the `Admin` policy (role from `AdminConfigurations:Role`) guards `/api/admin/*`, `POST /api/auth/login` is limited to `RateLimiting:LoginPermitsPerMinute` (default 10) per client IP, and CORS stays off until `Cors:AllowedOrigins` lists origins. The panel itself needs no CORS since it calls the API from the server.

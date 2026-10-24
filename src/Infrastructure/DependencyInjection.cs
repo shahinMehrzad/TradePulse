@@ -1,15 +1,19 @@
+using Application.Dtos.AuditLog;
+using Application.Dtos.CandleWorkerConfigurations;
 using Application.Interfaces;
 using Domain.Entities;
 using Infrastructure.Identity;
 using Domain.Repositories;
 using Infrastructure.Configurations;
 using Infrastructure.Persistence;
+using Infrastructure.ReadModels;
 using Infrastructure.Repositories;
 using Infrastructure.Repositories.TimeSeries;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Infrastructure;
 
@@ -27,6 +31,12 @@ public static class DependencyInjection
         services.AddScoped<ILookupsRepository, LookupsRepository>();
         services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();
         services.AddScoped<ISymbolDataConfigurationRepository, SymbolDataConfigurationRepository>();
+        services.AddScoped<IReadModel<CandleWorkerConfigurationListItem>, CandleWorkerConfigurationReadModel>();
+        services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<IReadModel<AuditLogListItem>, AuditLogReadModel>();
+
+        // Work without a signed-in user (the collector) is done by "system"; the API registers the user of the request after this.
+        services.TryAddScoped<ICurrentUser, SystemUser>();
 
         // The config schema (series the admin chose) is read by the worker and written by WebApi, so it lives here, not with auth.
         // ConfigConnection is optional: the schema normally sits in the same database as everything else.

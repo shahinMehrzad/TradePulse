@@ -289,7 +289,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task TheFullListIsNotPagedAndThePagedListCountsTheFilteredRows()
+    public async Task TheWorkersListHasEverySeriesHoweverManyThereAre()
     {
         await using var context = await MigratedContextAsync();
         var repository = new CandleWorkerConfigurationRepository(context);
@@ -305,51 +305,6 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         // The worker reads this one: every series, however many there are.
         Assert.Equal(13, (await repository.GetConfigurationList(Ct)).Count());
 
-        var (third, total) = await repository.GetConfigurationsListByPagination(3, 5, null, Ct);
-        Assert.Equal((3, 13), (third.Count(), total));
-
-        var (eth, ethTotal) = await repository.GetConfigurationsListByPagination(1, 5, "eth", Ct);
-        Assert.Equal((1, 1), (eth.Count(), ethTotal));   // the total is of the filtered list, not of the table
-    }
-
-    [Fact]
-    public async Task TheKeywordSearchesTheSymbolDescriptionButNotTheTimeFrame()
-    {
-        await using var context = await MigratedContextAsync();
-        var repository = new CandleWorkerConfigurationRepository(context);
-        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);                                        // BTCUSDT, 4h
-        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, symbolId: (int)SymbolEnum.ETHUSDT), Ct);   // ETHUSDT, 4h
-        (await context.Symbols.SingleAsync(x => x.Name == "BTCUSDT", Ct)).Description = "BitCoin";
-        await context.SaveChangesAsync(Ct);
-
-        async Task<int> Count(string keyword) => (await repository.GetConfigurationsListByPagination(1, 10, keyword, Ct)).totalCount;
-
-        Assert.Equal(1, await Count("bitcoin"));   // only the description says so
-        Assert.Equal(1, await Count("COIN"));
-        Assert.Equal(2, await Count("usdt"));
-        Assert.Equal(0, await Count("_4H"));       // the time frame is not searchable: it matches neither
-        Assert.Equal(0, await Count("4 hours"));
-    }
-
-    [Fact]
-    public async Task TheRowsOfOneSymbolComeShortestTimeFrameFirstWhateverOrderTheyWereAdded()
-    {
-        await using var context = await MigratedContextAsync();
-        var repository = new CandleWorkerConfigurationRepository(context);
-        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        foreach (var timeFrame in new[] { TimeFrameEnum._1D, TimeFrameEnum._1M, TimeFrameEnum._4H, TimeFrameEnum._15M })
-        {
-            var series = NewSeries(start);
-            series.TimeFrameId = (int)timeFrame;
-            await repository.AddNewCandleWorkerConfiguration(series, Ct);
-        }
-
-        var (rows, _) = await repository.GetConfigurationsListByPagination(1, 10, null, Ct);
-
-        Assert.Equal(
-            [(int)TimeFrameEnum._1M, (int)TimeFrameEnum._15M, (int)TimeFrameEnum._4H, (int)TimeFrameEnum._1D],
-            rows.Select(r => r.TimeFrameId));
     }
 
     private static Task<ConfigDbContext> ContextOnSameDatabaseAsync(ConfigDbContext context)

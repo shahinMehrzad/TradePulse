@@ -26,6 +26,19 @@ A card has the collected `timeframes`, the shortest as `defaultTimeframe`, and `
 
 `status` is `ok`, `late` (a whole candle is overdue) or `empty` (no table or no rows yet; the other fields are null). The second request answers `404` when the series or that time frame is not collected and `400` for an unknown name.
 
+## Admin lists (OData) and the audit log
+
+Admin only. Two lists take OData query options, and answer `{ "count": 13, "value": [...] }`, where `count` is the number of rows that matched `$filter` before paging:
+
+| Request | Returns |
+|---|---|
+| `GET /api/admin/configurations/candle-worker/odata` | The candle series the collector gathers, with the names of exchange, market, symbol and time frame next to their ids. |
+| `GET /api/admin/audit-log` | Who changed which collector setting: `occurredAt`, `userName`, `action` (`Added`, `Updated`, `Removed`), `entityType` (`CandleSeries`, `SymbolData`), `entityId`, `summary` and `details` (for an update, what changed: `start date 2020-01-01 -> 2021-06-01`). |
+
+Only `$filter`, `$orderby`, `$top`, `$skip` and `$count` are accepted; `$select`, `$expand` and `$apply` are a `400`, like a malformed query or a `$top` above 100. Without `$top` a request gets 20 rows, and the key is always the last sort so pages never overlap. Dates in a filter are UTC (`occurredAt ge 2026-10-01T00:00:00Z`), like every stored time. Example: `?$filter=action eq 'Removed' and contains(tolower(userName),'shahin')&$orderby=occurredAt desc&$top=25`.
+
+The audit log is written by the same API calls that change the settings (add, change, remove of a candle series or of a symbol's funding rate and liquidations), with the user name from the access token. An update that changes nothing is not logged. It is written after the change is saved; if writing it fails, the failure is logged by the API and the change itself stands.
+
 ## Authentication
 
 `POST /api/auth/login` issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret and the seeded admin credentials are **not** in the committed `appsettings.json`: Development gets throwaway values from `appsettings.Development.json`; anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes) and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.
