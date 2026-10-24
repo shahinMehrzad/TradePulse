@@ -1,0 +1,24 @@
+@using WebRazor.Display
+@model CandleChartModel
+@{
+    string N(double value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}
+<svg class="d-block w-100" viewBox="0 0 @N(Model.Width) @N(Model.Height)" role="img" aria-label="Candlestick chart of the newest @Model.Candles.Count candles" font-size="11">
+    @foreach (var tick in Model.PriceTicks)
+    {
+        <line x1="@N(Model.PlotLeft)" x2="@N(Model.PlotRight)" y1="@N(tick.Position)" y2="@N(tick.Position)" stroke="currentColor" stroke-opacity="0.12" />
+        @:<text x="@N(Model.PlotRight + 6)" y="@N(tick.Position)" fill="currentColor" fill-opacity="0.65" dominant-baseline="middle">@tick.Label</text>
+    }
+    @foreach (var candle in Model.Candles)
+    {
+        <g class="@(candle.Up ? "text-success" : "text-danger")">
+            <title>@candle.Tooltip</title>
+            <line x1="@N(candle.X)" x2="@N(candle.X)" y1="@N(candle.WickTop)" y2="@N(candle.WickBottom)" stroke="currentColor" stroke-width="1" />
+            <rect x="@N(candle.X - candle.BodyWidth / 2)" y="@N(candle.BodyY)" width="@N(candle.BodyWidth)" height="@N(candle.BodyHeight)" fill="currentColor" />
+        </g>
+    }
+    @foreach (var tick in Model.TimeTicks)
+    {
+        @:<text x="@N(tick.Position)" y="@N(Model.PlotBottom + 16)" text-anchor="middle" fill="currentColor" fill-opacity="0.65">@tick.Label</text>
+    }
+</svg>

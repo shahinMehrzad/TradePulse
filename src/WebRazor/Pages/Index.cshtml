@@ -1,26 +1,56 @@
-﻿@page
+@page
 @model IndexModel
 @{
     ViewData["Title"] = "Dashboard";
 }
 
-<div class="row row-cards">
-    <div class="col-sm-6 col-lg-4">
-        <div class="card">
-            <div class="card-body">
-                <div class="subheader">Signed in as</div>
-                <div class="h2 mb-1">@Model.Admin?.UserName</div>
-                <div class="text-secondary">@Model.Admin?.Email</div>
-            </div>
-        </div>
+@if (Model.Error is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.Error</div>
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div class="btn-group" role="group" aria-label="Market">
+        <a class="btn btn-sm @(Model.Market is null ? "active" : "")" asp-page="/Index">All</a>
+        @foreach (var market in IndexModel.Markets)
+        {
+            <a class="btn btn-sm @(Model.Market == market ? "active" : "")" asp-page="/Index" asp-route-market="@market">@(char.ToUpperInvariant(market[0]) + market[1..])</a>
+        }
     </div>
-    <div class="col-sm-6 col-lg-4">
-        <div class="card">
-            <div class="card-body">
-                <div class="subheader">Roles</div>
-                <div class="h2 mb-1">@string.Join(", ", Model.Admin?.Roles ?? [])</div>
-                <div class="text-secondary">Confirmed by the API just now</div>
-            </div>
-        </div>
+    <div class="text-secondary small">
+        @Model.Cards.Count series · closed candles only · times in UTC
+        @if (Model.GeneratedAt is { } generated)
+        {
+            <text> · updated @generated.ToString("HH:mm:ss") UTC</text>
+        }
     </div>
 </div>
+
+@if (Model.Cards.Count == 0 && Model.Error is null)
+{
+    <div class="empty">
+        <p class="empty-title">Nothing is being collected yet</p>
+        <p class="empty-subtitle text-secondary">
+            @(Model.Market is null ? "The dashboard shows every series the collector gathers." : $"No {Model.Market} series is collected.")
+            Add one under Collector series.
+        </p>
+        <div class="empty-action">
+            <a class="btn btn-primary" asp-page="/Series">Collector series</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row row-cards" data-series-grid>
+        @foreach (var card in Model.Cards)
+        {
+            <div class="col-sm-6 col-lg-6 col-xl-4 col-xxl-3">
+                <partial name="_SeriesCard" model="card" />
+            </div>
+        }
+    </div>
+}
+
+@section Scripts {
+    <script src="~/js/dashboard.js" asp-append-version="true"></script>
+}

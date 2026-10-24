@@ -1,0 +1,60 @@
+@using WebRazor.Api
+@using WebRazor.Display
+@model DashboardCard
+@{
+    var now = Model.Current;
+    var isEmpty = now.Status == "empty";
+    var up = (now.ChangePercent ?? 0m) >= 0m;
+    var tone = up ? "text-success" : "text-danger";
+    var (line, area) = Sparkline.Build(now.Sparkline ?? []);
+    var symbol = Model.Symbol.ToUpperInvariant();
+    var window = now.WindowStart is { } start && now.WindowEnd is { } end ? DashboardFormat.Window(start, end) : null;
+    var ago = now.LagSeconds is { } lag ? DashboardFormat.Ago(lag) : null;
+}
+<div class="card" data-series-card data-exchange="@Model.Exchange" data-market="@Model.Market" data-symbol="@Model.Symbol">
+    <div class="card-body position-relative">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+            <div class="fw-bold text-nowrap">
+                @symbol
+                <span class="badge @(Model.Market == "futures" ? "bg-blue-lt text-blue" : "bg-secondary-lt text-secondary") ms-1">@Model.Market</span>
+            </div>
+            @* Above the card's link (z-2), so choosing a time frame does not open the symbol. *@
+            <select class="form-select form-select-sm w-auto position-relative z-2" data-card-timeframe data-current="@now.Timeframe"
+                    aria-label="Time frame of @symbol @Model.Market" disabled="@(Model.Timeframes.Count < 2)">
+                @foreach (var timeframe in Model.Timeframes)
+                {
+                    <option value="@timeframe" selected="@(timeframe == now.Timeframe)">@timeframe</option>
+                }
+            </select>
+        </div>
+
+        @if (isEmpty)
+        {
+            <div class="h2 mt-2 mb-0 text-secondary">-</div>
+            <div class="text-secondary small my-3" style="min-height: 52px">No @now.Timeframe candles stored yet</div>
+        }
+        else
+        {
+            <div class="d-flex justify-content-between align-items-baseline mt-2">
+                <div class="h2 mb-0">@DashboardFormat.Price(now.LastClose!.Value)</div>
+                <span class="badge @(up ? "bg-success-lt" : "bg-danger-lt") @tone" title="Change from the first to the last point of the line, over @window">@(up ? "▲" : "▼") @DashboardFormat.Change(now.ChangePercent!.Value)</span>
+            </div>
+            <svg class="@tone d-block w-100 mt-2" viewBox="0 0 @Sparkline.Width @Sparkline.Height" preserveAspectRatio="none" height="@Sparkline.Height" role="img" aria-label="Closing prices of @symbol @now.Timeframe, @DashboardFormat.ChartTime(now.WindowStart!.Value, now.Timeframe) to @DashboardFormat.ChartTime(now.WindowEnd!.Value, now.Timeframe) UTC">
+                <polygon points="@area" fill="currentColor" fill-opacity="0.15" stroke="none" />
+                <polyline points="@line" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+            </svg>
+            <div class="d-flex justify-content-between text-secondary small mb-2" title="UTC: from the open of the first candle to the close of the last one">
+                <span>@DashboardFormat.ChartTime(now.WindowStart!.Value, now.Timeframe)</span>
+                <span>@DashboardFormat.ChartTime(now.WindowEnd!.Value, now.Timeframe)</span>
+            </div>
+        }
+
+        <div class="d-flex justify-content-between align-items-center text-secondary small">
+            <span title="Highest and lowest price traded over @window, wicks included, so the line of closing prices may not reach them">@(isEmpty ? "" : $"{window} · H {DashboardFormat.Price(now.High!.Value)} · L {DashboardFormat.Price(now.Low!.Value)}")</span>
+            <span class="badge @DashboardFormat.StatusBadge(now.Status)" title="@(isEmpty ? "Nothing stored yet" : $"The newest candle closed {ago}. Late means a whole candle (and a minute) is overdue.")">@DashboardFormat.StatusLabel(now.Status)@(ago is null ? "" : " · " + ago)</span>
+        </div>
+
+        <a class="stretched-link" asp-page="/Symbol" asp-route-exchange="@Model.Exchange" asp-route-market="@Model.Market"
+           asp-route-symbol="@Model.Symbol" asp-route-timeframe="@now.Timeframe" aria-label="Open @symbol @Model.Market @now.Timeframe"></a>
+    </div>
+</div>

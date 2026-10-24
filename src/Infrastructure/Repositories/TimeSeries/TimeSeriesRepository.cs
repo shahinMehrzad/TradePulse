@@ -29,6 +29,13 @@ public sealed class TimeSeriesRepository<T>(string connectionString, ITimeSeries
         return latest is null ? null : Timestamps.FromTimestamp(latest.Value);
     }
 
+    public async Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        return await connection.ExecuteScalarAsync<bool>(
+            new CommandDefinition("SELECT to_regclass(@Name) IS NOT NULL", new { Name = tableName }, cancellationToken: cancellationToken));
+    }
+
     public async Task<int> BulkInsert(string tableName, IEnumerable<T> rows, CancellationToken cancellationToken)
     {
         await using var connection = new NpgsqlConnection(connectionString);
