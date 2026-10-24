@@ -6,6 +6,9 @@ using Application.Interfaces;
 using Application.Queries.AdminConfigurations;
 using Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OData.Query;
+using Microsoft.OData;
+using WebApi.OData;
 
 namespace WebApi.Controllers.Admin
 {
@@ -15,6 +18,27 @@ namespace WebApi.Controllers.Admin
         public async Task<IActionResult> GetCandleWorkerConfigurations([FromQuery] GetPaginationCandleWorkerConfigurationsQuery payload, CancellationToken cancellationToken)
             => Ok(await dispatcher.SendAsync<GetPaginationCandleWorkerConfigurationsQuery, PaginationResponseDto<CandleWorkerConfiguration>>
                 (payload, cancellationToken));
+
+        /// <summary>
+        /// The candle series list with OData query options: <c>$filter</c>, <c>$orderby</c>, <c>$top</c>, <c>$skip</c>, <c>$count</c>.
+        /// Answers <c>{ count, value }</c>, where count is the number of rows matching the filter before paging.
+        /// </summary>
+        [HttpGet("candle-worker/odata")]
+        public async Task<IActionResult> QueryCandleWorkerConfigurations(
+            ODataQueryOptions<CandleWorkerConfigurationListItem> options,
+            [FromServices] IReadModel<CandleWorkerConfigurationListItem> readModel,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return Ok(await ODataQueryExecutor.ExecuteAsync(options, readModel, cancellationToken));
+            }
+            catch (ODataException ex)
+            {
+                // The parser's messages describe the query, not the server.
+                return Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+            }
+        }
 
         [HttpPost("add-config")]
         public async Task<IActionResult> AddCandleWorkerConfigurations(BaseCandleWorkerConfigurationDto payload, CancellationToken cancellationToken)

@@ -1,9 +1,11 @@
+using Application.Dtos.CandleWorkerConfigurations;
 using Application.Interfaces;
 using Domain.Entities;
 using Infrastructure.Identity;
 using Domain.Repositories;
 using Infrastructure.Configurations;
 using Infrastructure.Persistence;
+using Infrastructure.ReadModels;
 using Infrastructure.Repositories;
 using Infrastructure.Repositories.TimeSeries;
 using Microsoft.AspNetCore.Identity;
@@ -27,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<ILookupsRepository, LookupsRepository>();
         services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();
         services.AddScoped<ISymbolDataConfigurationRepository, SymbolDataConfigurationRepository>();
+        services.AddScoped<IReadModel<CandleWorkerConfigurationListItem>, CandleWorkerConfigurationReadModel>();
 
         // The config schema (series the admin chose) is read by the worker and written by WebApi, so it lives here, not with auth.
         // ConfigConnection is optional: the schema normally sits in the same database as everything else.

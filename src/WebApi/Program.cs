@@ -1,13 +1,18 @@
 using System.Threading.RateLimiting;
 using Application;
 using Infrastructure;
+using Microsoft.AspNetCore.OData;
 using WebApi.Authentication;
 using WebApi.Controllers;
 using WebApi.Endpoints;
 using WebApi.ErrorHandling;
+using WebApi.OData;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddControllers();
+// OData only parses and applies query options (see ODataQueryExecutor); there are no OData routes or $metadata.
+// Select/Expand/Apply stay off here and are rejected by ODataQueryExecutor as well.
+builder.Services.AddControllers().AddOData(options =>
+    options.Filter().OrderBy().Count().SetMaxTop(ODataQueryExecutor.MaxTop));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
