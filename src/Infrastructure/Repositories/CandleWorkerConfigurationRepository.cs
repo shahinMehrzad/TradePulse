@@ -67,7 +67,7 @@ namespace Infrastructure.Repositories
         }
 
         public async Task<IReadOnlyList<CandleWorkerConfiguration>> GetConfigurationList(CancellationToken cancellationToken)
-            => await context.CandleWorkerConfigurations.OrderBy(c => c.Symbol.Name)
+            => await context.CandleWorkerConfigurations.OrderBy(c => c.Symbol!.Name)
                 .ThenBy(c => c.Id).AsNoTracking().ToListAsync(cancellationToken);
 
         public async Task<(IReadOnlyList<CandleWorkerConfiguration> result, int totalCount)> GetConfigurationsListByPagination(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
@@ -80,8 +80,8 @@ namespace Infrastructure.Repositories
             }
             var totalCount = await query.CountAsync(cancellationToken);
             return (await query
-                .OrderBy(c => c.Symbol.Name)
-                .ThenBy(c => c.TimeFrame.IntervalToSeconds)
+                .OrderBy(c => c.Symbol!.Name)
+                .ThenBy(c => c.TimeFrame!.IntervalToSeconds)
                 .ThenBy(c => c.Id)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)

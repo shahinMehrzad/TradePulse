@@ -50,6 +50,7 @@ public static class HealthRegistration
         // Whether the worker knows what to collect, and the checks that only matter once it does. These are harmless while
         // idle: a request component that has not made a request is healthy, and the gated checks report "not in use".
         checks.AddTypeActivatedCheck<CandleSeriesHealthCheck>(HealthComponents.CandleSeries);
+        checks.AddTypeActivatedCheck<SymbolDataHealthCheck>(HealthComponents.SymbolData);
         checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.SpotRest, HealthComponents.SpotRest);
         checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.CandleRequests, HealthComponents.CandleRequests);
 
