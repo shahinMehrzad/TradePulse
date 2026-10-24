@@ -1,0 +1,33 @@
+# WebApi reference
+
+[Back to the README](../README.md)
+
+## Candle read API
+
+Read-only access to the stored closed candles; the route names the series and the table name is derived from the parsed enums only. **Requires a bearer token** (`POST /api/auth/login`, then `Authorization: Bearer <accessToken>`).
+
+| Request | Returns |
+|---|---|
+| `GET /api/candles/binance/futures/btcusdt/4h?from=&to=&limit=` | Candles in a range, oldest first, one page (default 500, max 1000). Follow `nextFrom` for the next page. |
+| `GET /api/candles/binance/futures/btcusdt/4h/latest?limit=78&to=` | The newest N candles up to an optional time, oldest first: the lookback window an indicator such as Ichimoku needs. |
+
+Times are ISO 8601 UTC (offset-less input is read as UTC). Bad input is a 400 with the offending parameter, a series the collector never created is a 404. The endpoints talk to `ICandleReader`, so the cache is a decorator behind it (see [Candle cache](candle-cache.md)).
+
+## Dashboard
+
+Admin only (bearer token with the admin role). Built from the stored candles for the panel's home page.
+
+| Request | Returns |
+|---|---|
+| `GET /api/admin/dashboard/series?market=futures` | One card per exchange market symbol the collector gathers (`market` is optional). |
+| `GET /api/admin/dashboard/series/binance/futures/btcusdt?timeframe=4h&candles=80` | The same card for one time frame, plus `related`: the funding rate, open interest and liquidations that are collected. Futures only. |
+
+A card has the collected `timeframes`, the shortest as `defaultTimeframe`, and `current`: last close, the change, high, low and volume, a `sparkline` of closes, and `lagSeconds` since the newest candle closed. Everything in `current` describes the same newest candles (24 by default, `candles=2..500` on the second request), from `windowStart` (open of the first) to `windowEnd` (close of the last), so a card's colour always agrees with the line it draws.
+
+`status` is `ok`, `late` (a whole candle is overdue) or `empty` (no table or no rows yet; the other fields are null). The second request answers `404` when the series or that time frame is not collected and `400` for an unknown name.
+
+## Authentication
+
+`POST /api/auth/login` issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret and the seeded admin credentials are **not** in the committed `appsettings.json`: Development gets throwaway values from `appsettings.Development.json`; anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes) and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.
+
+`POST /api/auth/refresh-token` with `{ "refreshToken": "..." }` (and the same `X-Device-Id` header used at login) returns a new access token and a new refresh token. It needs no access token, since that is usually expired by then. Refresh tokens are single-use (rotated), bound to the device they were issued to, expire after `RefreshTokenDurationInDays`, and only their SHA-256 hash is stored. Concurrent use of one token succeeds exactly once.
