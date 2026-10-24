@@ -132,6 +132,17 @@ public sealed class TradePulseApiClient(HttpClient http)
         return "(" + string.Join(" or ", fields.Select(field => $"contains(tolower({field}),{term})")) + ")";
     }
 
+    /// <returns>What the collector says about itself, or null when the session is no longer accepted by the API.</returns>
+    public async Task<CollectorHealth?> GetCollectorHealthAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("api/admin/collector/health", cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<CollectorHealth>(cancellationToken);
+    }
+
     /// <returns>One page of the audit log, or null when the session is no longer accepted by the API.</returns>
     public async Task<AuditPage?> GetAuditLogAsync(AuditQuery query, CancellationToken cancellationToken)
     {

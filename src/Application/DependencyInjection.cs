@@ -12,17 +12,13 @@ namespace Application;
 
 public static class DependencyInjection
 {
-    /// <summary>The namespace of the sign-in handlers; they need the identity infrastructure only the API has.</summary>
-    private const string AuthNamespace = "Application.Commands.Auth";
+    
+    public static readonly string[] ApiOnlyNamespaces = ["Application.Commands.Auth", "Application.Queries.Collector"];
+        
 
-    /// <summary>
-    /// Every handler except the sign-in ones, which <see cref="AddAuthApplicationServices"/> adds. The collector uses this alone:
-    /// it has no identity infrastructure, and a handler registered without its dependencies makes a container that validates
-    /// itself on build (the Development default) refuse to start.
-    /// </summary>
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
-        AddHandlers(services, type => !IsAuthHandler(type));
+        AddHandlers(services, type => !IsApiOnlyHandler(type));
 
         services.AddScoped<ICommandDispatcher, CommandDispatcher>();
         services.AddScoped<ICandleReader, CandleReader>();
@@ -33,14 +29,13 @@ public static class DependencyInjection
         return services;
     }
 
-    /// <summary>The sign-in handlers (login, refresh token). Needs <c>AddAuthInfrastructure</c>.</summary>
-    public static IServiceCollection AddAuthApplicationServices(this IServiceCollection services)
+    public static IServiceCollection AddApiOnlyApplicationServices(this IServiceCollection services)
     {
-        AddHandlers(services, IsAuthHandler);
+        AddHandlers(services, IsApiOnlyHandler);
         return services;
     }
 
-    private static bool IsAuthHandler(Type type) => type.Namespace == AuthNamespace;
+    private static bool IsApiOnlyHandler(Type type) => ApiOnlyNamespaces.Contains(type.Namespace);
 
     private static void AddHandlers(IServiceCollection services, Func<Type, bool> include)
     {
@@ -57,10 +52,6 @@ public static class DependencyInjection
         }
     }
 
-    /// <summary>
-    /// Wraps the candle reader in a <see cref="HybridCache"/> decorator. Entries live in process memory; if an
-    /// <c>IDistributedCache</c> (e.g. Redis) is registered, HybridCache uses it as the shared second level.
-    /// </summary>
     public static IServiceCollection AddCandleCaching(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<CandleCacheOptions>(configuration.GetSection(CandleCacheOptions.SectionName));

@@ -41,6 +41,12 @@ public record SeriesPage(IReadOnlyList<CandleWorkerSeries> Items, int PageNumber
     public bool HasNext => PageNumber < TotalPages;
 }
 
+/// <summary>The collector's own report as the API relays it. <c>State</c> is answered, notConfigured or unreachable; the rest is only there when it answered.</summary>
+public record CollectorHealth(string State, string? Status, DateTime CheckedAt, IReadOnlyList<CollectorHealthCheck> Checks);
+
+/// <summary>One component of the collector. <c>Status</c> is Healthy, Degraded or Unhealthy.</summary>
+public record CollectorHealthCheck(string Name, string Status, string? Description, IReadOnlyDictionary<string, string> Data);
+
 /// <summary>One line of the audit log: who changed which setting, how, and what was different. Times are UTC.</summary>
 public record AuditEntry(long Id, DateTime OccurredAt, string UserName, string Action, string EntityType, int EntityId, string Summary, string? Details);
 
