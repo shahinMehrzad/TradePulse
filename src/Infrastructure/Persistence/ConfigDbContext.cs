@@ -16,6 +16,7 @@ public class ConfigDbContext : DbContext
     public DbSet<TimeFrameLookup> TimeFrames => Set<TimeFrameLookup>();
     public DbSet<CandleWorkerConfiguration> CandleWorkerConfigurations => Set<CandleWorkerConfiguration>();
     public DbSet<SymbolDataConfiguration> SymbolDataConfigurations => Set<SymbolDataConfiguration>();
+    public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -91,6 +92,23 @@ public class ConfigDbContext : DbContext
 
             // One row per symbol of an exchange market.
             e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId }).IsUnique();
+        });
+
+        // Who changed which setting. Rows are only ever added; no foreign keys, because a removed setting must keep its history.
+        builder.Entity<AuditLogEntry>(e =>
+        {
+            e.ToTable("audit_log", "config");
+
+            // Time columns are timestamp (no zone), always UTC.
+            e.Property(x => x.OccurredAt).HasColumnType("timestamp");
+
+            e.Property(x => x.UserName).HasMaxLength(256);
+            e.Property(x => x.Action).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.EntityType).HasMaxLength(32);
+            e.Property(x => x.Summary).HasMaxLength(256);
+
+            e.HasIndex(x => x.OccurredAt);
+            e.HasIndex(x => new { x.EntityType, x.EntityId });
         });
     }
 }

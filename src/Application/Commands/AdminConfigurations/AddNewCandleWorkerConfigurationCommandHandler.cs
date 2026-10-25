@@ -4,10 +4,11 @@ using Domain.Entities;
 using Domain.Exceptions;
 using Domain.Extensions;
 using Domain.Repositories;
+using Application.Services;
 
 namespace Application.Commands.AdminConfigurations;
 
-public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerConfigurationRepository workerConfigurationRepository)
+public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerConfigurationRepository workerConfigurationRepository, AuditTrail audit)
     : ICommandHandler<BaseCandleWorkerConfigurationDto, int>
 {
     public async Task<int> HandleAsync(BaseCandleWorkerConfigurationDto request, CancellationToken cancellationToken)
@@ -30,7 +31,7 @@ public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         if (existingConfiguration is not null)
             throw new ConfigurationConflictException("Configuration already exists.");
 
-        return await workerConfigurationRepository.AddNewCandleWorkerConfiguration(new CandleWorkerConfiguration
+        var configuration = new CandleWorkerConfiguration
         {
             ExchangeId = request.ExchangeId,
             MarketId = request.MarketId,
@@ -38,6 +39,11 @@ public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerC
             TimeFrameId = request.TimeFrameId,
             SymbolId = request.SymbolId,
             CollectOpenInterest = request.CollectOpenInterest
-        }, cancellationToken);
+        };
+
+        var id = await workerConfigurationRepository.AddNewCandleWorkerConfiguration(configuration, cancellationToken);
+        await audit.RecordAsync(AuditAction.Added, AuditEntityTypes.CandleSeries, id,
+            AuditDescriptions.Summary(configuration), AuditDescriptions.Values(configuration), cancellationToken);
+        return id;
     }
 }

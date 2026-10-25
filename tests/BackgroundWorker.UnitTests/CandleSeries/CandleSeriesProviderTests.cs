@@ -30,6 +30,21 @@ public class CandleSeriesProviderTests
         }
     }
 
+    /// <summary>
+    /// Moves the fake clock until the condition holds. The provider sets its status before it starts the wait for the next
+    /// read, so a single jump made right after the status changed can happen before that timer exists and would be lost.
+    /// </summary>
+    private async Task AdvanceUntilAsync(TimeSpan step, Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the provider did not reach the expected state in time");
+            _time.Advance(step);
+            await Task.Delay(5, Ct);
+        }
+    }
+
     [Fact]
     public async Task SeriesThatAreThereAtStartAreServedAtOnce()
     {
@@ -69,7 +84,7 @@ public class CandleSeriesProviderTests
 
         // The admin adds the first series; the next look finds it.
         _source.Series.Add(Btc4h);
-        _time.Advance(CandleSeriesProvider.RetryDelay);
+        await AdvanceUntilAsync(CandleSeriesProvider.RetryDelay, () => waiting.IsCompleted);
 
         Assert.Equal(Btc4h, Assert.Single(await waiting.WaitAsync(TimeSpan.FromSeconds(5), Ct)));
         Assert.Equal(PlanStatus.Loaded, provider.Status);
@@ -90,7 +105,7 @@ public class CandleSeriesProviderTests
         // The database comes back with a series: the worker recovers by itself.
         _source.Failure = null;
         _source.Series.Add(Btc4h);
-        _time.Advance(CandleSeriesProvider.RetryDelay);
+        await AdvanceUntilAsync(CandleSeriesProvider.RetryDelay, () => provider.Status == PlanStatus.Loaded);
 
         await provider.WaitForSeriesAsync(Ct).WaitAsync(TimeSpan.FromSeconds(5), Ct);
         Assert.Equal((PlanStatus.Loaded, null), (provider.Status, provider.LastError));
@@ -108,8 +123,7 @@ public class CandleSeriesProviderTests
         await Task.Delay(50, Ct);
         Assert.Equal(1, _source.Calls);
 
-        _time.Advance(TimeSpan.FromSeconds(1));
-        await WaitUntilAsync(() => _source.Calls == 2);
+        await AdvanceUntilAsync(TimeSpan.FromSeconds(1), () => _source.Calls == 2);
     }
 
     [Fact]

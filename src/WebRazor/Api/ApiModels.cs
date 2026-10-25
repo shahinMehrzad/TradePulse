@@ -41,6 +41,18 @@ public record SeriesPage(IReadOnlyList<CandleWorkerSeries> Items, int PageNumber
     public bool HasNext => PageNumber < TotalPages;
 }
 
+/// <summary>One line of the audit log: who changed which setting, how, and what was different. Times are UTC.</summary>
+public record AuditEntry(long Id, DateTime OccurredAt, string UserName, string Action, string EntityType, int EntityId, string Summary, string? Details);
+
+/// <summary>What the audit log page asks for; empty fields do not filter. <c>From</c> and <c>To</c> are UTC dates, <c>To</c> included.</summary>
+public record AuditQuery(string? Action, string? EntityType, string? User, string? Search, DateTime? From, DateTime? To, bool NewestFirst, int PageNumber, int PageSize);
+
+/// <summary>One page of the audit log, with the totals the API reports for the filtered log.</summary>
+public record AuditPage(IReadOnlyList<AuditEntry> Items, int PageNumber, int PageSize, int TotalItems, int TotalPages)
+{
+    public bool HasNext => PageNumber < TotalPages;
+}
+
 /// <summary>What the panel sends to add or change a series. <c>StartDate</c> is a UTC date.</summary>
 public record SeriesRequest(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest);
 

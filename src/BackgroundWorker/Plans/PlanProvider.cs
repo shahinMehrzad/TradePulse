@@ -119,8 +119,9 @@ public abstract class PlanProvider<TPlan>(IPlanSource<TPlan> source, TimeProvide
             if (_status != PlanStatus.Failed)
                 logger.LogError(ex, "Cannot read the {What}; the collector waits and retries every {Delay}.", what, RetryDelay);
 
-            _status = PlanStatus.Failed;
+            // The error goes first so that whoever sees Failed (health, a test) never finds it without the error type.
             _lastError = ex.GetType().Name;
+            _status = PlanStatus.Failed;
             return null;
         }
     }
