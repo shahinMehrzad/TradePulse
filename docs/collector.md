@@ -13,7 +13,7 @@ Highlights of the collection path:
 
 - **Idempotent, fast writes:** binary `COPY` into a temp table, then `INSERT ... ON CONFLICT DO NOTHING`, so re-fetching any range is always safe.
 - **Rate-limit aware:** one shared weight limiter per market, so all collectors draw from the same Binance budget; exponential backoff on failures.
-- **Self-healing data:** a daily `LAG()`-based gap detector refills missing candles. Database errors are never mistaken for an empty table.
+- **Self-healing data:** a daily `LAG()`-based gap detector refills missing candles. Database errors are never mistaken for an empty table. Holes the exchange itself has no candles for (maintenance, no trades) stay open and are not retried in a loop; they are logged and listed by the `candle-gaps` check of `/health`: per series how many gaps, how many candles are missing and from when. That check is always healthy, because such a hole is a fact about the data, not a fault of the collector; it is there so the people using the data can see where the holes are.
 - **Boundary-aligned scheduling:** one loop per timeframe wakes just after each candle closes.
 - **Non-blocking liquidation pipeline:** the WebSocket callback only enqueues into a bounded `Channel<T>`; a single writer drains it in batches.
 - **Live candles over WebSocket:** closed klines are stored the moment they close (the callback enqueues, one writer batches). The REST loop still runs at every boundary as the watchdog, and a socket reconnect triggers an immediate REST sync plus gap repair. Live candles are only accepted for a table after its first REST sync, so they can never hide missing history.

@@ -56,6 +56,8 @@ public static class HealthRegistration
 
         // Data-level check: connections can be fine while candles stop being stored.
         services.AddSingleton<CandleFreshnessMonitor>();
+        services.AddSingleton<OpenGaps>();
+        checks.AddTypeActivatedCheck<CandleGapsHealthCheck>(HealthComponents.CandleGaps);
         checks.AddTypeActivatedCheck<CandleFreshnessHealthCheck>(HealthComponents.CandleFreshness);
 
         if (liveCandles.LiveCandles)

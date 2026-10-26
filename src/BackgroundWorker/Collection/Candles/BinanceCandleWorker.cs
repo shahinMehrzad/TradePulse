@@ -20,6 +20,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         ICandleGateway candleGateway,
         CandleSyncCoordinator coordinator,
         WorkerHealthState health,
+        OpenGaps openGaps,
         CollectionStats stats) : BackgroundService
 {
     private const int MaxParallelSymbols = 4;
@@ -200,6 +201,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         var intervalSpan = plan.Series.Interval;
 
         var gaps = await repository.GetGapsAsync(tableName, intervalSpan, plan.StartDate, ct);
+        var filledSome = false;
         foreach (var gap in gaps)
         {
             var (inserted, _) = await FetchRangeAsync(plan, repository, tableName,
@@ -210,9 +212,17 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 logger.LogInformation("Gap {From:u} .. {To:u} in {Table} could not be filled (likely missing on exchange)",
                     gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName);
             else
+            {
+                filledSome = true;
                 logger.LogWarning("Repaired gap {From:u} .. {To:u} in {Table}: {Count} candles",
                     gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName, inserted);
+            }
         }
+
+        // What is still open: the holes nothing could be inserted for. A hole that was filled in part leaves a smaller one behind,
+        // so when anything was inserted the table is looked at again instead of guessing.
+        var open = filledSome ? await repository.GetGapsAsync(tableName, intervalSpan, plan.StartDate, ct) : gaps;
+        openGaps.Set(tableName, open, intervalSpan);
     }
     
     private async Task<(int Inserted, bool Completed)> FetchRangeAsync(
