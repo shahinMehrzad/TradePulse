@@ -28,24 +28,22 @@ public class BinanceOpenInterestWorker(
     WorkerHealthState health,
     CollectionStats stats) : BackgroundService
 {    
+    // One loop per time frame; only the series matter, so a change of a start date is no concern of this worker.
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
-        PlanRunner.RunAsync(seriesProvider,
+        PlanRunner.RunGroupedAsync(seriesProvider,
             plans => OpenInterestPlans.SelectForBinance(plans, (s, reason) =>
-                logger.LogWarning("Open interest is not collected for {Symbol} {Interval}: {Reason}", s.Series.Symbol, s.Series.Timeframe, reason)),
+                logger.LogWarning("Open interest is not collected for {Symbol} {Interval}: {Reason}", s.Series.Symbol, s.Series.Timeframe, reason))
+                .Select(p => p with { StartDate = default }).ToList(),
+            plan => plan.Series.Timeframe,
             CollectAsync, logger, "open interest series", stoppingToken);
 
-    private async Task CollectAsync(IReadOnlyList<CandleSeriesPlan> series, CancellationToken stoppingToken)
+    private async Task CollectAsync(TimeFrameEnum timeframe, IReadOnlyList<CandleSeriesPlan> series, CancellationToken stoppingToken)
     {
         try
         {
             await EnsureTablesAsync(series, stoppingToken);
-
-            await Task.WhenAll(series.GroupBy(p => p.Series.Timeframe).Select(group =>
-            {
-                var forPeriod = group.ToList();
-                return MarketClock.RunEveryIntervalAsync(
-                    TimeSpan.FromSeconds((int)group.Key), ct => SyncAllAsync(forPeriod, ct), stoppingToken);
-            }));
+            var forPeriod = series.ToList();
+            await MarketClock.RunEveryIntervalAsync(TimeSpan.FromSeconds((int)timeframe), ct => SyncAllAsync(forPeriod, ct), stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

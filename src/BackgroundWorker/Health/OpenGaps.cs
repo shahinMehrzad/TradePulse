@@ -7,7 +7,11 @@ namespace BackgroundWorker.Health;
 /// <param name="Gaps">How many separate holes are left. 0 means the table was looked at and is complete.</param>
 /// <param name="MissingCandles">How many candles are missing in all of them.</param>
 /// <param name="Oldest">The open time of the first missing candle (UTC), or null when nothing is missing.</param>
-public readonly record struct GapSummary(int Gaps, long MissingCandles, DateTime? Oldest);
+/// <param name="DataStartsAt">
+/// The open time of the first stored candle when it is later than the start date that was asked for (the symbol was listed later and
+/// the exchange has nothing before). That is the start of the series, not a hole in it, so it is not counted in the other numbers.
+/// </param>
+public readonly record struct GapSummary(int Gaps, long MissingCandles, DateTime? Oldest, DateTime? DataStartsAt = null);
 
 /// <summary>
 /// The gaps the candle workers could not fill, per table, as of each table's last repair (at startup, every 24 h and after a socket
@@ -19,11 +23,14 @@ public sealed class OpenGaps
 {
     private readonly ConcurrentDictionary<string, GapSummary> _byTable = new();
 
-    /// <summary>Records what is left open in <paramref name="table"/>; an empty list records that it was checked and is complete.</summary>
-    public void Set(string table, IReadOnlyList<CandleGap> gaps, TimeSpan interval)
+    /// <summary>
+    /// Records what is left open in <paramref name="table"/>; an empty list records that it was checked and is complete.
+    /// <paramref name="dataStartsAt"/> says where the data begins when that is later than the start date asked for.
+    /// </summary>
+    public void Set(string table, IReadOnlyList<CandleGap> gaps, TimeSpan interval, DateTime? dataStartsAt = null)
     {
         var missing = gaps.Sum(g => (long)((g.LastMissingOpenTime - g.FirstMissingOpenTime) / interval) + 1);
-        _byTable[table] = new GapSummary(gaps.Count, missing, gaps.Count == 0 ? null : gaps.Min(g => g.FirstMissingOpenTime));
+        _byTable[table] = new GapSummary(gaps.Count, missing, gaps.Count == 0 ? null : gaps.Min(g => g.FirstMissingOpenTime), dataStartsAt);
     }
 
     /// <summary>The summary of a table, or null when its gaps were never looked at.</summary>

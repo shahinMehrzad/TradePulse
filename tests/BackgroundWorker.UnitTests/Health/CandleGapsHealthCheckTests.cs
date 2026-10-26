@@ -95,6 +95,17 @@ public class CandleGapsHealthCheckTests
     }
 
     [Fact]
+    public async Task ASeriesThatStartsAfterItsStartDateIsNamedApartAndIsNotCountedAsMissingCandles()
+    {
+        _gaps.Set(Table(SymbolEnum.BTCUSDT), [], Hour, dataStartsAt: new DateTime(2023, 5, 3, 16, 0, 0, DateTimeKind.Utc));
+
+        var result = await RunWith([SymbolEnum.BTCUSDT]);
+
+        Assert.Equal("No open gaps in 1 series", result.Description);
+        Assert.Equal($"1 series start after their start date: {Table(SymbolEnum.BTCUSDT)} from 2023-05-03", result.Data["listed-later"]);
+    }
+
+    [Fact]
     public async Task SeriesNotCheckedYetAreCountedButDoNotHideTheOnesThatWere()
     {
         _gaps.Set(Table(SymbolEnum.BTCUSDT), [Gap(13, 2, 5)], Hour);

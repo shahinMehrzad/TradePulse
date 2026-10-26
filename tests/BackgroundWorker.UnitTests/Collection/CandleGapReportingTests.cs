@@ -39,6 +39,7 @@ public class CandleGapReportingTests
             return Task.FromResult(gapsPerLook[Math.Min(look, gapsPerLook.Length - 1)]);
         }
 
+        public Task<DateTimeOffset?> GetFirstOpenTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken) =>
             Task.FromResult<DateTimeOffset?>(DateTimeOffset.UtcNow);   // nothing newer can be closed yet
 
@@ -66,7 +67,7 @@ public class CandleGapReportingTests
         var provider = await CandleSeriesTestSupport.LoadedProviderAsync(TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
         using var worker = new BinanceCandleWorker(
             scopes, NullLogger<BinanceCandleWorker>.Instance, provider, gateway, new CandleSyncCoordinator(),
-            new WorkerHealthState(TimeProvider.System), openGaps, new CollectionStats());
+            new WorkerHealthState(TimeProvider.System), openGaps, new GapRepairSchedule(TimeProvider.System), new CollectionStats());
 
         await worker.StartAsync(Ct);
         var deadline = DateTime.UtcNow.AddSeconds(5);

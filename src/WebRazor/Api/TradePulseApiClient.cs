@@ -187,6 +187,25 @@ public sealed class TradePulseApiClient(HttpClient http)
     /// <summary>The API's OData answer: one page of rows and the number of rows that matched.</summary>
     private sealed record SeriesPageWire(int Count, List<CandleWorkerSeries>? Value);
 
+    /// <returns>The series that start later than their start date, or null when the session is no longer accepted by the API.</returns>
+    public async Task<IReadOnlyList<LateStart>?> GetLateStartsAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync($"{SeriesRoot}/candle-worker/late-starts", cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<LateStart>>(cancellationToken) ?? [];
+    }
+
+    /// <param name="id">The series to move to its first candle; null for every series that starts later than its start date.</param>
+    public async Task<ApiResult> AlignStartsAsync(int? id, CancellationToken cancellationToken)
+    {
+        var url = id is { } one ? $"{SeriesRoot}/candle-worker/{one}/align-start" : $"{SeriesRoot}/candle-worker/align-starts";
+        using var response = await http.PostAsync(url, content: null, cancellationToken);
+        return await ToResultAsync(response, NotFoundSeries, cancellationToken);
+    }
+
     public async Task<ApiResult> AddSeriesAsync(SeriesRequest request, CancellationToken cancellationToken)
     {
         using var response = await http.PostAsJsonAsync($"{SeriesRoot}/add-config", request, cancellationToken);

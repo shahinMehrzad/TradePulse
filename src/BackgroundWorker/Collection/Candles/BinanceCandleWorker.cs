@@ -21,29 +21,26 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         CandleSyncCoordinator coordinator,
         WorkerHealthState health,
         OpenGaps openGaps,
+        GapRepairSchedule schedule,
         CollectionStats stats) : BackgroundService
 {
     private const int MaxParallelSymbols = 4;
     private const int MaxRetries = 5;
 
-    private static readonly TimeSpan GapCheckPeriod = TimeSpan.FromHours(24);
     private static readonly TimeSpan TableRetryDelay = TimeSpan.FromSeconds(10);
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
-        PlanRunner.RunAsync(seriesProvider, plans => plans.ForExchange(ExchangeEnum.Binance).ToList(), CollectAsync, logger, "candle series", stoppingToken);
+        PlanRunner.RunGroupedAsync(seriesProvider,
+            plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false }).ToList(),
+            plan => (int)plan.Series.Timeframe,
+            CollectAsync, logger, "candle series", stoppingToken);
 
-    private async Task CollectAsync(IReadOnlyList<CandleSeriesPlan> series, CancellationToken ct)
+    private async Task CollectAsync(int timeframeSeconds, IReadOnlyList<CandleSeriesPlan> series, CancellationToken ct)
     {
         try
         {
             await EnsureTablesAsync(series, ct);
-
-            var groups = series
-                .GroupBy(p => (int)p.Series.Timeframe)
-                .ToList();
-
-            await Task.WhenAll(groups.Select(g =>
-                RunIntervalLoopAsync(TimeSpan.FromSeconds(g.Key), g.ToList(), ct)));
+            await RunIntervalLoopAsync(TimeSpan.FromSeconds(timeframeSeconds), series.ToList(), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -75,29 +72,23 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
     private async Task RunIntervalLoopAsync(TimeSpan interval, List<CandleSeriesPlan> plans, CancellationToken ct)
     {
+        // Registered first so that a resync during the first pass is not lost; unregistered when the loop is replaced.
         var resyncRequests = coordinator.Register();
 
         try
         {
             await SyncAllSymbolsAsync(plans, ct);
-            await RepairGapsAsync(plans, ct);
-            var lastGapCheck = DateTime.UtcNow;
+            await RepairGapsAsync(plans, force: false, ct);
 
             while (!ct.IsCancellationRequested)
             {
+                // The boundary sync always runs, even when the live stream delivered the candle (the watchdog):
+                // it is one cheap request per symbol and ON CONFLICT DO NOTHING makes the overlap harmless.
                 var resync = await WaitForBoundaryOrResyncAsync(interval, resyncRequests, ct);
                 await SyncAllSymbolsAsync(plans, ct);
 
-                if (resync)
-                {
-                    await RepairGapsAsync(plans, ct);
-                    lastGapCheck = DateTime.UtcNow;
-                }
-                else if (DateTime.UtcNow - lastGapCheck >= GapCheckPeriod)
-                {
-                    await RepairGapsAsync(plans, ct);
-                    lastGapCheck = DateTime.UtcNow;
-                }
+                // After a reconnect everything is repaired, otherwise only the tables whose daily turn has come.
+                await RepairGapsAsync(plans, force: resync, ct);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -170,10 +161,15 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             coordinator.MarkReady(tableName);
     }
 
-    private async Task RepairGapsAsync(List<CandleSeriesPlan> plans, CancellationToken ct)
+    private async Task RepairGapsAsync(List<CandleSeriesPlan> plans, bool force, CancellationToken ct)
     {
+        // The gap query scans a whole table: only the tables that are due, unless everything is asked for.
+        var due = force ? plans : plans.Where(p => schedule.IsDue(p.Series.TableName)).ToList();
+        if (due.Count == 0)
+            return;
+
         await Parallel.ForEachAsync(
-            plans,
+            due,
             new ParallelOptions { MaxDegreeOfParallelism = MaxParallelSymbols, CancellationToken = ct },
             async (plan, token) =>
             {
@@ -204,6 +200,12 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         var filledSome = false;
         foreach (var gap in gaps)
         {
+            if (gap.BeforeFirstCandle)
+            {
+                filledSome |= await TryFillBeforeFirstCandleAsync(plan, repository, gap, ct);
+                continue;
+            }
+
             var (inserted, _) = await FetchRangeAsync(plan, repository, tableName,
                 gap.FirstMissingOpenTime, gap.LastMissingOpenTime, ct);
 
@@ -219,12 +221,39 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             }
         }
 
-        // What is still open: the holes nothing could be inserted for. A hole that was filled in part leaves a smaller one behind,
-        // so when anything was inserted the table is looked at again instead of guessing.
+        // A hole filled in part leaves a smaller one behind, so after any insert the table is looked at again.
         var open = filledSome ? await repository.GetGapsAsync(tableName, intervalSpan, plan.StartDate, ct) : gaps;
-        openGaps.Set(tableName, open, intervalSpan);
+
+        // The run in front of the first candle is where the series starts, not a hole in it.
+        var beforeFirst = open.Where(g => g.BeforeFirstCandle).Select(g => (DateTime?)(g.LastMissingOpenTime + intervalSpan)).FirstOrDefault();
+        openGaps.Set(tableName, open.Where(g => !g.BeforeFirstCandle).ToList(), intervalSpan, beforeFirst);
+        schedule.MarkRepaired(tableName);
     }
-    
+
+    // Usually the symbol was listed after the start date and the exchange has nothing there: ask once, then not again while the
+    // first candle stays the same. True when something was inserted.
+    private async Task<bool> TryFillBeforeFirstCandleAsync(CandleSeriesPlan plan, ICandleRepository repository, CandleGap gap, CancellationToken ct)
+    {
+        var tableName = plan.Series.TableName;
+        var firstCandle = gap.LastMissingOpenTime + plan.Series.Interval;
+
+        if (schedule.KnowsNothingBefore(tableName, firstCandle))
+            return false;
+
+        var (inserted, _) = await FetchRangeAsync(plan, repository, tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime, ct);
+        if (inserted == 0)
+        {
+            schedule.RememberNothingBefore(tableName, firstCandle);
+            logger.LogDebug("{Table} starts at {First:u}: the exchange has no candles between the start date {Start:u} and then",
+                tableName, firstCandle, plan.StartDate);
+            return false;
+        }
+
+        logger.LogWarning("Repaired the start of {Table} ({From:u} .. {To:u}): {Count} candles",
+            tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime, inserted);
+        return true;
+    }
+
     private async Task<(int Inserted, bool Completed)> FetchRangeAsync(
         CandleSeriesPlan plan, ICandleRepository repository, string tableName,
         DateTime from, DateTime? to, CancellationToken ct)

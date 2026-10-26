@@ -34,6 +34,7 @@ public static class CollectorRegistration
         services.AddHostedService(provider => provider.GetRequiredService<SymbolDataProvider>());
 
         services.AddSingleton<CandleSyncCoordinator>();
+        services.AddSingleton<GapRepairSchedule>();
         services.AddSingleton<CollectionStats>();
         services.AddWorkerHealth(configuration);
 

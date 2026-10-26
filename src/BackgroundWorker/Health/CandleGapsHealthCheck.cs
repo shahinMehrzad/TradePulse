@@ -26,6 +26,13 @@ public sealed class CandleGapsHealthCheck(OpenGaps gaps, CandleSeriesProvider se
         if (open.Count > MaxListed)
             data["more"] = $"{open.Count - MaxListed} more series";
 
+        var listedLater = looked.Where(x => x.Summary.DataStartsAt is not null).OrderBy(x => x.Table, StringComparer.Ordinal).ToList();
+        if (listedLater.Count > 0)
+        {
+            var shown = listedLater.Take(3).Select(x => $"{x.Table} from {x.Summary.DataStartsAt:yyyy-MM-dd}");
+            data["listed-later"] = $"{listedLater.Count} series start after their start date: {string.Join(", ", shown)}{(listedLater.Count > 3 ? ", ..." : "")}";
+        }
+
         var pending = notLooked > 0 ? $" ({notLooked.ToString(CultureInfo.InvariantCulture)} not checked yet)" : "";
 
         if (looked.Count == 0)

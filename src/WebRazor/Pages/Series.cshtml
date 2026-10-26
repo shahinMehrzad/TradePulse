@@ -24,6 +24,22 @@
     </div>
 }
 
+@if (Model.LateStarts.Count > 0)
+{
+    <div class="alert alert-warning" role="alert">
+        <div class="d-flex align-items-start gap-3">
+            <div>
+                <strong>@Model.LateStarts.Count @(Model.LateStarts.Count == 1 ? "series starts" : "series start") later than the start date set for @(Model.LateStarts.Count == 1 ? "it" : "them").</strong>
+                The exchange has no candles before then (the symbol was listed later), so nothing is wrong with the data: the start date only asks for more than exists.
+                You may move it to the first candle; until you do, nothing changes.
+            </div>
+            <form method="post" asp-page-handler="Align" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" class="ms-auto">
+                <button type="submit" class="btn btn-sm btn-warning text-nowrap">Move all to the first candle</button>
+            </form>
+        </div>
+    </div>
+}
+
 <div class="row row-cards">
     <div class="col-lg-8">
         <div class="card">
@@ -63,10 +79,22 @@
                                     <td><span class="badge @(Model.MarketName(series.MarketId) == "Futures" ? "bg-purple-lt" : "bg-blue-lt")">@Model.MarketName(series.MarketId)</span></td>
                                     <td class="fw-bold">@Model.SymbolName(series.SymbolId)</td>
                                     <td>@Model.TimeFrameName(series.TimeFrameId)</td>
-                                    <td class="text-nowrap">@series.StartDate.ToString("yyyy-MM-dd")</td>
+                                    <td class="text-nowrap">
+                                        @series.StartDate.ToString("yyyy-MM-dd")
+                                        @if (Model.LateStarts.TryGetValue(series.Id, out var late))
+                                        {
+                                            <div class="small text-warning">data starts @late.FirstCandle.ToString("yyyy-MM-dd")</div>
+                                        }
+                                    </td>
                                     <td>@if (series.CollectOpenInterest) { <span class="badge bg-green-lt">On</span> } else { <span class="text-secondary">-</span> }</td>
                                     <td class="text-nowrap text-end">
                                         <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-route-edit="@series.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Edit</a>
+                                        @if (Model.LateStarts.ContainsKey(series.Id))
+                                        {
+                                            <form method="post" asp-page-handler="Align" asp-route-id="@series.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" class="d-inline">
+                                                <button type="submit" class="btn btn-sm btn-outline-warning" title="Move the start date to the first candle">Use first candle</button>
+                                            </form>
+                                        }
                                         <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-@series.Id">Remove</button>
                                     </td>
                                 </tr>

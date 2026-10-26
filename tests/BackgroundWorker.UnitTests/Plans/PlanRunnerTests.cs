@@ -18,6 +18,7 @@ public class PlanRunnerTests : IAsyncLifetime
 
     private static readonly CandleSeriesPlan Btc1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
     private static readonly CandleSeriesPlan Eth1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Btc4hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
     private static readonly CandleSeriesPlan Btc1hSpot = TestPlans.Binance(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
@@ -197,5 +198,87 @@ public class PlanRunnerTests : IAsyncLifetime
         await runner.WaitAsync(TimeSpan.FromSeconds(5), Ct);
 
         Assert.Equal(["start BTCUSDT", "stop"], Events());
+    }
+
+    // ---- groups: one collection per key, a change touches only the groups it concerns ----
+
+    /// <summary>One group per time frame; a group notes when it starts (with its symbols) and stops, then waits to be cancelled.</summary>
+    private Task StartGrouped(Func<TimeFrameEnum, IReadOnlyList<CandleSeriesPlan>, CancellationToken, Task>? run = null) =>
+        PlanRunner.RunGroupedAsync(_provider,
+            plans => plans.Where(p => p.Series.MarketType == MarketTypeEnum.Futures).ToList(),
+            plan => plan.Series.Timeframe,
+            run ?? (async (key, items, ct) =>
+            {
+                Record($"start {key} {string.Join("+", items.Select(i => i.Series.Symbol).Order())}");
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    Record($"stop {key}");
+                }
+            }),
+            NullLogger.Instance, "candle series", _shutdown.Token);
+
+    [Fact]
+    public async Task EveryGroupIsStartedOnItsOwnWithItsOwnItems()
+    {
+        await StartProviderWith(Btc1hFutures, Eth1hFutures, Btc4hFutures);
+        _ = StartGrouped();
+        await WaitUntilAsync(() => Events().Length == 2, "both groups");
+
+        Assert.Equal(["start _1H BTCUSDT+ETHUSDT", "start _4H BTCUSDT"], Events().Order());
+    }
+
+    [Fact]
+    public async Task AChangeInOneGroupRestartsThatGroupAndLeavesTheOtherRunning()
+    {
+        await StartProviderWith(Btc1hFutures, Btc4hFutures);
+        _ = StartGrouped();
+        await WaitUntilAsync(() => Events().Length == 2, "both groups");
+
+        await ChangeTheChoiceAsync(() => _source.Series.Add(Eth1hFutures), toVersion: 2);
+        await WaitUntilAsync(() => Events().Length == 4, "the restart of the 1h group");
+
+        Assert.Equal(["stop _1H", "start _1H BTCUSDT+ETHUSDT"], Events()[2..]);   // nothing was said about the 4h group
+    }
+
+    [Fact]
+    public async Task ARemovedGroupIsStoppedAndTheOthersKeepRunning()
+    {
+        await StartProviderWith(Btc1hFutures, Btc4hFutures);
+        _ = StartGrouped();
+        await WaitUntilAsync(() => Events().Length == 2, "both groups");
+
+        await ChangeTheChoiceAsync(() => _source.Series.Remove(Btc4hFutures), toVersion: 2);
+        await WaitUntilAsync(() => Events().Length == 3, "the stop");
+
+        Assert.Equal("stop _4H", Events()[2]);
+    }
+
+    [Fact]
+    public async Task AGroupThatFailsEndsTheWorkerAndTheOthersAreStopped()
+    {
+        await StartProviderWith(Btc1hFutures, Btc4hFutures);
+        var runner = StartGrouped(async (key, _, ct) =>
+        {
+            if (key == TimeFrameEnum._4H)
+                throw new InvalidOperationException("boom");
+
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Record($"stop {key}");
+            }
+        });
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => runner.WaitAsync(TimeSpan.FromSeconds(5), Ct));
+
+        Assert.Equal("boom", error.Message);
+        Assert.Equal(["stop _1H"], Events());
     }
 }

@@ -11,10 +11,8 @@ using Microsoft.Extensions.Options;
 namespace Application;
 
 public static class DependencyInjection
-{
-    
-    public static readonly string[] ApiOnlyNamespaces = ["Application.Commands.Auth", "Application.Queries.Collector"];
-        
+{    
+    public static readonly string[] ApiOnlyNamespaces = ["Application.Commands.Auth", "Application.Queries.Collector"];        
 
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
@@ -25,6 +23,7 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<DashboardSnapshotBuilder>();
         services.AddScoped<AuditTrail>();
+        services.AddScoped<LateStartFinder>();
 
         return services;
     }
