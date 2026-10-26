@@ -1,6 +1,7 @@
 using Application.Exchange;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
+using BackgroundWorker.Plans;
 using BackgroundWorker.Scheduling;
 using Domain.Entities;
 using Domain.Enums;
@@ -27,30 +28,27 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
     private static readonly TimeSpan GapCheckPeriod = TimeSpan.FromHours(24);
     private static readonly TimeSpan TableRetryDelay = TimeSpan.FromSeconds(10);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        PlanRunner.RunAsync(seriesProvider, plans => plans.ForExchange(ExchangeEnum.Binance).ToList(), CollectAsync, logger, "candle series", stoppingToken);
+
+    private async Task CollectAsync(IReadOnlyList<CandleSeriesPlan> series, CancellationToken ct)
     {
         try
         {
-            // The admin chooses the series; with none chosen (or the database unreachable) there is nothing to do but wait.
-            var series = (await seriesProvider.WaitForSeriesAsync(stoppingToken)).ForExchange(ExchangeEnum.Binance).ToList();
-            await EnsureTablesAsync(series, stoppingToken);
+            await EnsureTablesAsync(series, ct);
 
             var groups = series
                 .GroupBy(p => (int)p.Series.Timeframe)
                 .ToList();
 
             await Task.WhenAll(groups.Select(g =>
-                RunIntervalLoopAsync(TimeSpan.FromSeconds(g.Key), g.ToList(), stoppingToken)));
+                RunIntervalLoopAsync(TimeSpan.FromSeconds(g.Key), g.ToList(), ct)));
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
     }
 
-    /// <summary>
-    /// Creates the table of every series that does not have one yet (idempotent). A database error is retried, not
-    /// thrown: an exception out of a worker would stop the whole host.
-    /// </summary>
     private async Task EnsureTablesAsync(IReadOnlyList<CandleSeriesPlan> series, CancellationToken ct)
     {
         foreach (var plan in series)
@@ -76,23 +74,21 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
     private async Task RunIntervalLoopAsync(TimeSpan interval, List<CandleSeriesPlan> plans, CancellationToken ct)
     {
+        var resyncRequests = coordinator.Register();
+
         try
         {
             await SyncAllSymbolsAsync(plans, ct);
             await RepairGapsAsync(plans, ct);
             var lastGapCheck = DateTime.UtcNow;
-            var resyncRequests = coordinator.Register();
 
             while (!ct.IsCancellationRequested)
             {
-                // The boundary sync always runs, even when the live stream delivered the candle (the watchdog):
-                // it is one cheap request per symbol and ON CONFLICT DO NOTHING makes the overlap harmless.
                 var resync = await WaitForBoundaryOrResyncAsync(interval, resyncRequests, ct);
                 await SyncAllSymbolsAsync(plans, ct);
 
                 if (resync)
                 {
-                    // The live stream was down for a while; fill what it missed, including holes before newer live candles.
                     await RepairGapsAsync(plans, ct);
                     lastGapCheck = DateTime.UtcNow;
                 }
@@ -104,11 +100,14 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {            
+        {
+        }
+        finally
+        {
+            coordinator.Unregister(resyncRequests);
         }
     }
 
-    /// <summary>Waits for the next candle boundary or a resync request, whichever comes first. True when resync woke it.</summary>
     private static async Task<bool> WaitForBoundaryOrResyncAsync(TimeSpan interval, ChannelReader<bool> resyncRequests, CancellationToken ct)
     {
         using var stopWaiting = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -215,12 +214,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                     gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName, inserted);
         }
     }
-
-    /// <summary>
-    /// Downloads closed candles starting at <paramref name="from"/> (and up to <paramref name="to"/> when given,
-    /// inclusive open time) and stores them. Returns the number of newly inserted rows and whether the range was
-    /// fetched to its end (false when the request kept failing and the work was given up).
-    /// </summary>
+    
     private async Task<(int Inserted, bool Completed)> FetchRangeAsync(
         CandleSeriesPlan plan, ICandleRepository repository, string tableName,
         DateTime from, DateTime? to, CancellationToken ct)

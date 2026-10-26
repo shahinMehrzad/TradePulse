@@ -5,7 +5,7 @@
 }
 
 <div class="alert alert-info" role="alert">
-    This is the list of candle series the collector fetches, and which of them also collect open interest. The worker reads it when it starts, so a change applies after the worker is restarted. With an empty list the worker idles and starts by itself when the first series is added.
+    This is the list of candle series the collector fetches, and which of them also collect open interest. The collector looks at it every 30 seconds, so a change applies within about half a minute, without a restart. With an empty list the worker idles and starts by itself when the first series is added.
 </div>
 
 @if (Model.Saved is not null)

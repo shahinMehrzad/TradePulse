@@ -1,5 +1,6 @@
 using BackgroundWorker.Health;
 using BackgroundWorker.Plans;
+using BackgroundWorker.SymbolData;
 using BackgroundWorker.UnitTests.SymbolData;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Time.Testing;
@@ -59,6 +60,29 @@ public class SymbolDataHealthCheckTests
 
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
         Assert.Contains(nameof(InvalidOperationException), result.Description);
+        Assert.DoesNotContain("secret", result.Description);
+    }
+
+    [Fact]
+    public async Task AKnownListThatCannotBeRefreshedIsDegradedBecauseChangesAreNotSeen()
+    {
+        var source = new FakeSymbolDataSource();
+        source.Plans.Add(SymbolDataTestSupport.Binance());
+        using var provider = SymbolDataTestSupport.NewProvider(source, _time);
+        await provider.StartAsync(Ct);
+        await provider.WaitForPlansAsync(Ct);
+
+        source.Failure = new InvalidOperationException("secret-host refused the connection");
+        await WaitUntilAsync(() =>
+        {
+            _time.Advance(SymbolDataProvider.RefreshInterval);
+            return provider.LastError is not null;
+        });
+
+        var result = await Run(new SymbolDataHealthCheck(provider));
+
+        Assert.Equal(HealthStatus.Degraded, result.Status);
+        Assert.Contains("cannot be refreshed", result.Description);
         Assert.DoesNotContain("secret", result.Description);
     }
 

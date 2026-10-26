@@ -1,6 +1,7 @@
 using Application.Exchange;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
+using BackgroundWorker.Plans;
 using BackgroundWorker.Scheduling;
 using Domain.Entities;
 using Domain.Enums;
@@ -26,22 +27,17 @@ public class BinanceOpenInterestWorker(
     IOpenInterestGateway gateway,
     WorkerHealthState health,
     CollectionStats stats) : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+{    
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        PlanRunner.RunAsync(seriesProvider,
+            plans => OpenInterestPlans.SelectForBinance(plans, (s, reason) =>
+                logger.LogWarning("Open interest is not collected for {Symbol} {Interval}: {Reason}", s.Series.Symbol, s.Series.Timeframe, reason)),
+            CollectAsync, logger, "open interest series", stoppingToken);
+
+    private async Task CollectAsync(IReadOnlyList<CandleSeriesPlan> series, CancellationToken stoppingToken)
     {
         try
         {
-            // The same list the candle workers wait for: the flag lives on the candle series rows.
-            var plans = await seriesProvider.WaitForSeriesAsync(stoppingToken);
-            var series = OpenInterestPlans.SelectForBinance(plans, (s, reason) =>
-                logger.LogWarning("Open interest is not collected for {Symbol} {Interval}: {Reason}", s.Series.Symbol, s.Series.Timeframe, reason));
-
-            if (series.Count == 0)
-            {
-                logger.LogInformation("No candle series asks for open interest; nothing to collect.");
-                return;
-            }
-
             await EnsureTablesAsync(series, stoppingToken);
 
             await Task.WhenAll(series.GroupBy(p => p.Series.Timeframe).Select(group =>

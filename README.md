@@ -78,7 +78,7 @@ dotnet run --project src/WebRazor     # the admin panel, by default on http://lo
 dotnet run --project src/BackgroundWorker
 ```
 
-Sign in to the panel with the Development admin from [`appsettings.Development.json`](src/WebApi/appsettings.Development.json) and add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. Restart it after changing the list; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
+Sign in to the panel with the Development admin from [`appsettings.Development.json`](src/WebApi/appsettings.Development.json) and add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. A change made later applies by itself within about half a minute; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
 
 Run the tests:
 

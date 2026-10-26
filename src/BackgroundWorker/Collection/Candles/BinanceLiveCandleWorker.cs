@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Application.Exchange;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
+using BackgroundWorker.Plans;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
@@ -41,24 +42,19 @@ public class BinanceLiveCandleWorker(
 
     private Channel<(string Table, Candle Row)> _queue = null!;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!settings.Value.LiveCandles)
         {
             logger.LogInformation("Live candle stream is disabled; REST sync only.");
-            return;
+            return Task.CompletedTask;
         }
 
-        IReadOnlyList<CandleSeriesPlan> series;
-        try
-        {
-            series = (await seriesProvider.WaitForSeriesAsync(stoppingToken)).ForExchange(ExchangeEnum.Binance).ToList();
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            return;
-        }
+        return PlanRunner.RunAsync(seriesProvider, plans => plans.ForExchange(ExchangeEnum.Binance).ToList(), StreamAsync, logger, "candle series", stoppingToken);
+    }
 
+    private async Task StreamAsync(IReadOnlyList<CandleSeriesPlan> series, CancellationToken stoppingToken)
+    {
         _queue = Channel.CreateBounded<(string, Candle)>(
             new BoundedChannelOptions(QueueCapacity) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite },
             // A dropped candle is not lost: the REST loop fetches it at the boundary.
