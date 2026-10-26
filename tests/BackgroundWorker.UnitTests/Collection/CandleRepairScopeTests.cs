@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using Application.Exchange;
+using Application.Notifications;
+using BackgroundWorker.Alerts;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Collection.Candles;
 using BackgroundWorker.Health;
@@ -77,8 +79,29 @@ public class CandleRepairScopeTests
         }
     }
 
+    private sealed class RecordingAlerts : IAlertSink
+    {
+        private readonly List<Alert> _raised = [];
+
+        public IReadOnlyList<Alert> Raised
+        {
+            get
+            {
+                lock (_raised)
+                    return [.. _raised];
+            }
+        }
+
+        public void Raise(Alert alert)
+        {
+            lock (_raised)
+                _raised.Add(alert);
+        }
+    }
+
     private sealed class Rig : IAsyncDisposable
     {
+        public RecordingAlerts Alerts { get; } = new();
         public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
         public FakeCandleSeriesSource Source { get; } = new();
         public CountingTable Table { get; } = new();
@@ -101,7 +124,7 @@ public class CandleRepairScopeTests
             var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(rig.Table).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
             rig._worker = new BinanceCandleWorker(
                 scopes, NullLogger<BinanceCandleWorker>.Instance, rig.Provider, rig.Gateway, rig.Coordinator,
-                new WorkerHealthState(TimeProvider.System), rig.Gaps, new GapRepairSchedule(rig.Time), new CollectionStats());
+                new WorkerHealthState(TimeProvider.System), rig.Gaps, new GapRepairSchedule(rig.Time), rig.Alerts, new CollectionStats());
             await rig._worker.StartAsync(Ct);
             return rig;
         }
@@ -236,5 +259,49 @@ public class CandleRepairScopeTests
         rig.Coordinator.RequestResync();
 
         await WaitUntilAsync(() => rig.Table.GapLooks[TableOf(Btc1h)] >= 2 && rig.Table.GapLooks[TableOf(Eth1h)] >= 2, "both tables to be scanned again");
+    }
+
+    // ---- alerts: a hole that appears after the first look is news, the old ones of a new series are not ----
+
+    private static readonly CandleGap InnerGap = new(Utc(2021, 8, 13, 2), Utc(2021, 8, 13, 5));
+
+    [Fact]
+    public async Task ANewHoleFoundByALaterLookIsAnnouncedOnceAndNotAgainWhileItStaysTheSame()
+    {
+        await using var rig = await Rig.StartAsync(null, null, Btc1h);
+        await WaitUntilAsync(() => rig.Gaps.Get(TableOf(Btc1h)) is not null, "the first look");
+
+        rig.Table.GapsFor = _ => [InnerGap];
+        rig.Coordinator.RequestResync();
+        await WaitUntilAsync(() => rig.Alerts.Raised.Count == 1, "the alert");
+
+        var alert = rig.Alerts.Raised[0];
+        Assert.Equal($"New gap in {TableOf(Btc1h)}", alert.Title);
+        Assert.Equal("1 gap(s), 4 candle(s) missing, from 2021-08-13 02:00 UTC. The exchange has no candles for them.", alert.Body);
+
+        rig.Coordinator.RequestResync();
+        await WaitUntilAsync(() => rig.Table.GapLooks[TableOf(Btc1h)] >= 3, "another look");
+        Assert.Single(rig.Alerts.Raised);
+    }
+
+    [Fact]
+    public async Task TheOldHolesOfASeriesAreNotNewsAtTheFirstLook()
+    {
+        await using var rig = await Rig.StartAsync(_ => [InnerGap], null, Btc1h);
+        await WaitUntilAsync(() => rig.Gaps.Get(TableOf(Btc1h)) is not null, "the first look");
+        await Task.Delay(100, Ct);
+
+        Assert.Empty(rig.Alerts.Raised);
+    }
+
+    [Fact]
+    public async Task TheStartOfASeriesIsNeverAnnouncedAsAHole()
+    {
+        await using var rig = await Rig.StartAsync(_ => BeforeFirstCandle(), null, Btc1h);
+        await WaitUntilAsync(() => rig.Gaps.Get(TableOf(Btc1h)) is not null, "the first look");
+        rig.Coordinator.RequestResync();
+        await WaitUntilAsync(() => rig.Table.GapLooks[TableOf(Btc1h)] >= 2, "a second look");
+
+        Assert.Empty(rig.Alerts.Raised);
     }
 }

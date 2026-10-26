@@ -1,4 +1,6 @@
 using Application.Exchange;
+using Application.Notifications;
+using BackgroundWorker.Alerts;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using BackgroundWorker.Plans;
@@ -22,6 +24,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         WorkerHealthState health,
         OpenGaps openGaps,
         GapRepairSchedule schedule,
+        IAlertSink alerts,
         CollectionStats stats) : BackgroundService
 {
     private const int MaxParallelSymbols = 4;
@@ -226,7 +229,14 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
         // The run in front of the first candle is where the series starts, not a hole in it.
         var beforeFirst = open.Where(g => g.BeforeFirstCandle).Select(g => (DateTime?)(g.LastMissingOpenTime + intervalSpan)).FirstOrDefault();
-        openGaps.Set(tableName, open.Where(g => !g.BeforeFirstCandle).ToList(), intervalSpan, beforeFirst);
+        var holes = open.Where(g => !g.BeforeFirstCandle).ToList();
+        var previous = openGaps.Set(tableName, holes, intervalSpan, beforeFirst);
+
+        // Not at the first look (the old holes of a new series are not news): only when a later look finds more.
+        if (previous is { } before && holes.Count > before.Gaps && openGaps.Get(tableName) is { } now)
+            alerts.Raise(new Alert($"New gap in {tableName}",
+                $"{now.Gaps} gap(s), {now.MissingCandles} candle(s) missing, from {now.Oldest:yyyy-MM-dd HH:mm} UTC. The exchange has no candles for them."));
+
         schedule.MarkRepaired(tableName);
     }
 

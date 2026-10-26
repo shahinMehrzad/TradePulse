@@ -27,10 +27,13 @@ public sealed class OpenGaps
     /// Records what is left open in <paramref name="table"/>; an empty list records that it was checked and is complete.
     /// <paramref name="dataStartsAt"/> says where the data begins when that is later than the start date asked for.
     /// </summary>
-    public void Set(string table, IReadOnlyList<CandleGap> gaps, TimeSpan interval, DateTime? dataStartsAt = null)
+    /// <returns>What was recorded for the table before, or null when this is the first look.</returns>
+    public GapSummary? Set(string table, IReadOnlyList<CandleGap> gaps, TimeSpan interval, DateTime? dataStartsAt = null)
     {
         var missing = gaps.Sum(g => (long)((g.LastMissingOpenTime - g.FirstMissingOpenTime) / interval) + 1);
+        GapSummary? previous = _byTable.TryGetValue(table, out var before) ? before : null;
         _byTable[table] = new GapSummary(gaps.Count, missing, gaps.Count == 0 ? null : gaps.Min(g => g.FirstMissingOpenTime), dataStartsAt);
+        return previous;
     }
 
     /// <summary>The summary of a table, or null when its gaps were never looked at.</summary>

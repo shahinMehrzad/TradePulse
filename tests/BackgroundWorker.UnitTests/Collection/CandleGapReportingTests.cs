@@ -1,4 +1,5 @@
 using Application.Exchange;
+using BackgroundWorker.Alerts;
 using BackgroundWorker.Collection.Candles;
 using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
@@ -67,7 +68,7 @@ public class CandleGapReportingTests
         var provider = await CandleSeriesTestSupport.LoadedProviderAsync(TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
         using var worker = new BinanceCandleWorker(
             scopes, NullLogger<BinanceCandleWorker>.Instance, provider, gateway, new CandleSyncCoordinator(),
-            new WorkerHealthState(TimeProvider.System), openGaps, new GapRepairSchedule(TimeProvider.System), new CollectionStats());
+            new WorkerHealthState(TimeProvider.System), openGaps, new GapRepairSchedule(TimeProvider.System), new AlertQueue(), new CollectionStats());
 
         await worker.StartAsync(Ct);
         var deadline = DateTime.UtcNow.AddSeconds(5);
