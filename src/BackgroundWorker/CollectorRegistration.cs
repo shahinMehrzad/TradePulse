@@ -1,4 +1,5 @@
 using Application;
+using BackgroundWorker.Alerts;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Collection.Candles;
 using BackgroundWorker.Collection.FundingRates;
@@ -8,8 +9,10 @@ using BackgroundWorker.Health;
 using BackgroundWorker.SymbolData;
 using Infrastructure;
 using Infrastructure.Exchange.Binance;
+using Infrastructure.Notifications;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace BackgroundWorker;
 
@@ -34,8 +37,16 @@ public static class CollectorRegistration
         services.AddHostedService(provider => provider.GetRequiredService<SymbolDataProvider>());
 
         services.AddSingleton<CandleSyncCoordinator>();
+        services.AddSingleton<GapRepairSchedule>();
         services.AddSingleton<CollectionStats>();
         services.AddWorkerHealth(configuration);
+
+        services.AddNotifiers(configuration);
+        services.Configure<AlertSettings>(configuration.GetSection("Alerts"));
+        services.AddSingleton<AlertQueue>();
+        services.AddSingleton<IAlertSink>(provider => provider.GetRequiredService<AlertQueue>());
+        services.AddSingleton<IHealthCheckPublisher, AlertHealthPublisher>();
+        services.AddHostedService<AlertDispatcher>();
 
         services.AddHostedService<BinanceCandleWorker>();
         services.AddHostedService<BinanceLiveCandleWorker>();

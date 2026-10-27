@@ -35,6 +35,18 @@ namespace WebApi.Controllers.Admin
             }
         }
 
+        [HttpGet("candle-worker/late-starts")]
+        public async Task<IActionResult> GetLateStarts(CancellationToken cancellationToken)
+            => Ok(await dispatcher.SendAsync<GetLateStartSeriesQuery, IReadOnlyList<LateStartSeries>>(new GetLateStartSeriesQuery(), cancellationToken));
+
+        [HttpPost("candle-worker/align-starts")]
+        public async Task<IActionResult> AlignStarts(CancellationToken cancellationToken)
+            => Ok(new { aligned = await dispatcher.SendAsync<AlignCandleSeriesStartsCommand, int>(new AlignCandleSeriesStartsCommand(null), cancellationToken) });
+
+        [HttpPost("candle-worker/{id:int}/align-start")]
+        public async Task<IActionResult> AlignStart(int id, CancellationToken cancellationToken)
+            => Ok(new { aligned = await dispatcher.SendAsync<AlignCandleSeriesStartsCommand, int>(new AlignCandleSeriesStartsCommand(id), cancellationToken) });
+
         [HttpPost("add-config")]
         public async Task<IActionResult> AddCandleWorkerConfigurations(BaseCandleWorkerConfigurationDto payload, CancellationToken cancellationToken)
         {

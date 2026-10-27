@@ -366,3 +366,6 @@ FodyWeavers.xsd
 # Local Claude Code instructions (personal, not part of the public repo)
 CLAUDE.md
 .claude/
+
+# Secrets of the Docker stack (deploy/.env.example is the template)
+deploy/.env

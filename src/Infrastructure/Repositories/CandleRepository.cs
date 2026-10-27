@@ -185,6 +185,22 @@ public class CandleRepository(string connectionString) : ICandleRepository
         return latest is null ? null : new DateTimeOffset(FromTimestamp(latest.Value));
     }
 
+    public async Task<DateTimeOffset?> GetFirstOpenTimeAsync(string tableName, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        try
+        {
+            var first = await connection.ExecuteScalarAsync<DateTime?>(
+                new CommandDefinition($"SELECT min(open_time) FROM {tableName}", cancellationToken: cancellationToken));
+
+            return first is null ? null : new DateTimeOffset(FromTimestamp(first.Value));
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            return null;
+        }
+    }
+
     public async Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -213,7 +229,7 @@ public class CandleRepository(string connectionString) : ICandleRepository
 
             // An empty table is the sync loop's job; here only a hole in front of existing data counts.
             if (first is { } firstOpen && firstOpen - ToTimestamp(start) >= interval)
-                gaps.Insert(0, new CandleGap(start, FromTimestamp(firstOpen - interval)));
+                gaps.Insert(0, new CandleGap(start, FromTimestamp(firstOpen - interval), BeforeFirstCandle: true));
         }
 
         return gaps;

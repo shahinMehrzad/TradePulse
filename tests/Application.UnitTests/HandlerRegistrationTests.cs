@@ -4,8 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Application.UnitTests;
 
 /// <summary>
-/// The sign-in handlers need the identity infrastructure, which only the API has. They are registered apart, so that the collector
-/// (which has none) does not carry registrations it can never construct.
+/// The sign-in handlers need the identity infrastructure and the collector health query needs the client that asks the collector;
+/// only the API has either. They are registered apart, so that the collector does not carry registrations it can never construct.
 /// </summary>
 public class HandlerRegistrationTests
 {
@@ -18,28 +18,29 @@ public class HandlerRegistrationTests
             .Where(t => t is { IsAbstract: false, IsInterface: false } && t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ICommandHandler<,>)));
 
     [Fact]
-    public void TheGeneralRegistrationHasNoSignInHandler()
+    public void TheGeneralRegistrationHasNoApiOnlyHandler()
     {
         var registered = HandlersIn(new ServiceCollection().AddApplicationServices()).ToList();
 
         Assert.NotEmpty(registered);
-        Assert.DoesNotContain(registered, t => t.Namespace == "Application.Commands.Auth");
+        Assert.DoesNotContain(registered, t => DependencyInjection.ApiOnlyNamespaces.Contains(t.Namespace));
     }
 
     [Fact]
-    public void TheSignInRegistrationHasTheSignInHandlersAndNothingElse()
+    public void TheApiOnlyRegistrationHasTheApiOnlyHandlersAndNothingElse()
     {
-        var registered = HandlersIn(new ServiceCollection().AddAuthApplicationServices()).ToList();
+        var registered = HandlersIn(new ServiceCollection().AddApiOnlyApplicationServices()).ToList();
 
         Assert.NotEmpty(registered);
-        Assert.All(registered, t => Assert.Equal("Application.Commands.Auth", t.Namespace));
+        Assert.All(registered, t => Assert.Contains(t.Namespace, DependencyInjection.ApiOnlyNamespaces));
+        Assert.Contains(registered, t => t.Namespace == "Application.Queries.Collector");
     }
 
     [Fact]
     public void BetweenThemTheTwoRegisterEveryHandlerExactlyOnce()
     {
         // A new handler must end up in one of the two, never in neither (it would not be found) or in both.
-        var services = new ServiceCollection().AddApplicationServices().AddAuthApplicationServices();
+        var services = new ServiceCollection().AddApplicationServices().AddApiOnlyApplicationServices();
 
         var registered = HandlersIn(services).OrderBy(t => t.FullName).ToList();
 

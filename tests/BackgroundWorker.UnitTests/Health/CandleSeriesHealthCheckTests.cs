@@ -72,6 +72,38 @@ public class CandleSeriesHealthCheckTests
     }
 
     [Fact]
+    public async Task AKnownListThatCannotBeRefreshedIsDegradedNotUnhealthyBecauseCollectionGoesOn()
+    {
+        var source = new FakeCandleSeriesSource();
+        source.Series.Add(Series(MarketTypeEnum.Futures));
+        using var provider = CandleSeriesTestSupport.NewProvider(source, _time);
+        await provider.StartAsync(Ct);
+        await provider.WaitForSeriesAsync(Ct);
+
+        source.Failure = new InvalidOperationException("secret-host refused the connection");
+        await WaitUntilAsync(() =>
+        {
+            _time.Advance(CandleSeriesProvider.RefreshInterval);
+            return provider.LastError is not null;
+        });
+
+        var result = await Run(new CandleSeriesHealthCheck(provider));
+
+        Assert.Equal(HealthStatus.Degraded, result.Status);
+        Assert.Contains("cannot be refreshed", result.Description);
+        Assert.Contains(nameof(InvalidOperationException), result.Description);
+        Assert.DoesNotContain("secret", result.Description);
+
+        source.Failure = null;
+        await WaitUntilAsync(() =>
+        {
+            _time.Advance(CandleSeriesProvider.RefreshInterval);
+            return provider.LastError is null;
+        });
+        Assert.Equal(HealthStatus.Healthy, (await Run(new CandleSeriesHealthCheck(provider))).Status);
+    }
+
+    [Fact]
     public async Task BeforeTheFirstReadFinishesItIsOnlyDegraded()
     {
         using var provider = CandleSeriesTestSupport.NewProvider(new FakeCandleSeriesSource(), _time);

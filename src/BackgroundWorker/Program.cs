@@ -10,6 +10,7 @@ var builder = Host.CreateDefaultBuilder(args);
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json")
+    .AddEnvironmentVariables()
     .Build();
 
 var health = configuration.GetSection("Health").Get<HealthConfigurations>() ?? new HealthConfigurations();

@@ -35,6 +35,13 @@ public sealed class CandleSyncCoordinator
         return channel.Reader;
     }
 
+    /// <summary>Takes a REST loop out again (it was stopped because the admin changed the series); it gets no more requests.</summary>
+    public void Unregister(ChannelReader<bool> reader)
+    {
+        lock (_gate)
+            _loops.RemoveAll(loop => loop.Reader == reader);
+    }
+
     /// <summary>Requests an immediate sync + gap repair in every registered loop. Never blocks.</summary>
     public void RequestResync()
     {

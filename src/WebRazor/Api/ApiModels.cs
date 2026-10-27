@@ -35,11 +35,20 @@ public record Lookups(
 /// <summary>One candle series the collector should fetch, as the API stores it (ids, not names).</summary>
 public record CandleWorkerSeries(int Id, int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest);
 
+/// <summary>A series whose first stored candle is on a later day than its start date (both UTC): the symbol was listed later.</summary>
+public record LateStart(int Id, DateTime StartDate, DateTime FirstCandle);
+
 /// <summary>One page of the series list, with the totals the API reports for the (filtered) list.</summary>
 public record SeriesPage(IReadOnlyList<CandleWorkerSeries> Items, int PageNumber, int PageSize, int TotalItems, int TotalPages)
 {
     public bool HasNext => PageNumber < TotalPages;
 }
+
+/// <summary>The collector's own report as the API relays it. <c>State</c> is answered, notConfigured or unreachable; the rest is only there when it answered.</summary>
+public record CollectorHealth(string State, string? Status, DateTime CheckedAt, IReadOnlyList<CollectorHealthCheck> Checks);
+
+/// <summary>One component of the collector. <c>Status</c> is Healthy, Degraded or Unhealthy.</summary>
+public record CollectorHealthCheck(string Name, string Status, string? Description, IReadOnlyDictionary<string, string> Data);
 
 /// <summary>One line of the audit log: who changed which setting, how, and what was different. Times are UTC.</summary>
 public record AuditEntry(long Id, DateTime OccurredAt, string UserName, string Action, string EntityType, int EntityId, string Summary, string? Details);

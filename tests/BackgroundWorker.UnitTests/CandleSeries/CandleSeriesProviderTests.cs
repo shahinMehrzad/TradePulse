@@ -3,6 +3,7 @@ using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Plans;
 using Domain.Enums;
 using Infrastructure.Configurations;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 
 namespace BackgroundWorker.UnitTests.CandleSeries;
@@ -152,8 +153,63 @@ public class CandleSeriesProviderTests
         }
     }
 
+    // ---- a list that is known keeps being read: what the admin changes reaches the workers without a restart ----
+
+    private static readonly CandleSeriesPlan Eth4h = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._4H);
+
     [Fact]
-    public async Task OnceLoadedTheSeriesDoNotChangeUntilTheProcessIsRestarted()
+    public async Task ASeriesAddedLaterIsFoundAtALaterLookAndPublishedUnderANewVersion()
+    {
+        _source.Series.Add(Btc4h);
+        using var provider = Provider();
+        await provider.StartAsync(Ct);
+        await provider.WaitForSeriesAsync(Ct);
+        Assert.Equal(1, provider.Version);
+
+        _source.Series.Add(Eth4h);
+        await AdvanceUntilAsync(CandleSeriesProvider.RefreshInterval, () => provider.Version == 2);
+
+        Assert.Equal([Btc4h, Eth4h], provider.Current.Order(Comparer<CandleSeriesPlan>.Create((a, b) => a.Series.Symbol.CompareTo(b.Series.Symbol))));
+        Assert.Equal(PlanStatus.Loaded, provider.Status);
+        Assert.Equal(_time.GetUtcNow().UtcDateTime, provider.LoadedAt);   // grace periods count from the change
+    }
+
+    [Fact]
+    public async Task WhatChangedIsSaidInTheLogEvenWhenTheNumberOfSeriesStaysTheSame()
+    {
+        // What the admin reads in the console: an edited series leaves the total alone, so the total cannot be the message.
+        var log = new TestSupport.ListLogger<CandleSeriesProvider>();
+        _source.Series.AddRange([Btc4h, Eth4h]);
+        using var provider = new CandleSeriesProvider(_source, _time, log);
+        await provider.StartAsync(Ct);
+        await provider.WaitForSeriesAsync(Ct);
+        Assert.Contains(log.Entries, e => e.Message == "Collecting 2 candle series.");
+
+        _source.Series[1] = Eth4h with { CollectOpenInterest = true };   // edited, not added or removed
+        await AdvanceUntilAsync(CandleSeriesProvider.RefreshInterval, () => provider.Version == 2);
+
+        Assert.Contains(log.Entries, e => e.Level == LogLevel.Information
+            && e.Message == "The candle series changed: 1 new, 1 gone (an edited one counts as both), 2 now.");
+    }
+
+    [Fact]
+    public async Task ALookThatFindsTheSameListChangesNothingNotEvenWhenTheOrderDiffers()
+    {
+        _source.Series.AddRange([Btc4h, Eth4h]);
+        using var provider = Provider();
+        await provider.StartAsync(Ct);
+        await provider.WaitForSeriesAsync(Ct);
+        var loadedAt = provider.LoadedAt;
+
+        _source.Series.Reverse();
+        var callsBefore = _source.Calls;
+        await AdvanceUntilAsync(CandleSeriesProvider.RefreshInterval, () => _source.Calls >= callsBefore + 2);
+
+        Assert.Equal((1L, loadedAt), (provider.Version, provider.LoadedAt));
+    }
+
+    [Fact]
+    public async Task EmptyingTheTableIsAChangeToo_TheCollectorIdlesAgain()
     {
         _source.Series.Add(Btc4h);
         using var provider = Provider();
@@ -161,11 +217,51 @@ public class CandleSeriesProviderTests
         await provider.WaitForSeriesAsync(Ct);
 
         _source.Series.Clear();
-        _time.Advance(TimeSpan.FromHours(1));
-        await Task.Delay(50, Ct);
+        await AdvanceUntilAsync(CandleSeriesProvider.RefreshInterval, () => provider.Version == 2);
 
-        Assert.Equal(1, _source.Calls);
-        Assert.Single(provider.Current);
+        Assert.Equal((PlanStatus.WaitingForConfiguration, 0), (provider.Status, provider.Current.Count));
+    }
+
+    [Fact]
+    public async Task ADatabaseThatFailsAfterTheListIsKnownKeepsTheLastListAndOnlyReportsTheError()
+    {
+        _source.Series.Add(Btc4h);
+        using var provider = Provider();
+        await provider.StartAsync(Ct);
+        await provider.WaitForSeriesAsync(Ct);
+
+        _source.Failure = new InvalidOperationException("password authentication failed for user secret-user");
+        await AdvanceUntilAsync(CandleSeriesProvider.RefreshInterval, () => provider.LastError is not null);
+
+        Assert.Equal((PlanStatus.Loaded, 1, 1L), (provider.Status, provider.Current.Count, provider.Version));   // nothing is stopped
+        Assert.Equal(nameof(InvalidOperationException), provider.LastError);
+
+        // It recovers by itself, and sees what changed meanwhile.
+        _source.Failure = null;
+        _source.Series.Add(Eth4h);
+        await AdvanceUntilAsync(CandleSeriesProvider.RefreshInterval, () => provider.Version == 2);
+
+        Assert.Equal((null, 2), (provider.LastError, provider.Current.Count));
+    }
+
+    [Fact]
+    public async Task WaitingForAChangeIsAnsweredAtOnceForAnOlderVersionAndLaterForTheNextOne()
+    {
+        _source.Series.Add(Btc4h);
+        using var provider = Provider();
+        await provider.StartAsync(Ct);
+        await provider.WaitForSeriesAsync(Ct);
+
+        var older = await provider.WaitForChangeAsync(0, Ct);
+        var next = provider.WaitForChangeAsync(older.Version, Ct);
+
+        Assert.Equal((1L, 1), (older.Version, older.Plans.Count));
+        Assert.False(next.IsCompleted);
+
+        _source.Series.Add(Eth4h);
+        await AdvanceUntilAsync(CandleSeriesProvider.RefreshInterval, () => next.IsCompleted);
+
+        Assert.Equal((2L, 2), ((await next).Version, (await next).Plans.Count));
     }
 
     [Fact]

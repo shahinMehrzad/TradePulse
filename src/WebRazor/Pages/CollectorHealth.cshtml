@@ -1,0 +1,60 @@
+@page
+@model CollectorHealthModel
+@{
+    ViewData["Title"] = "Collector health";
+}
+
+@if (Model.Error is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.Error</div>
+}
+else if (Model.Health is { State: "notConfigured" })
+{
+    <div class="alert alert-warning" role="alert">
+        The API does not know where the collector is. Set <code>Collector:HealthUrl</code> in the API's settings to the address the collector serves
+        <code>/health</code> on (its <code>Health:Url</code>, by default <code>http://localhost:5080/health</code>).
+    </div>
+}
+else if (Model.Health is { State: "unreachable" })
+{
+    <div class="alert alert-danger" role="alert">
+        The collector did not answer. Is it running, and is <code>Collector:HealthUrl</code> in the API's settings its address? The API's log says what went wrong.
+    </div>
+}
+else if (Model.Health is { } health)
+{
+    <div class="card mb-3">
+        <div class="card-body d-flex align-items-center gap-3">
+            <span class="badge @CollectorHealthModel.BadgeClass(health.Status) fs-3">@health.Status</span>
+            <div class="text-secondary">
+                The collector's own report, asked for at @health.CheckedAt.ToString("HH:mm:ss") UTC.
+            </div>
+            <a class="btn btn-sm ms-auto" asp-page="/CollectorHealth">Refresh</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Components (@Model.Checks.Count)</h3></div>
+        <div class="table-responsive">
+            <table class="table card-table table-vcenter">
+                <thead><tr><th>Component</th><th>Status</th><th>What it says</th><th>Details</th></tr></thead>
+                <tbody>
+                    @foreach (var check in Model.Checks)
+                    {
+                        <tr>
+                            <td class="fw-bold text-nowrap">@check.Name</td>
+                            <td><span class="badge @CollectorHealthModel.BadgeClass(check.Status)">@check.Status</span></td>
+                            <td>@check.Description</td>
+                            <td class="text-secondary">
+                                @foreach (var (key, value) in check.Data)
+                                {
+                                    <span class="d-inline-block me-2 text-nowrap">@key: <span class="text-body">@value</span></span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

@@ -26,6 +26,7 @@ public class CandleFreshnessTests
         public bool Throw { get; set; }
         public int Calls { get; private set; }
 
+        public Task<DateTimeOffset?> GetFirstOpenTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken)
         {
             Calls++;

@@ -1,7 +1,9 @@
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Application.Exchange;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
+using BackgroundWorker.Plans;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
@@ -49,47 +51,60 @@ public class BinanceLiveCandleWorker(
             return;
         }
 
-        IReadOnlyList<CandleSeriesPlan> series;
-        try
-        {
-            series = (await seriesProvider.WaitForSeriesAsync(stoppingToken)).ForExchange(ExchangeEnum.Binance).ToList();
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            return;
-        }
-
         _queue = Channel.CreateBounded<(string, Candle)>(
             new BoundedChannelOptions(QueueCapacity) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite },
             // A dropped candle is not lost: the REST loop fetches it at the boundary.
             _ => logger.LogError("Live candle queue is full; a candle was dropped (REST will fetch it)"));
 
-        // One subscription per market and interval, each covering all of its symbols.
-        var streams = series
-            .GroupBy(p => (p.Series.MarketType, p.Series.Timeframe))
-            .Select(g => new CandleStream(g.Key.MarketType, g.Key.Timeframe,
-                g.DistinctBy(p => p.Series.Symbol).ToDictionary(p => p.Series.Symbol, p => p.Series.TableName)))
-            .ToList();
+        // The queue and its writer live as long as the worker. The subscriptions, one per market and time frame, come and go with
+        // the admin's choice, and a change replaces only the ones it touches. Neither the open interest flag nor the start date
+        // concerns a stream, so they are left out of what is compared.
+        using var running = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var writer = WriteBatchesAsync(running.Token);
+        var subscriptions = PlanRunner.RunGroupedAsync(seriesProvider,
+            plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false, StartDate = default }).ToList(),
+            plan => (plan.Series.MarketType, plan.Series.Timeframe),
+            StreamAsync, logger, "candle series", running.Token);
+
+        // Both end only at shutdown, or when one of them fails.
+        await Task.WhenAny(writer, subscriptions);
+        await running.CancelAsync();
+
+        Exception? failure = null;
+        foreach (var task in new[] { subscriptions, writer })
+        {
+            try
+            {
+                await task;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                failure ??= ex;
+            }
+        }
+
+        // Every subscription is closed by now: what is still queued is stored before the worker ends.
+        await FlushRemainingAsync();
+
+        if (failure is not null)
+            ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private async Task StreamAsync((MarketTypeEnum Market, TimeFrameEnum Timeframe) group, IReadOnlyList<CandleSeriesPlan> series, CancellationToken ct)
+    {
+        var stream = new CandleStream(group.Market, group.Timeframe,
+            series.DistinctBy(p => p.Series.Symbol).ToDictionary(p => p.Series.Symbol, p => p.Series.TableName));
 
         try
         {
-            var subscriptions = await Task.WhenAll(streams.Select(s => SubscribeAsync(s, stoppingToken)));
-            try
-            {
-                await WriteBatchesAsync(stoppingToken);
-            }
-            finally
-            {
-                foreach (var subscription in subscriptions)
-                    await subscription.DisposeAsync();
-            }
+            await using var subscription = await SubscribeAsync(stream, ct);
+            await Task.Delay(Timeout.Infinite, ct);
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-        }
-        finally
-        {
-            await FlushRemainingAsync();
         }
     }
 
