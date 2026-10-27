@@ -1,0 +1,11 @@
+**/bin
+**/obj
+**/.vs
+**/*.user
+.git
+tests
+benchmarks
+docs
+TestResults
+BenchmarkDotNet.Artifacts
+deploy/.env

@@ -30,6 +30,9 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
     public Lookups Lookups { get; private set; } = Lookups.Empty;
 
+    /// <summary>The series that start later than their start date, by id: every series, not only this page.</summary>
+    public IReadOnlyDictionary<int, LateStart> LateStarts { get; private set; } = new Dictionary<int, LateStart>();
+
     public IReadOnlyList<string> Errors { get; private set; } = [];
 
     public string? Saved { get; private set; }
@@ -178,6 +181,24 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
         return await LoadAsync(cancellationToken) ?? Page();
     }
 
+    /// <summary>Moves the start date of one series (or of all that start late) to its first candle. Only on request.</summary>
+    public async Task<IActionResult> OnPostAlignAsync(int? id, CancellationToken cancellationToken)
+    {
+        ResetForm();
+        PageNumber = Math.Max(1, PageNumber);
+
+        var result = await CallAsync(() => api.AlignStartsAsync(id, cancellationToken));
+        if (result.SessionRejected)
+            return await EndSessionAsync();
+
+        if (result.Success)
+            Saved = id is null ? "The start dates were moved to the first candle." : "The start date was moved to the first candle.";
+        else
+            Errors = result.Errors;
+
+        return await LoadAsync(cancellationToken) ?? Page();
+    }
+
     /// <summary>
     /// Back to an empty "add" form. The posted values have to go too: a tag helper shows what was posted (the hidden id, the old
     /// choices) in preference to the model, so resetting <see cref="Input"/> alone would leave the form still pointing at the old row.
@@ -201,6 +222,19 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
         }
     }
 
+    /// <summary>A note, not the list itself: when it cannot be had the page is shown without it.</summary>
+    private async Task<IReadOnlyDictionary<int, LateStart>> LoadLateStartsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await api.GetLateStartsAsync(cancellationToken) ?? []).ToDictionary(l => l.Id);
+        }
+        catch (HttpRequestException)
+        {
+            return new Dictionary<int, LateStart>();
+        }
+    }
+
     /// <returns>A redirect when the session is over, otherwise null (the page then renders with whatever could be loaded).</returns>
     private async Task<IActionResult?> LoadAsync(CancellationToken cancellationToken)
     {
@@ -220,6 +254,7 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
             TotalItems = page.TotalItems;
             TotalPages = page.TotalPages;
             Lookups = await api.GetLookupsAsync(cancellationToken);
+            LateStarts = await LoadLateStartsAsync(cancellationToken);
         }
         catch (HttpRequestException)
         {

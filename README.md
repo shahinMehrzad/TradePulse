@@ -55,6 +55,8 @@ A [Tabler](https://tabler.io)-based panel that only the seeded administrator can
 | --- | --- |
 | [docs/collector.md](docs/collector.md) | The data the worker collects and how the collection path is built. |
 | [docs/health.md](docs/health.md) | `GET /health` and every check behind it. |
+| [docs/alerts.md](docs/alerts.md) | Telegram and email messages when a check changes or a new gap appears. |
+| [deploy/README.md](deploy/README.md) | Running Postgres, the API, the panel and the collector with Docker. |
 | [docs/configuration.md](docs/configuration.md) | Choosing candle series, open interest, funding rate and liquidations in the database. |
 | [docs/api.md](docs/api.md) | The candle read API, the dashboard API, login and refresh tokens. |
 | [docs/admin-panel.md](docs/admin-panel.md) | The panel's pages, sessions and what it asks WebApi for. |
@@ -78,7 +80,9 @@ dotnet run --project src/WebRazor     # the admin panel, by default on http://lo
 dotnet run --project src/BackgroundWorker
 ```
 
-Sign in to the panel with the Development admin from [`appsettings.Development.json`](src/WebApi/appsettings.Development.json) and add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. Restart it after changing the list; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
+Sign in to the panel with the Development admin from [`appsettings.Development.json`](src/WebApi/appsettings.Development.json) and add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. A change made later applies by itself within about half a minute; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
+
+Or everything in containers, with its own database: [deploy/README.md](deploy/README.md).
 
 Run the tests:
 

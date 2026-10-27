@@ -1,5 +1,6 @@
 using Application.Exchange;
 using BackgroundWorker.Health;
+using BackgroundWorker.Plans;
 using BackgroundWorker.Scheduling;
 using BackgroundWorker.SymbolData;
 using Domain.Entities;
@@ -27,20 +28,17 @@ public class BinanceFundingRateWorker(
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromHours(1);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    /// <summary>Only a change in which symbols ask for their funding rate (or from when) restarts this worker (see <see cref="PlanRunner"/>).</summary>
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        PlanRunner.RunAsync(symbolDataProvider,
+            plans => SymbolDataPlans.FundingRatesForBinance(plans, (plan, reason) =>
+                logger.LogWarning("The funding rate is not collected for {Symbol}: {Reason}", plan.Symbol, reason)),
+            CollectAsync, logger, "funding rate symbols", stoppingToken);
+
+    private async Task CollectAsync(IReadOnlyList<FundingRateTarget> targets, CancellationToken stoppingToken)
     {
         try
         {
-            var plans = await symbolDataProvider.WaitForPlansAsync(stoppingToken);
-            var targets = SymbolDataPlans.FundingRatesForBinance(plans, (plan, reason) =>
-                logger.LogWarning("The funding rate is not collected for {Symbol}: {Reason}", plan.Symbol, reason));
-
-            if (targets.Count == 0)
-            {
-                logger.LogInformation("No symbol asks for its funding rate; nothing to collect.");
-                return;
-            }
-
             await EnsureTablesAsync(targets, stoppingToken);
             await MarketClock.RunEveryIntervalAsync(PollInterval, ct => SyncAllAsync(targets, ct), stoppingToken);
         }

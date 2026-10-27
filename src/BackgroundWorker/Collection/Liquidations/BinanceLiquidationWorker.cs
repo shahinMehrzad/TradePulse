@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Domain.Services;
 using Application.Exchange;
 using BackgroundWorker.Health;
+using BackgroundWorker.Plans;
 using BackgroundWorker.SymbolData;
 using Domain.Entities;
 using Domain.Enums;
@@ -37,22 +38,17 @@ public class BinanceLiquidationWorker(
     private static readonly TimeSpan ShutdownFlushTimeout = TimeSpan.FromSeconds(5);
 
     private Channel<(SymbolEnum Symbol, Liquidation Row)> _queue = null!;
+        
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        PlanRunner.RunAsync(symbolDataProvider,
+            plans => SymbolDataPlans.LiquidationsForBinance(plans, (plan, reason) =>
+                logger.LogWarning("Liquidations are not collected for {Symbol}: {Reason}", plan.Symbol, reason)),
+            CollectAsync, logger, "liquidation symbols", stoppingToken);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private async Task CollectAsync(IReadOnlyList<SymbolEnum> symbols, CancellationToken stoppingToken)
     {
-        List<SymbolEnum> symbols;
         try
         {
-            var plans = await symbolDataProvider.WaitForPlansAsync(stoppingToken);
-            symbols = SymbolDataPlans.LiquidationsForBinance(plans, (plan, reason) =>
-                logger.LogWarning("Liquidations are not collected for {Symbol}: {Reason}", plan.Symbol, reason)).ToList();
-
-            if (symbols.Count == 0)
-            {
-                logger.LogInformation("No symbol asks for its liquidations; nothing to collect.");
-                return;
-            }
-
             await EnsureTablesAsync(symbols, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -82,7 +78,7 @@ public class BinanceLiquidationWorker(
         }
     }
 
-    private async Task EnsureTablesAsync(List<SymbolEnum> symbols, CancellationToken ct)
+    private async Task EnsureTablesAsync(IReadOnlyList<SymbolEnum> symbols, CancellationToken ct)
     {
         foreach (var symbol in symbols)
         {
@@ -97,7 +93,7 @@ public class BinanceLiquidationWorker(
     }
 
     /// <summary>Subscribes, trying again until it works: a stream that never started would leave the table silently empty.</summary>
-    private async Task<IAsyncDisposable> SubscribeAsync(List<SymbolEnum> symbols, CancellationToken ct)
+    private async Task<IAsyncDisposable> SubscribeAsync(IReadOnlyList<SymbolEnum> symbols, CancellationToken ct)
     {
         var listener = new LiquidationListener(_queue.Writer, health, logger);
 

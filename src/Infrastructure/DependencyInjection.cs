@@ -5,6 +5,7 @@ using Domain.Entities;
 using Infrastructure.Identity;
 using Domain.Repositories;
 using Infrastructure.Configurations;
+using Infrastructure.Monitoring;
 using Infrastructure.Persistence;
 using Infrastructure.ReadModels;
 using Infrastructure.Repositories;
@@ -49,6 +50,16 @@ public static class DependencyInjection
 
         services.Configure<JwtConfigurations>(configuration.GetSection(nameof(JwtConfigurations)));
 
+        return services;
+    }
+
+    public static IServiceCollection AddCollectorHealthClient(this IServiceCollection services)
+    {
+        services.AddHttpClient<ICollectorHealthSource, CollectorHealthSource>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(5);
+            client.MaxResponseContentBufferSize = 256 * 1024;
+        });
         return services;
     }
 

@@ -26,6 +26,7 @@ internal sealed class FakeCandleRepository : ICandleRepository
     public Task EnsureTableExistsAsync(string tableName, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
+    public Task<DateTimeOffset?> GetFirstOpenTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
     public Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 

@@ -6,7 +6,7 @@
 
 <div class="alert alert-info" role="alert">
     The funding rate and liquidations have no time frame, so they are chosen per symbol here instead of per candle series. Both exist on futures only.
-    The worker reads this list when it starts, so a change applies after the worker is restarted. Liquidations have no history: they are recorded from the moment the worker runs.
+    The collector looks at this list every 30 seconds, so a change applies within about half a minute, without a restart. Liquidations have no history: they are recorded from the moment they are switched on, and the stream reconnects for a moment when the symbols change.
 </div>
 
 @if (Model.Saved is not null)

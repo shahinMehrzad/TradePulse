@@ -17,6 +17,8 @@ public sealed class SymbolDataHealthCheck(SymbolDataProvider provider) : IHealth
 
         return Task.FromResult(provider.Status switch
         {
+            PlanStatus.Loaded when provider.LastError is { } error => HealthCheckResult.Degraded(
+                $"Collecting symbol data for {provider.Current.Count} symbols, but the list cannot be refreshed ({error}); changes made now are not seen", data: data),
             PlanStatus.Loaded => HealthCheckResult.Healthy($"Collecting symbol data for {provider.Current.Count} symbols", data),
             PlanStatus.WaitingForConfiguration => HealthCheckResult.Healthy("No funding rate or liquidation collection is configured", data),
             // Only the exception type is reported; messages can contain host names.

@@ -7,7 +7,8 @@ namespace BackgroundWorker.Health;
 
 /// <summary>
 /// Whether the worker knows what to collect. An empty table is a legitimate but unusual state (the admin chose nothing,
-/// so the collector idles), hence degraded; a database that cannot be read is unhealthy.
+/// so the collector idles), hence degraded; a database that cannot be read is unhealthy, or degraded when a list is already known
+/// and being collected (only the changes of the admin are missed).
 /// </summary>
 public sealed class CandleSeriesHealthCheck(CandleSeriesProvider provider) : IHealthCheck
 {
@@ -17,6 +18,9 @@ public sealed class CandleSeriesHealthCheck(CandleSeriesProvider provider) : IHe
 
         return Task.FromResult(provider.Status switch
         {
+            // The list is known, but the last look at the database failed: what the admin changed since is not seen.
+            PlanStatus.Loaded when provider.LastError is { } error => HealthCheckResult.Degraded(
+                $"Collecting {provider.Current.Count} candle series, but the list cannot be refreshed ({error}); changes made now are not seen", data: data),
             PlanStatus.Loaded => HealthCheckResult.Healthy($"Collecting {provider.Current.Count} candle series", data),
             PlanStatus.WaitingForConfiguration => HealthCheckResult.Degraded("No candle series are configured; the collector is idle", data: data),
             // Only the exception type is reported; messages can contain host names.
