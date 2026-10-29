@@ -79,6 +79,7 @@ public sealed class AlertDispatcher(
         try
         {
             await channel.SendAsync(alert, timeout.Token);
+            logger.LogInformation("Alert sent to {Channel}: {Title}", channel.Name, alert.Title);
         }
         catch (NotificationException ex)
         {

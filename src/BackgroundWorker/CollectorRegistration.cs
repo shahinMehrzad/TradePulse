@@ -47,6 +47,7 @@ public static class CollectorRegistration
         services.AddSingleton<IAlertSink>(provider => provider.GetRequiredService<AlertQueue>());
         services.AddSingleton<IHealthCheckPublisher, AlertHealthPublisher>();
         services.AddHostedService<AlertDispatcher>();
+        services.AddHostedService<StartupAlert>();
 
         services.AddHostedService<BinanceCandleWorker>();
         services.AddHostedService<BinanceLiveCandleWorker>();

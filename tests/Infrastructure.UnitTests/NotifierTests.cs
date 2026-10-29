@@ -73,6 +73,54 @@ public class NotifierTests
         Assert.StartsWith("Telegram could not be reached", error.Message);
     }
 
+    private static HttpResponseMessage Refusal(HttpStatusCode status, string body) =>
+        new(status) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
+
+    [Fact]
+    public async Task ARefusalCarriesTelegramsOwnReasonSoAWrongChatIdIsToldApartFromAWrongToken()
+    {
+        var notifier = Telegram(new StubHandler(_ =>
+            Refusal(HttpStatusCode.BadRequest, """{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}""")));
+
+        var error = await Assert.ThrowsAsync<NotificationException>(() => notifier.SendAsync(new Alert("t", "b"), Ct));
+
+        Assert.Equal("Telegram answered 400: Bad Request: chat not found", error.Message);
+    }
+
+    [Fact]
+    public async Task AReasonThatWouldHoldTheTokenIsBlanked()
+    {
+        var notifier = Telegram(new StubHandler(_ =>
+            Refusal(HttpStatusCode.NotFound, $$"""{"ok":false,"error_code":404,"description":"Not Found: bot{{Token}}"}""")));
+
+        var error = await Assert.ThrowsAsync<NotificationException>(() => notifier.SendAsync(new Alert("t", "b"), Ct));
+
+        Assert.DoesNotContain("SECRET", error.Message);
+        Assert.Contains("***", error.Message);
+    }
+
+    [Fact]
+    public async Task AnAnswerThatIsNotTheUsualJsonGivesTheStatusAlone()
+    {
+        var notifier = Telegram(new StubHandler(_ => Refusal(HttpStatusCode.BadGateway, "<html>Bad Gateway</html>")));
+
+        var error = await Assert.ThrowsAsync<NotificationException>(() => notifier.SendAsync(new Alert("t", "b"), Ct));
+
+        Assert.Equal("Telegram answered 502", error.Message);
+    }
+
+    [Fact]
+    public async Task ALongReasonIsCut()
+    {
+        var notifier = Telegram(new StubHandler(_ =>
+            Refusal(HttpStatusCode.BadRequest, $$"""{"description":"{{new string('x', 1000)}}"}""")));
+
+        var error = await Assert.ThrowsAsync<NotificationException>(() => notifier.SendAsync(new Alert("t", "b"), Ct));
+
+        Assert.True(error.Message.Length < 260, error.Message.Length.ToString());
+        Assert.EndsWith("…", error.Message);
+    }
+
     [Fact]
     public void ALongMessageIsCutBelowTheLimitOfTelegram()
     {
