@@ -31,7 +31,7 @@ public class SignInHandlersTests
 
         public Task<Account?> FindActiveAccountAsync(Guid userId, CancellationToken cancellationToken) => Task.FromResult(Account);
 
-        public Task<TwoFactorOutcome> VerifyTwoFactorAsync(Guid userId, string code, bool isRecoveryCode, CancellationToken cancellationToken) =>
+        public Task<TwoFactorOutcome> VerifyTwoFactorAsync(Guid userId, string code, TwoFactorMethod method, CancellationToken cancellationToken) =>
             Task.FromResult(TwoFactor);
 
         public Task<PasswordChangeResult> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken)
@@ -41,6 +41,13 @@ public class SignInHandlersTests
                 Account = Account! with { MustChangePassword = false };
             return Task.FromResult(PasswordChange);
         }
+
+        public Task<EmailCode?> CreateEmailCodeAsync(Guid userId, bool forEnabling, CancellationToken cancellationToken) =>
+            Task.FromResult<EmailCode?>(new("admin@example.com", "123456"));
+
+        public Task<bool> EnableEmailCodesAsync(Guid userId, string code, CancellationToken cancellationToken) => Task.FromResult(code == "123456");
+
+        public Task<bool> DisableEmailCodesAsync(Guid userId, string password, CancellationToken cancellationToken) => Task.FromResult(password == "right");
 
         public Task<int> CountRecoveryCodesAsync(Guid userId, CancellationToken cancellationToken) => Task.FromResult(7);
 
@@ -58,6 +65,17 @@ public class SignInHandlersTests
     {
         public ChallengeToken Create(Guid userId) => new("challenge-" + userId, DateTime.UtcNow.AddMinutes(10));
         public Guid? Validate(string token) => token == "challenge-" + UserId ? UserId : null;
+    }
+
+    private sealed class FakeMail : IMailSender
+    {
+        public bool IsConfigured { get; set; } = true;
+        public List<(string To, string Body)> Sent { get; } = [];
+        public Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken)
+        {
+            Sent.Add((to, body));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeAccessTokens : IAccessTokenService
@@ -97,7 +115,9 @@ public class SignInHandlersTests
     private readonly FakeRefreshTokens _refreshTokens = new();
     private readonly FakeAuditLog _auditLog = new();
 
-    private LoginSteps Steps => new(new FakeAccessTokens(), new FakeChallenges());
+    private readonly FakeMail _mail = new();
+
+    private LoginSteps Steps => new(new FakeAccessTokens(), new FakeChallenges(), _mail);
 
     private AuditTrail Audit => new(_auditLog, new Anonymous(), new FakeTimeProvider(), NullLogger<AuditTrail>.Instance);
 
@@ -145,7 +165,7 @@ public class SignInHandlersTests
     public async Task ARightCodeOpensTheSession()
     {
         var step = await new VerifyTwoFactorCommandHandler(_identity, Steps)
-            .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "123456", false), Ct);
+            .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "123456", TwoFactorMethod.Authenticator), Ct);
 
         Assert.Equal(LoginStage.Authenticated, step.Stage);
         Assert.Equal("access-admin", step.Session!.AccessToken);
@@ -159,7 +179,7 @@ public class SignInHandlersTests
         _identity.TwoFactor = outcome;
 
         var failure = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps)
-            .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "000000", false), Ct));
+            .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "000000", TwoFactorMethod.Authenticator), Ct));
 
         Assert.Equal(message, failure.Message);
     }
@@ -171,14 +191,14 @@ public class SignInHandlersTests
         _identity.TwoFactor = TwoFactorOutcome.Valid; // even a right code
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps)
-            .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "123456", false), Ct));
+            .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "123456", TwoFactorMethod.Authenticator), Ct));
     }
 
     [Fact]
     public async Task ATokenThatIsNotAChallengeIsRefusedByEveryStep()
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps)
-            .HandleAsync(new VerifyTwoFactorCommand("garbage", "123456", false), Ct));
+            .HandleAsync(new VerifyTwoFactorCommand("garbage", "123456", TwoFactorMethod.Authenticator), Ct));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new BeginTwoFactorEnrollmentCommandHandler(_identity, Steps)
             .HandleAsync(new BeginTwoFactorEnrollmentCommand("garbage"), Ct));
     }
@@ -276,5 +296,59 @@ public class SignInHandlersTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             new ValidateRefreshTokenCommandHandler(_refreshTokens, _identity, new FakeAccessTokens())
                 .HandleAsync(new ValidateRefreshTokenCommand("token", "device"), Ct));
+    }
+
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)] // the user did not turn the codes on
+    [InlineData(false, true, false)] // the server has no mail settings
+    public async Task TheCodeStepOffersEmailOnlyWhenTheUserAndTheServerAllowIt(bool userEnabled, bool mailConfigured, bool offered)
+    {
+        _identity.Account = new Account(User, MustChangePassword: false, TwoFactorEnabled: true, EmailCodesEnabled: userEnabled);
+        _mail.IsConfigured = mailConfigured;
+
+        var step = await LoginAsync();
+
+        Assert.Equal(LoginStage.TwoFactorRequired, step.Stage);
+        Assert.Equal(offered, step.EmailCodeAvailable);
+    }
+
+    [Fact]
+    public async Task AnEmailCodeIsSentOnlyAfterTheSetupIsDone()
+    {
+        _identity.Account = new Account(User, MustChangePassword: true, TwoFactorEnabled: true, EmailCodesEnabled: true);
+        var sender = new EmailCodeSender(_identity, _mail, new EmailCodeThrottle(new FakeTimeProvider()));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new SendEmailCodeCommandHandler(_identity, Steps, sender)
+            .HandleAsync(new SendEmailCodeCommand("challenge-" + UserId), Ct));
+
+        Assert.Empty(_mail.Sent);
+    }
+
+    [Fact]
+    public async Task TheMailedCodeGoesToTheUsersAddressAndAskingAgainRightAwayIsRefused()
+    {
+        _identity.Account = new Account(User, MustChangePassword: false, TwoFactorEnabled: true, EmailCodesEnabled: true);
+        var sender = new EmailCodeSender(_identity, _mail, new EmailCodeThrottle(new FakeTimeProvider()));
+        var handler = new SendEmailCodeCommandHandler(_identity, Steps, sender);
+
+        await handler.HandleAsync(new SendEmailCodeCommand("challenge-" + UserId), Ct);
+
+        var mail = Assert.Single(_mail.Sent);
+        Assert.Equal("admin@example.com", mail.To);
+        Assert.Contains("123456", mail.Body);
+        await Assert.ThrowsAsync<ConfigurationConflictException>(() => handler.HandleAsync(new SendEmailCodeCommand("challenge-" + UserId), Ct));
+        Assert.Single(_mail.Sent);
+    }
+
+    [Fact]
+    public async Task WithoutMailSettingsNothingIsSent()
+    {
+        _mail.IsConfigured = false;
+        var sender = new EmailCodeSender(_identity, _mail, new EmailCodeThrottle(new FakeTimeProvider()));
+
+        await Assert.ThrowsAsync<ConfigurationConflictException>(() => sender.SendAsync(UserId, forEnabling: true, Ct));
+
+        Assert.Empty(_mail.Sent);
     }
 }

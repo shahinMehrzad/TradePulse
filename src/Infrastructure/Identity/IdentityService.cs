@@ -30,7 +30,7 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         return user is null || user.IsDisabled() ? null : await ToAccountAsync(user);
     }
 
-    public async Task<TwoFactorOutcome> VerifyTwoFactorAsync(Guid userId, string code, bool isRecoveryCode, CancellationToken cancellationToken)
+    public async Task<TwoFactorOutcome> VerifyTwoFactorAsync(Guid userId, string code, TwoFactorMethod method, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByIdAsync(userId.ToString());
         if (user is null || user.IsDisabled() || !user.TwoFactorEnabled)
@@ -38,9 +38,15 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         if (await userManager.IsLockedOutAsync(user))
             return TwoFactorOutcome.LockedOut;
 
-        var valid = isRecoveryCode
-            ? (await userManager.RedeemTwoFactorRecoveryCodeAsync(user, code.Replace(" ", string.Empty))).Succeeded
-            : await userManager.VerifyTwoFactorTokenAsync(user, userManager.Options.Tokens.AuthenticatorTokenProvider, Normalize(code));
+        if (method == TwoFactorMethod.Email && !user.EmailCodesEnabled)
+            return TwoFactorOutcome.Invalid;
+
+        var valid = method switch
+        {
+            TwoFactorMethod.Recovery => (await userManager.RedeemTwoFactorRecoveryCodeAsync(user, code.Replace(" ", string.Empty))).Succeeded,
+            TwoFactorMethod.Email => await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider, Normalize(code)),
+            _ => await userManager.VerifyTwoFactorTokenAsync(user, userManager.Options.Tokens.AuthenticatorTokenProvider, Normalize(code))
+        };
 
         return await CountAsync(user, valid);
     }
@@ -65,6 +71,46 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         return update.Succeeded
             ? new PasswordChangeResult(true, [])
             : new PasswordChangeResult(false, [.. update.Errors.Select(e => e.Description)]);
+    }
+
+    public async Task<EmailCode?> CreateEmailCodeAsync(Guid userId, bool forEnabling, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(userId.ToString());
+        if (user is null || user.IsDisabled() || string.IsNullOrWhiteSpace(user.Email) || !user.TwoFactorEnabled)
+            return null;
+        if (!forEnabling && !user.EmailCodesEnabled)
+            return null;
+
+        var code = await userManager.GenerateTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider);
+        return new EmailCode(user.Email, code);
+    }
+
+    public async Task<bool> EnableEmailCodesAsync(Guid userId, string code, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(userId.ToString());
+        if (user is null || user.IsDisabled() || !user.TwoFactorEnabled || await userManager.IsLockedOutAsync(user))
+            return false;
+
+        var valid = await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider, Normalize(code));
+        if (await CountAsync(user, valid) != TwoFactorOutcome.Valid)
+            return false;
+
+        // The code reached the mailbox: the address is proven, and the codes may be used to sign in.
+        user.EmailConfirmed = true;
+        user.EmailCodesEnabled = true;
+        return (await userManager.UpdateAsync(user)).Succeeded;
+    }
+
+    public async Task<bool> DisableEmailCodesAsync(Guid userId, string password, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(userId.ToString());
+        if (user is null || user.IsDisabled())
+            return false;
+        if (!(await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true)).Succeeded)
+            return false;
+
+        user.EmailCodesEnabled = false;
+        return (await userManager.UpdateAsync(user)).Succeeded;
     }
 
     public async Task<int> CountRecoveryCodesAsync(Guid userId, CancellationToken cancellationToken)
@@ -137,5 +183,6 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
     private async Task<Account> ToAccountAsync(ApplicationUser user) => new(
         new AuthenticatedUser(user.Id, user.UserName ?? string.Empty, user.Email ?? string.Empty, [.. await userManager.GetRolesAsync(user)]),
         user.MustChangePassword,
-        user.TwoFactorEnabled);
+        user.TwoFactorEnabled,
+        user.EmailCodesEnabled);
 }

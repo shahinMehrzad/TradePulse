@@ -4,9 +4,9 @@ namespace WebRazor.Api;
 /// <summary>The answer of every sign-in step. <c>Stage</c> is Authenticated (the tokens are set), TwoFactorRequired or SetupRequired (a challenge token is).</summary>
 public record LoginResponse(
     string Stage, string? AccessToken, DateTime? ExpiresAt, string? UserName, string? RefreshToken,
-    string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string[]? RecoveryCodes);
+    string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string[]? RecoveryCodes, bool EmailCodeAvailable);
 
-public record AccountInfo(string UserName, string Email, string[] Roles, bool TwoFactorEnabled, int RecoveryCodesLeft);
+public record AccountInfo(string UserName, string Email, string[] Roles, bool TwoFactorEnabled, int RecoveryCodesLeft, bool EmailCodesEnabled, bool EmailAvailable);
 
 public record TwoFactorEnrollment(string SharedKey, string AuthenticatorUri);
 

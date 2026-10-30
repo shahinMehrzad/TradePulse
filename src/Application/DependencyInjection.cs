@@ -1,4 +1,4 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
 using Application.Queries.Candles;
 using Application.Queries.Dashboard;
 using Application.Services;
@@ -32,6 +32,8 @@ public static class DependencyInjection
     {
         AddHandlers(services, IsApiOnlyHandler);
         services.AddScoped<LoginSteps>();
+        services.AddScoped<EmailCodeSender>();
+        services.AddSingleton<EmailCodeThrottle>();
         return services;
     }
 

@@ -34,6 +34,18 @@ public class AccountModel(TradePulseApiClient api, SessionTokenStore store) : Ad
         public string Repeat { get; set; } = string.Empty;
     }
 
+    [BindProperty]
+    public EmailCodeForm EmailCode { get; set; } = new();
+
+    [BindProperty]
+    public CodesForm DisableEmail { get; set; } = new();
+
+    public class EmailCodeForm
+    {
+        [Required(ErrorMessage = "Enter the code from the email.")]
+        public string Value { get; set; } = string.Empty;
+    }
+
     public class CodesForm
     {
         [Required(ErrorMessage = "Enter your password."), DataType(DataType.Password)]
@@ -82,7 +94,58 @@ public class AccountModel(TradePulseApiClient api, SessionTokenStore store) : Ad
         return await LoadAsync(cancellationToken) ?? Page();
     }
 
-    /// <summary>The page has two forms and one model, so only the errors of the posted form's own fields matter.</summary>
+    public async Task<IActionResult> OnPostSendEmailCodeAsync(CancellationToken cancellationToken)
+    {
+        var result = await api.SendOwnEmailCodeAsync(cancellationToken);
+        if (result.SessionRejected)
+            return await EndSessionAsync();
+        if (!result.Success)
+        {
+            Errors = result.Errors;
+            return await LoadAsync(cancellationToken) ?? Page();
+        }
+
+        TempData["Done"] = "We sent a code to your email address. Enter it below within a few minutes.";
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostEnableEmailAsync(CancellationToken cancellationToken)
+    {
+        if (!FormIsValid(nameof(EmailCode)))
+            return await LoadAsync(cancellationToken) ?? Page();
+
+        var result = await api.EnableEmailCodesAsync(EmailCode.Value.Trim(), cancellationToken);
+        if (result.SessionRejected)
+            return await EndSessionAsync();
+        if (!result.Success)
+        {
+            Errors = result.Errors;
+            return await LoadAsync(cancellationToken) ?? Page();
+        }
+
+        TempData["Done"] = "Sign-in codes by email are on. At sign-in you can now ask for a code to be sent to your email.";
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostDisableEmailAsync(CancellationToken cancellationToken)
+    {
+        if (!FormIsValid(nameof(DisableEmail)))
+            return await LoadAsync(cancellationToken) ?? Page();
+
+        var result = await api.DisableEmailCodesAsync(DisableEmail.Password, cancellationToken);
+        if (result.SessionRejected)
+            return await EndSessionAsync();
+        if (!result.Success)
+        {
+            Errors = result.Errors;
+            return await LoadAsync(cancellationToken) ?? Page();
+        }
+
+        TempData["Done"] = "Sign-in codes by email are off.";
+        return RedirectToPage();
+    }
+
+    /// <summary>The page has several forms and one model, so only the errors of the posted form's own fields matter.</summary>
     private bool FormIsValid(string prefix) =>
         !ModelState.Any(entry => entry.Key.StartsWith(prefix + ".", StringComparison.Ordinal) && entry.Value?.Errors.Count > 0);
 

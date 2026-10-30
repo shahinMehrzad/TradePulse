@@ -1,4 +1,4 @@
-﻿using Domain.Entities;
+using Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +39,9 @@ public class ApplicationUser : IdentityUser<Guid>
     /// has to replace it before anything else. Existing accounts get true from the migration too.
     /// </summary>
     public bool MustChangePassword { get; set; } = true;
+
+    /// <summary>The user may sign in with a code mailed to their (confirmed) address instead of the authenticator app.</summary>
+    public bool EmailCodesEnabled { get; set; }
 }
 
 public class ApplicationRole : IdentityRole<Guid>

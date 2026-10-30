@@ -98,6 +98,8 @@ public static class DependencyInjection
 
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<IUserAdministration, UserAdministration>();
+        services.Configure<Notifications.MailOptions>(configuration.GetSection(Notifications.MailOptions.SectionName));
+        services.AddSingleton<IMailSender, Notifications.SmtpMailSender>();
         services.AddSingleton<IAccessTokenService, JwtAccessTokenService>();
         services.AddSingleton<IChallengeTokenService, JwtChallengeTokenService>();
         services.TryAddSingleton(TimeProvider.System);

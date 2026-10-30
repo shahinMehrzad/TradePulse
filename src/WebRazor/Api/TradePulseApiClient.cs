@@ -289,6 +289,25 @@ public sealed class TradePulseApiClient(HttpClient http)
     }
 
     private record RecoveryCodesBody(string[] RecoveryCodes);
+
+    /// <summary>Mails a test code to the user's address (the first step of turning sign-in codes by email on).</summary>
+    public async Task<ApiResult> SendOwnEmailCodeAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("api/account/email-codes/send", content: null, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
+    }
+
+    public async Task<ApiResult> EnableEmailCodesAsync(string code, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/email-codes/enable", new { Code = code }, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
+    }
+
+    public async Task<ApiResult> DisableEmailCodesAsync(string password, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/email-codes/disable", new { Password = password }, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
+    }
     private const string NotFoundUser = "That user does not exist (anymore). Reload the page.";
 
     /// <returns>The accounts of the panel, or null when the session is no longer accepted by the API.</returns>

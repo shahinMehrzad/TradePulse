@@ -1,8 +1,11 @@
 using System.Net.Http.Json;
+using Application.Interfaces;
 using Domain.Entities;
 using Infrastructure.Repositories;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Testcontainers.PostgreSql;
 
 namespace WebApi.IntegrationTests;
@@ -20,6 +23,9 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     public const string AdminEmail = "admin@example.com";
     public const string AdminPassword = "AdminPassword123!";
     public const string AdminChangedPassword = "AdminChangedPassword456!";
+
+    /// <summary>The mails the API sends in these tests (it has no mail server): sign-in codes are read from here.</summary>
+    public FakeMailSender Mail { get; } = new();
 
     private readonly SemaphoreSlim _adminSetup = new(1, 1);
     private string? _adminAuthenticatorKey;
@@ -61,6 +67,11 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Collector:HealthUrl", "");
         // Many tests log in within a minute; the throttle itself is tested with its own low limit.
         builder.UseSetting("RateLimiting:LoginPermitsPerMinute", "1000");
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IMailSender>();
+            services.AddSingleton<IMailSender>(Mail);
+        });
     }
 
     /// <summary>

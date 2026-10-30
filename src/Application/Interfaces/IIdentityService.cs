@@ -3,7 +3,7 @@ namespace Application.Interfaces;
 public sealed record AuthenticatedUser(Guid Id, string UserName, string Email, IReadOnlyList<string> Roles);
 
 /// <summary>A user who is signing in, and what still stands between them and a session.</summary>
-public sealed record Account(AuthenticatedUser User, bool MustChangePassword, bool TwoFactorEnabled)
+public sealed record Account(AuthenticatedUser User, bool MustChangePassword, bool TwoFactorEnabled, bool EmailCodesEnabled = false)
 {
     /// <summary>True while the user has to change the password or enrol two-factor authentication before they get any token.</summary>
     public bool NeedsSetup => MustChangePassword || !TwoFactorEnabled;
@@ -14,6 +14,12 @@ public enum CredentialsOutcome { Valid, Invalid, LockedOut }
 public sealed record CredentialsResult(CredentialsOutcome Outcome, Account? Account = null);
 
 public enum TwoFactorOutcome { Valid, Invalid, LockedOut }
+
+/// <summary>What the second factor is: the code of the authenticator app, a one-time recovery code, or a code sent by email (if the user turned that on).</summary>
+public enum TwoFactorMethod { Authenticator, Recovery, Email }
+
+/// <summary>A code for the mailbox of the user, to be sent by the caller.</summary>
+public sealed record EmailCode(string Address, string Code);
 
 public sealed record TwoFactorEnrollment(string SharedKey, string AuthenticatorUri);
 
@@ -27,7 +33,17 @@ public interface IIdentityService
     Task<Account?> FindActiveAccountAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>Checks an authenticator code, or a recovery code (which is used up). Wrong codes count towards the lockout.</summary>
-    Task<TwoFactorOutcome> VerifyTwoFactorAsync(Guid userId, string code, bool isRecoveryCode, CancellationToken cancellationToken);
+    Task<TwoFactorOutcome> VerifyTwoFactorAsync(Guid userId, string code, TwoFactorMethod method, CancellationToken cancellationToken);
+
+    /// <summary>A new code for the user's email address, valid for a few minutes. Null when the user has no address, or (for sign-in) did not turn email codes on.</summary>
+    /// <param name="forEnabling">True when the user is turning email codes on and has not yet proved they get the mail.</param>
+    Task<EmailCode?> CreateEmailCodeAsync(Guid userId, bool forEnabling, CancellationToken cancellationToken);
+
+    /// <summary>Turns email codes on when <paramref name="code"/> is the one mailed by <see cref="CreateEmailCodeAsync"/> (this also confirms the address).</summary>
+    Task<bool> EnableEmailCodesAsync(Guid userId, string code, CancellationToken cancellationToken);
+
+    /// <summary>Turns email codes off. Needs the password; a wrong one counts towards the lockout.</summary>
+    Task<bool> DisableEmailCodesAsync(Guid userId, string password, CancellationToken cancellationToken);
 
     /// <summary>Replaces a password that has to be changed (a first password or one an admin reset). Clears the "must change" flag.</summary>
     Task<PasswordChangeResult> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken);

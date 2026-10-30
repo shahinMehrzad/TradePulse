@@ -4,7 +4,7 @@ using Application.Interfaces;
 namespace Application.Services;
 
 /// <summary>Decides what a user who got past one step of the sign-in sees next, so every handler agrees on the order.</summary>
-public sealed class LoginSteps(IAccessTokenService accessTokens, IChallengeTokenService challenges)
+public sealed class LoginSteps(IAccessTokenService accessTokens, IChallengeTokenService challenges, IMailSender mail)
 {
     public const string ExpiredMessage = "The sign-in has expired. Sign in again.";
 
@@ -13,7 +13,7 @@ public sealed class LoginSteps(IAccessTokenService accessTokens, IChallengeToken
         var challenge = challenges.Create(account.User.Id).Token;
         return account.NeedsSetup
             ? new LoginStepDto(LoginStage.SetupRequired, null, challenge, account.MustChangePassword, !account.TwoFactorEnabled)
-            : new LoginStepDto(LoginStage.TwoFactorRequired, null, challenge, false, false);
+            : new LoginStepDto(LoginStage.TwoFactorRequired, null, challenge, false, false, EmailCodeAvailable: account.EmailCodesEnabled && mail.IsConfigured);
     }
 
     public AuthResponseDto Session(Account account)

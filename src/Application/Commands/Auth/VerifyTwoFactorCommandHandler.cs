@@ -4,7 +4,7 @@ using Application.Services;
 
 namespace Application.Commands.Auth;
 
-public record VerifyTwoFactorCommand(string ChallengeToken, string Code, bool IsRecoveryCode);
+public record VerifyTwoFactorCommand(string ChallengeToken, string Code, TwoFactorMethod Method = TwoFactorMethod.Authenticator);
 
 /// <summary>Last step of a normal sign-in: the code from the authenticator app (or a recovery code).</summary>
 public class VerifyTwoFactorCommandHandler(IIdentityService identityService, LoginSteps steps)
@@ -16,7 +16,7 @@ public class VerifyTwoFactorCommandHandler(IIdentityService identityService, Log
         if (account.NeedsSetup)
             throw new UnauthorizedAccessException(LoginSteps.ExpiredMessage);
 
-        var outcome = await identityService.VerifyTwoFactorAsync(account.User.Id, request.Code, request.IsRecoveryCode, cancellationToken);
+        var outcome = await identityService.VerifyTwoFactorAsync(account.User.Id, request.Code, request.Method, cancellationToken);
         return outcome switch
         {
             TwoFactorOutcome.Valid => steps.Authenticated(account),

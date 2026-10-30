@@ -21,7 +21,8 @@ public class AuthController(ICommandDispatcher dispatcher) : BaseController
     public const string LoginRateLimitPolicy = "login";
 
     public record ChallengeRequest(string ChallengeToken);
-    public record TwoFactorRequest(string ChallengeToken, string Code, bool IsRecoveryCode = false);
+    /// <param name="Method">Authenticator (the default), Recovery or Email. <c>IsRecoveryCode</c> is the older way to say Recovery.</param>
+    public record TwoFactorRequest(string ChallengeToken, string Code, string? Method = null, bool IsRecoveryCode = false);
     public record SetupPasswordRequest(string ChallengeToken, string CurrentPassword, string NewPassword);
     public record ConfirmTwoFactorRequest(string ChallengeToken, string Code);
 
@@ -32,7 +33,16 @@ public class AuthController(ICommandDispatcher dispatcher) : BaseController
     [HttpPost("login/two-factor")]
     public Task<IActionResult> LoginTwoFactor([FromBody] TwoFactorRequest payload, CancellationToken cancellationToken) =>
         Step(async () => await RespondAsync(await dispatcher.SendAsync<VerifyTwoFactorCommand, LoginStepDto>(
-            new VerifyTwoFactorCommand(payload.ChallengeToken, payload.Code, payload.IsRecoveryCode), cancellationToken), cancellationToken));
+            new VerifyTwoFactorCommand(payload.ChallengeToken, payload.Code, MethodOf(payload)), cancellationToken), cancellationToken));
+
+    /// <summary>Mails a sign-in code to a user who turned email codes on. Answers 409 when email is not set up, not turned on, or a code was just sent.</summary>
+    [HttpPost("login/two-factor/email")]
+    public Task<IActionResult> SendEmailCode([FromBody] ChallengeRequest payload, CancellationToken cancellationToken) =>
+        Step(async () =>
+        {
+            await dispatcher.SendAsync<SendEmailCodeCommand, bool>(new SendEmailCodeCommand(payload.ChallengeToken), cancellationToken);
+            return NoContent();
+        });
 
     [HttpPost("setup/password")]
     public Task<IActionResult> SetupPassword([FromBody] SetupPasswordRequest payload, CancellationToken cancellationToken) =>
@@ -69,6 +79,10 @@ public class AuthController(ICommandDispatcher dispatcher) : BaseController
         }
     }
 
+    private static TwoFactorMethod MethodOf(TwoFactorRequest payload) =>
+        payload.IsRecoveryCode ? TwoFactorMethod.Recovery
+        : Enum.TryParse<TwoFactorMethod>(payload.Method, ignoreCase: true, out var method) ? method : TwoFactorMethod.Authenticator;
+
     /// <summary>Runs one step; a refusal to authenticate is a 401 with the reason the handler gave (never a stack trace).</summary>
     private static async Task<IActionResult> Step(Func<Task<IActionResult>> step)
     {
@@ -91,6 +105,6 @@ public class AuthController(ICommandDispatcher dispatcher) : BaseController
 
         return Ok(new LoginResponseDto(
             step.Stage.ToString(), step.Session?.AccessToken, step.Session?.ExpiresAt, step.Session?.UserName,
-            refreshToken, step.ChallengeToken, step.MustChangePassword, step.NeedsTwoFactorSetup, recoveryCodes));
+            refreshToken, step.ChallengeToken, step.MustChangePassword, step.NeedsTwoFactorSetup, recoveryCodes, step.EmailCodeAvailable));
     }
 }

@@ -10,7 +10,7 @@ public enum LoginStage
     SetupRequired
 }
 
-public record LoginStepDto(LoginStage Stage, AuthResponseDto? Session, string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup);
+public record LoginStepDto(LoginStage Stage, AuthResponseDto? Session, string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, bool EmailCodeAvailable = false);
 
 public record TwoFactorEnrollmentDto(string SharedKey, string AuthenticatorUri);
 

@@ -18,6 +18,7 @@ public class AccountController(ICommandDispatcher dispatcher) : BaseController
     public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     public record RecoveryCodesRequest(string Password);
     public record RecoveryCodesResponse(IReadOnlyList<string> RecoveryCodes);
+    public record EmailCodeRequest(string Code);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken cancellationToken) =>
@@ -49,5 +50,39 @@ public class AccountController(ICommandDispatcher dispatcher) : BaseController
         var codes = await dispatcher.SendAsync<RegenerateRecoveryCodesCommand, IReadOnlyList<string>>(
             new RegenerateRecoveryCodesCommand(userId, payload.Password), cancellationToken);
         return Ok(new RecoveryCodesResponse(codes));
+    }
+
+    /// <summary>Mails a test code to the user's address. Entering it (<c>email-codes/enable</c>) turns sign-in codes by email on.</summary>
+    [HttpPost("email-codes/send")]
+    [EnableRateLimiting(AuthController.LoginRateLimitPolicy)]
+    public async Task<IActionResult> SendEmailCode(CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(GetUserId(), out var userId))
+            return Unauthorized();
+
+        await dispatcher.SendAsync<SendOwnEmailCodeCommand, bool>(new SendOwnEmailCodeCommand(userId), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("email-codes/enable")]
+    [EnableRateLimiting(AuthController.LoginRateLimitPolicy)]
+    public async Task<IActionResult> EnableEmailCodes([FromBody] EmailCodeRequest payload, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(GetUserId(), out var userId))
+            return Unauthorized();
+
+        await dispatcher.SendAsync<EnableEmailCodesCommand, bool>(new EnableEmailCodesCommand(userId, payload.Code), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("email-codes/disable")]
+    [EnableRateLimiting(AuthController.LoginRateLimitPolicy)]
+    public async Task<IActionResult> DisableEmailCodes([FromBody] RecoveryCodesRequest payload, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(GetUserId(), out var userId))
+            return Unauthorized();
+
+        await dispatcher.SendAsync<DisableEmailCodesCommand, bool>(new DisableEmailCodesCommand(userId, payload.Password), cancellationToken);
+        return NoContent();
     }
 }

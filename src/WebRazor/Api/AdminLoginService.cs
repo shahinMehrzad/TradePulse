@@ -14,7 +14,8 @@ public enum LoginNext { SignedIn, TwoFactor, Setup }
 /// A sign-in between its steps: the password was right and the API handed out a challenge token. The panel keeps it in an encrypted,
 /// short-lived cookie (see <see cref="PendingLoginCookie"/>), never in the page.
 /// </summary>
-public record PendingLogin(string SessionId, string ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string? ReturnUrl = null);
+/// <param name="EmailCodeAvailable">At the code step: the user turned email codes on and the server can send them.</param>
+public record PendingLogin(string SessionId, string ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string? ReturnUrl = null, bool EmailCodeAvailable = false);
 
 /// <param name="Message">What the API said when it refused a step after the first (wrong code, weak password); safe to show.</param>
 public record LoginOutcome(
@@ -48,8 +49,28 @@ public sealed class AdminLoginService(IHttpClientFactory clientFactory, SessionT
         }, firstStep: true, cancellationToken);
     }
 
-    public Task<LoginOutcome> VerifyTwoFactorAsync(PendingLogin pending, string code, bool isRecoveryCode, CancellationToken cancellationToken) =>
-        StepAsync(pending, "api/auth/login/two-factor", new { pending.ChallengeToken, Code = code, IsRecoveryCode = isRecoveryCode }, cancellationToken);
+    /// <param name="method">Authenticator, Recovery or Email.</param>
+    public Task<LoginOutcome> VerifyTwoFactorAsync(PendingLogin pending, string code, string method, CancellationToken cancellationToken) =>
+        StepAsync(pending, "api/auth/login/two-factor", new { pending.ChallengeToken, Code = code, Method = method }, cancellationToken);
+
+    /// <summary>Asks the API to mail a sign-in code. Failure.None when it was sent; otherwise the reason (too soon, no mail server, ...).</summary>
+    public async Task<LoginOutcome> SendEmailCodeAsync(PendingLogin pending, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await PostAsync(pending.SessionId, "api/auth/login/two-factor/email", new { pending.ChallengeToken }, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                return new LoginOutcome(LoginFailure.TooManyAttempts);
+
+            return response.IsSuccessStatusCode
+                ? new LoginOutcome(LoginFailure.None)
+                : new LoginOutcome(LoginFailure.Refused, Message: await ReadMessageAsync(response, cancellationToken));
+        }
+        catch (HttpRequestException)
+        {
+            return new LoginOutcome(LoginFailure.ApiUnavailable);
+        }
+    }
 
     public Task<LoginOutcome> ChangePasswordAsync(PendingLogin pending, string currentPassword, string newPassword, CancellationToken cancellationToken) =>
         StepAsync(pending, "api/auth/setup/password", new { pending.ChallengeToken, CurrentPassword = currentPassword, NewPassword = newPassword }, cancellationToken);
@@ -107,7 +128,7 @@ public sealed class AdminLoginService(IHttpClientFactory clientFactory, SessionT
             };
 
             LoginOutcome Pending(LoginNext next) => new(LoginFailure.None, next, sessionId,
-                Pending: new PendingLogin(sessionId, login.ChallengeToken!, login.MustChangePassword, login.NeedsTwoFactorSetup, returnUrl));
+                Pending: new PendingLogin(sessionId, login.ChallengeToken!, login.MustChangePassword, login.NeedsTwoFactorSetup, returnUrl, login.EmailCodeAvailable));
         }
         catch (HttpRequestException)
         {
