@@ -12,6 +12,7 @@ public class AuditModel(TradePulseApiClient api, SessionTokenStore store) : Admi
     {
         ["CandleSeries"] = "Candle series",
         ["SymbolData"] = "Funding & liquidations",
+        ["User"] = "Users",
     };
 
     public static readonly int[] PageSizes = [10, 25, 50, 100];

@@ -12,6 +12,9 @@ public static class AuditEntityTypes
 {
     public const string CandleSeries = "CandleSeries";
     public const string SymbolData = "SymbolData";
+
+    /// <summary>A panel account. Users have a Guid, not an int id, so these entries carry <c>EntityId</c> 0 and name the user in the summary.</summary>
+    public const string User = "User";
 }
 
 /// <summary>Who changed which collection setting, and how. Written by the admin API only; never edited.</summary>

@@ -25,8 +25,7 @@ public class CandleWorkerConfigurationODataTests(ApiFixture api) : IClassFixture
     private async Task<HttpClient> SeededAdminAsync()
     {
         var client = api.CreateClient();
-        var response = await client.PostAsJsonAsync(
-            "/api/auth/login", new { Email = ApiFixture.AdminEmail, Username = "", Password = ApiFixture.AdminPassword }, Ct);
+        var response = await api.AdminLoginAsync(client, Ct);
         response.EnsureSuccessStatusCode();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer", (await response.Content.ReadFromJsonAsync<LoginResult>(Ct))!.AccessToken);

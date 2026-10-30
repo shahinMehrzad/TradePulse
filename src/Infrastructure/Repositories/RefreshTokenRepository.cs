@@ -25,6 +25,10 @@ public class RefreshTokenRepository(AuthDbContext context) : IRefreshTokenReposi
 
 
 
+    public async Task RevokeAllAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        await context.RefreshTokens.Where(r => r.UserId == userId && !r.IsRevoked)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsRevoked, true), cancellationToken);
+
     public async Task<Guid?> ConsumeAsync(string tokenHash, string deviceId, CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;

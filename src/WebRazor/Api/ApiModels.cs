@@ -1,7 +1,17 @@
 namespace WebRazor.Api;
 
 // Wire shapes of WebApi responses. Kept here on purpose: the panel must not reference the Application layer.
-public record LoginResponse(string AccessToken, DateTime ExpiresAt, string UserName, string RefreshToken);
+/// <summary>The answer of every sign-in step. <c>Stage</c> is Authenticated (the tokens are set), TwoFactorRequired or SetupRequired (a challenge token is).</summary>
+public record LoginResponse(
+    string Stage, string? AccessToken, DateTime? ExpiresAt, string? UserName, string? RefreshToken,
+    string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string[]? RecoveryCodes);
+
+public record TwoFactorEnrollment(string SharedKey, string AuthenticatorUri);
+
+public record UserRow(Guid Id, string UserName, string Email, string[] Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled);
+
+/// <summary>A one-time password the API generated; the panel shows it once.</summary>
+public record OneTimePassword(Guid UserId, string UserName, string TemporaryPassword);
 
 public record AdminInfo(string UserName, string Email, string[] Roles);
 

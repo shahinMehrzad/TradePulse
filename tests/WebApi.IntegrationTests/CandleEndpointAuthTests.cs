@@ -30,8 +30,7 @@ public class CandleEndpointAuthTests(ApiFixture api) : IClassFixture<ApiFixture>
 
     private async Task<string> LoginAsync()
     {
-        var response = await api.CreateClient().PostAsJsonAsync(
-            "/api/auth/login", new { Email = ApiFixture.AdminEmail, Username = "", Password = ApiFixture.AdminPassword }, Ct);
+        var response = await api.AdminLoginAsync(api.CreateClient(), Ct);
         response.EnsureSuccessStatusCode();
 
         return (await response.Content.ReadFromJsonAsync<LoginResult>(Ct))!.AccessToken;

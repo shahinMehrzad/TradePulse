@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Domain.Entities;
 using Infrastructure.Repositories;
 using Microsoft.AspNetCore.Hosting;
@@ -14,9 +15,17 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string CandleUrl = "/api/candles/binance/futures/btcusdt/1h/latest?limit=5";
 
-    // What the administrator is seeded with in these tests.
+    // What the administrator is seeded with in these tests. The seeded password is temporary: the first sign-in has to
+    // replace it and enrol two-factor, which AdminLoginAsync does once per fixture.
     public const string AdminEmail = "admin@example.com";
     public const string AdminPassword = "AdminPassword123!";
+    public const string AdminChangedPassword = "AdminChangedPassword456!";
+
+    private readonly SemaphoreSlim _adminSetup = new(1, 1);
+    private string? _adminAuthenticatorKey;
+
+    private record Step(string Stage, string? ChallengeToken);
+    private record Enrollment(string SharedKey);
 
     /// <summary>The key the API signs its tokens with in these tests; tests that make a token of their own use it too.</summary>
     public const string JwtSecret = "signing-key-of-the-integration-tests-of-the-api-0123456789";
@@ -52,6 +61,64 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Collector:HealthUrl", "");
         // Many tests log in within a minute; the throttle itself is tested with its own low limit.
         builder.UseSetting("RateLimiting:LoginPermitsPerMinute", "1000");
+    }
+
+    /// <summary>
+    /// Signs the seeded administrator in the way a real one has to: password, then the code of the authenticator app.
+    /// The first call also does the one-time setup (new password, two-factor). Returns the answer of the last step, with the tokens.
+    /// </summary>
+    public async Task<HttpResponseMessage> AdminLoginAsync(HttpClient client, CancellationToken cancellationToken, string? device = null)
+    {
+        await EnsureAdminSetUpAsync(cancellationToken);
+
+        var login = await PostAsync(client, "/api/auth/login",
+            new { Email = AdminEmail, Username = "", Password = AdminChangedPassword }, device, cancellationToken);
+        var step = (await login.Content.ReadFromJsonAsync<Step>(cancellationToken))!;
+
+        return await PostAsync(client, "/api/auth/login/two-factor",
+            new { step.ChallengeToken, Code = Totp.Code(_adminAuthenticatorKey!), IsRecoveryCode = false }, device, cancellationToken);
+    }
+
+    private async Task EnsureAdminSetUpAsync(CancellationToken cancellationToken)
+    {
+        await _adminSetup.WaitAsync(cancellationToken);
+        try
+        {
+            if (_adminAuthenticatorKey is not null)
+                return;
+
+            using var client = CreateClient();
+            var login = await PostAsync(client, "/api/auth/login", new { Email = AdminEmail, Username = "", Password = AdminPassword }, null, cancellationToken);
+            var challenge = (await login.Content.ReadFromJsonAsync<Step>(cancellationToken))!.ChallengeToken;
+
+            var changed = await PostAsync(client, "/api/auth/setup/password",
+                new { ChallengeToken = challenge, CurrentPassword = AdminPassword, NewPassword = AdminChangedPassword }, null, cancellationToken);
+            challenge = (await changed.Content.ReadFromJsonAsync<Step>(cancellationToken))!.ChallengeToken;
+
+            var begin = await PostAsync(client, "/api/auth/setup/two-factor/begin", new { ChallengeToken = challenge }, null, cancellationToken);
+            var key = (await begin.Content.ReadFromJsonAsync<Enrollment>(cancellationToken))!.SharedKey;
+
+            var confirm = await PostAsync(client, "/api/auth/setup/two-factor/confirm",
+                new { ChallengeToken = challenge, Code = Totp.Code(key) }, null, cancellationToken);
+            confirm.EnsureSuccessStatusCode();
+
+            _adminAuthenticatorKey = key;
+        }
+        finally
+        {
+            _adminSetup.Release();
+        }
+    }
+
+    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string url, object body, string? device, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+        if (device is not null)
+            request.Headers.Add("X-Device-Id", device);
+
+        var response = await client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return response;
     }
 
     async ValueTask IAsyncDisposable.DisposeAsync()

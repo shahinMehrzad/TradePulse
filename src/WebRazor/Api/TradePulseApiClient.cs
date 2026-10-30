@@ -259,6 +259,53 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
     }
 
+    private const string UsersRoot = "api/admin/users";
+    private const string NotFoundUser = "That user does not exist (anymore). Reload the page.";
+
+    /// <returns>The accounts of the panel, or null when the session is no longer accepted by the API.</returns>
+    public async Task<IReadOnlyList<UserRow>?> GetUsersAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync(UsersRoot, cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<UserRow>>(cancellationToken);
+    }
+
+    /// <summary>Creates an administrator; the password in the answer is the only time it is ever shown.</summary>
+    public async Task<(ApiResult Result, OneTimePassword? Password)> CreateAdministratorAsync(string userName, string email, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync(UsersRoot, new { UserName = userName, Email = email }, cancellationToken);
+        return await ToPasswordResultAsync(response, cancellationToken);
+    }
+
+    public async Task<(ApiResult Result, OneTimePassword? Password)> ResetPasswordAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{UsersRoot}/{id}/reset-password", content: null, cancellationToken);
+        return await ToPasswordResultAsync(response, cancellationToken);
+    }
+
+    public async Task<ApiResult> ResetTwoFactorAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{UsersRoot}/{id}/reset-two-factor", content: null, cancellationToken);
+        return await ToResultAsync(response, NotFoundUser, cancellationToken);
+    }
+
+    public async Task<ApiResult> SetUserDisabledAsync(Guid id, bool disabled, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{UsersRoot}/{id}/{(disabled ? "disable" : "enable")}", content: null, cancellationToken);
+        return await ToResultAsync(response, NotFoundUser, cancellationToken);
+    }
+
+    private static async Task<(ApiResult, OneTimePassword?)> ToPasswordResultAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var result = await ToResultAsync(response, NotFoundUser, cancellationToken);
+        return result.Success
+            ? (result, await response.Content.ReadFromJsonAsync<OneTimePassword>(cancellationToken))
+            : (result, null);
+    }
+
     /// <summary>Success, or the reasons the API gave (a ProblemDetails <c>detail</c>, or the <c>errors</c> of a validation problem).</summary>
     private static async Task<ApiResult> ToResultAsync(HttpResponseMessage response, string notFound, CancellationToken cancellationToken)
     {

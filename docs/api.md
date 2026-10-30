@@ -55,6 +55,28 @@ Admin only. `GET /api/admin/collector/health` relays the running collector's own
 
 ## Authentication
 
-`POST /api/auth/login` issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret, the seeded admin credentials and the connection strings are **in no committed file**, `appsettings.Development.json` included. On a developer machine they are user secrets (`dotnet user-secrets set "JwtConfigurations:Secret" ... --project src/WebApi`, see the README); anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes), `ConnectionStrings__DefaultConnection` and `ConnectionStrings__AuthConnection` and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.
+A completed sign-in (see below) issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret, the seeded admin credentials and the connection strings are **in no committed file**, `appsettings.Development.json` included. On a developer machine they are user secrets (`dotnet user-secrets set "JwtConfigurations:Secret" ... --project src/WebApi`, see the README); anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes), `ConnectionStrings__DefaultConnection` and `ConnectionStrings__AuthConnection` and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.
+
+### Signing in: password, change, two-factor
+
+Every account has to change a password somebody else knew and has to use two-factor authentication (TOTP: Google Authenticator, Microsoft Authenticator, Authy, 1Password, ...). So no call returns tokens for a password alone. Every step answers with `stage`:
+
+| `stage` | Meaning | Next call |
+|---|---|---|
+| `SetupRequired` | `mustChangePassword` and/or `needsTwoFactorSetup` | `setup/password`, then `setup/two-factor/begin` and `confirm` |
+| `TwoFactorRequired` | password right, two-factor is on | `login/two-factor` |
+| `Authenticated` | `accessToken`, `refreshToken`, `expiresAt` are set | |
+
+1. `POST /api/auth/login` `{ email | username, password }` returns `SetupRequired` or `TwoFactorRequired` with a `challengeToken` (30 minutes: time to choose a password and install an authenticator app). The challenge token is a JWT for another audience: it is **not** an access token and every other endpoint rejects it. The state of the account is always re-read from the database, never taken from the token.
+2. `POST /api/auth/setup/password` `{ challengeToken, currentPassword, newPassword }` replaces the temporary password (at least 12 characters, upper and lower case, a digit and a symbol; it must differ from the old one) and ends the sessions the old one opened. It answers with the next step.
+3. `POST /api/auth/setup/two-factor/begin` `{ challengeToken }` returns `sharedKey` and `authenticatorUri` (the `otpauth://` address the panel draws as a QR code). It is refused until the password is changed.
+4. `POST /api/auth/setup/two-factor/confirm` `{ challengeToken, code }` turns two-factor on when the code is right and signs the user in (`Authenticated`, plus **ten one-time `recoveryCodes`, shown only in this answer**).
+5. `POST /api/auth/login/two-factor` `{ challengeToken, code, isRecoveryCode }` finishes a normal sign-in. A recovery code works once.
+
+Five wrong passwords or codes lock the account for 15 minutes. All these endpoints share the login rate limit. A seeded or admin-created account starts with `MustChangePassword`, and so does every account that existed when this was introduced. A disabled user, or one whose password or two-factor was reset, gets no new session from an old refresh token.
+
+### Users
+
+Admin only, under `/api/admin/users`: `GET` lists the accounts (state only, never a secret); `POST { userName, email }` creates an administrator and returns their generated one-time password, **once**; `POST {id}/reset-password` returns a new one-time password; `POST {id}/reset-two-factor` makes the user enrol again; `POST {id}/disable` and `POST {id}/enable`. Resets and disabling end all of the user's sessions. Nobody can reset, disable or reset the two-factor of their own account (`409`), and the last active administrator cannot be disabled. Every change is in the audit log (entity `User`, with `entityId` 0 and the user name in the summary).
 
 `POST /api/auth/refresh-token` with `{ "refreshToken": "..." }` (and the same `X-Device-Id` header used at login) returns a new access token and a new refresh token. It needs no access token, since that is usually expired by then. Refresh tokens are single-use (rotated), bound to the device they were issued to, expire after `RefreshTokenDurationInDays`, and only their SHA-256 hash is stored. Concurrent use of one token succeeds exactly once.

@@ -20,6 +20,7 @@ namespace WebRazor
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddSingleton<SessionTokenStore>();
             builder.Services.AddScoped<AdminLoginService>();
+            builder.Services.AddSingleton<PendingLoginCookie>();
             builder.Services.AddTransient<ApiAuthHandler>();
 
             // Raw client: login and refresh, where there is no session token to attach yet.
@@ -62,6 +63,8 @@ namespace WebRazor
             builder.Services.AddRazorPages(options =>
             {
                 options.Conventions.AllowAnonymousToPage("/Login");
+                options.Conventions.AllowAnonymousToPage("/LoginTwoFactor");
+                options.Conventions.AllowAnonymousToPage("/LoginSetup");
                 options.Conventions.AllowAnonymousToPage("/Error");
             });
 

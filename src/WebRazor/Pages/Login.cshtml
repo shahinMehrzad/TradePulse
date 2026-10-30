@@ -8,6 +8,10 @@
 <div class="card card-md">
     <div class="card-body">
         <h2 class="h2 text-center mb-4">Admin sign in</h2>
+        @if (Model.Notice is not null)
+        {
+            <div class="alert alert-warning" role="alert">@Model.Notice</div>
+        }
         @if (Model.Error is not null)
         {
             <div class="alert alert-danger" role="alert">@Model.Error</div>

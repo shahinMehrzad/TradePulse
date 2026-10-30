@@ -33,6 +33,12 @@ public class AuthDbContext : IdentityDbContext<ApplicationUser, ApplicationRole,
 public class ApplicationUser : IdentityUser<Guid>
 {
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// True for a seeded account and for one an admin created or reset: the password is known to someone else, so the user
+    /// has to replace it before anything else. Existing accounts get true from the migration too.
+    /// </summary>
+    public bool MustChangePassword { get; set; } = true;
 }
 
 public class ApplicationRole : IdentityRole<Guid>

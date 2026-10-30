@@ -63,7 +63,13 @@ public sealed class ApiAuthHandler(
 
             var login = await response.Content.ReadFromJsonAsync<LoginResponse>(cancellationToken)
                         ?? throw new InvalidOperationException("Empty refresh response.");
-            var refreshed = new TokenSet(login.AccessToken, login.RefreshToken, login.ExpiresAt);
+            if (login.AccessToken is null || login.RefreshToken is null || login.ExpiresAt is null)
+            {
+                store.Remove(sessionId);
+                return null;
+            }
+
+            var refreshed = new TokenSet(login.AccessToken, login.RefreshToken, login.ExpiresAt.Value);
             store.Update(sessionId, refreshed);
             return refreshed;
         }
