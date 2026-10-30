@@ -7,6 +7,9 @@ using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateDefaultBuilder(args);
 
+// The default builder reads user secrets only in the Development environment, and the collector runs as Production on a developer machine too.
+builder.ConfigureAppConfiguration(config => config.AddUserSecrets(typeof(CollectorRegistration).Assembly, optional: true));
+
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json")

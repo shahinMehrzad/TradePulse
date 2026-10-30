@@ -30,7 +30,32 @@ public sealed class TelegramNotifier(HttpClient http, IOptions<AlertsOptions> op
         using (response)
         {
             if (!response.IsSuccessStatusCode)
-                throw new NotificationException($"Telegram answered {(int)response.StatusCode}");
+            {
+                var reason = await ReasonAsync(response, settings.Telegram.BotToken, cancellationToken);
+                throw new NotificationException($"Telegram answered {(int)response.StatusCode}{(reason is null ? "" : $": {reason}")}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// What Telegram says went wrong ("Bad Request: chat not found", "...group chat was upgraded to a supergroup chat"), so that a wrong
+    /// chat id or token is told apart without guessing. It is a short sentence about the request and never holds the token; should it
+    /// ever, the token is blanked. Null when there is nothing usable.
+    /// </summary>
+    private static async Task<string?> ReasonAsync(HttpResponseMessage response, string token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (!body.RootElement.TryGetProperty("description", out var description) || description.GetString() is not { Length: > 0 } text)
+                return null;
+
+            text = text.Replace(token, "***", StringComparison.Ordinal);
+            return text.Length <= 200 ? text : text[..199] + "…";
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
         }
     }
 

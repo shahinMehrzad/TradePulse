@@ -1,3 +1,4 @@
+using Infrastructure;
 using System.Text.Json;
 using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Collection.Candles;
@@ -30,8 +31,7 @@ public static class HealthRegistration
     {
         var health = configuration.GetSection("Health").Get<HealthConfigurations>() ?? new HealthConfigurations();
         var liveCandles = configuration.GetSection(LiveCandleSettings.SectionName).Get<LiveCandleSettings>() ?? new();
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        var connectionString = configuration.RequiredConnectionString("DefaultConnection");
 
         services.Configure<HealthConfigurations>(configuration.GetSection("Health"));
         services.AddSingleton(TimeProvider.System);
