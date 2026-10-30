@@ -12,13 +12,15 @@ public class AccountEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     private record Info(string UserName, string Email, bool TwoFactorEnabled, int RecoveryCodesLeft);
     private record Codes(string[] RecoveryCodes);
 
-    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, string? bearer, object? body = null, string? device = null)
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, string? bearer, object? body = null, string? device = null, string? elevation = null)
     {
         using var request = new HttpRequestMessage(method, url) { Content = body is null ? null : JsonContent.Create(body) };
         if (bearer is not null)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
         if (device is not null)
             request.Headers.Add("X-Device-Id", device);
+        if (elevation is not null)
+            request.Headers.Add("X-Elevation", elevation);
         return await api.CreateClient().SendAsync(request, Ct);
     }
 
@@ -128,7 +130,7 @@ public class AccountEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     {
         var name = "challenge" + Guid.NewGuid().ToString("N")[..8];
         var admin = (await (await api.AdminLoginAsync(api.CreateClient(), Ct)).Content.ReadFromJsonAsync<ApiFixture.Tokens>(Ct))!.AccessToken;
-        var created = await (await SendAsync(HttpMethod.Post, "/api/admin/users", admin, new { UserName = name, Email = $"{name}@example.com" })).Content.ReadFromJsonAsync<Created>(Ct);
+        var created = await (await SendAsync(HttpMethod.Post, "/api/admin/users", admin, new { UserName = name, Email = $"{name}@example.com" }, elevation: await api.AdminElevationAsync(admin, Ct))).Content.ReadFromJsonAsync<Created>(Ct);
         var login = await api.CreateClient().PostAsJsonAsync("/api/auth/login", new { Email = "", Username = name, Password = created!.TemporaryPassword }, Ct);
         var challenge = (await login.Content.ReadFromJsonAsync<Step>(Ct))!.ChallengeToken!;
 

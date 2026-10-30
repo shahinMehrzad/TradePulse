@@ -78,6 +78,12 @@ public class SignInHandlersTests
         }
     }
 
+    private sealed class FakeElevation : IElevationTokenService
+    {
+        public ElevationToken Create(Guid userId) => new("elevation-" + userId, DateTime.UtcNow.AddMinutes(10));
+        public Guid? Validate(string? token) => token == "elevation-" + UserId ? UserId : null;
+    }
+
     private sealed class FakeAccessTokens : IAccessTokenService
     {
         public AccessToken Create(AuthenticatedUser user) => new("access-" + user.UserName, DateTime.UtcNow.AddMinutes(30), 7);
@@ -350,5 +356,43 @@ public class SignInHandlersTests
         await Assert.ThrowsAsync<ConfigurationConflictException>(() => sender.SendAsync(UserId, forEnabling: true, Ct));
 
         Assert.Empty(_mail.Sent);
+    }
+
+    [Fact]
+    public async Task ARightCodeGivesAConfirmationForThatUser()
+    {
+        var result = await new StepUpCommandHandler(_identity, new FakeElevation())
+            .HandleAsync(new StepUpCommand(UserId, " 123456 ", TwoFactorMethod.Authenticator), Ct);
+
+        Assert.Equal("elevation-" + UserId, result.Token);
+    }
+
+    [Theory]
+    [InlineData(TwoFactorOutcome.Invalid, typeof(ConfigurationValidationException))]
+    [InlineData(TwoFactorOutcome.LockedOut, typeof(ConfigurationConflictException))]
+    public async Task AWrongOrLockedCodeGivesNothing(TwoFactorOutcome outcome, Type expected)
+    {
+        _identity.TwoFactor = outcome;
+
+        await Assert.ThrowsAsync(expected, () => new StepUpCommandHandler(_identity, new FakeElevation())
+            .HandleAsync(new StepUpCommand(UserId, "000000", TwoFactorMethod.Authenticator), Ct));
+    }
+
+    [Fact]
+    public async Task ARecoveryCodeIsNotAConfirmationEvenWhenItIsRight()
+    {
+        _identity.TwoFactor = TwoFactorOutcome.Valid;
+
+        await Assert.ThrowsAsync<ConfigurationValidationException>(() => new StepUpCommandHandler(_identity, new FakeElevation())
+            .HandleAsync(new StepUpCommand(UserId, "abcde-fghij", TwoFactorMethod.Recovery), Ct));
+    }
+
+    [Fact]
+    public async Task AUserWhoMustSetUpFirstCannotConfirm()
+    {
+        _identity.Account = new Account(User, MustChangePassword: true, TwoFactorEnabled: true);
+
+        await Assert.ThrowsAsync<ConfigurationValidationException>(() => new StepUpCommandHandler(_identity, new FakeElevation())
+            .HandleAsync(new StepUpCommand(UserId, "123456", TwoFactorMethod.Authenticator), Ct));
     }
 }

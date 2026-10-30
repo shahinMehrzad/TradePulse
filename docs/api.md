@@ -94,6 +94,15 @@ A second way to pass the code step, next to the authenticator app, for users who
 - At least a minute between two codes and five an hour per user (the test code and the sign-in codes are counted apart), over and above the login rate limit; a wrong code counts towards the account lockout like any other. The codes come from ASP.NET Identity's email token provider: six digits, valid for a few minutes and, as with any time-based code, usable more than once in that window. The mail never appears in a log, only that the server refused it.
 - Email as a second factor is only as strong as the mailbox: a stolen mailbox plus the password is enough. That is why it is opt-in per user and the authenticator app stays the way to enrol.
 
+### Confirming sensitive actions (step-up)
+
+Being signed in is not enough for what can hurt. These actions need a second-factor code entered a moment ago, on top of the access token: every change under `/api/admin/users`, and, when they exist, the exchange keys and trading. `POST /api/account/step-up` `{ code, method }` (`method` is `Authenticator`, the default, or `Email`; a recovery code is refused, it is for getting in when the phone is lost) returns `{ token, expiresAt }`, an **elevation token**. The caller sends it in the `X-Elevation` header with the action.
+
+- It is good for ten minutes, names one user (another user's token is refused), is signed for an audience of its own (it is not an access token and an access token is not an elevation) and **a refresh does not renew it**: after ten minutes, or in a stolen session without the phone, the next sensitive action asks again.
+- Without it the action answers `403` with `"code": "step_up_required"` in the problem details, so a client can tell "ask for a code" from "you lack the role". Reading (`GET`) does not need it.
+- `POST /api/account/step-up/email` mails a code to a user who turned email codes on (`409` otherwise). Wrong codes count towards the lockout and the endpoints share the login rate limit.
+- Put `[RequireElevation]` on a new sensitive action; that is all it takes.
+
 ### My account
 
 Any signed-in user (not only an administrator), always about the user in the token: `GET /api/account` (user name, email, roles, whether two-factor is on, how many recovery codes are left; never a secret); `POST /api/account/change-password` `{ currentPassword, newPassword }` signs the user out everywhere except the device named in `X-Device-Id`; `POST /api/account/recovery-codes` `{ password }` makes ten new recovery codes (shown only in this answer) and the old ones stop working. A wrong password on either counts towards the lockout, and both share the login rate limit.

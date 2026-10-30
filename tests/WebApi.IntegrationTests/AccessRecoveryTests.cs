@@ -33,6 +33,7 @@ public class AccessRecoveryTests(ApiFixture api) : IClassFixture<ApiFixture>
         using (var disable = new HttpRequestMessage(HttpMethod.Post, $"/api/admin/users/{account.Id}/disable"))
         {
             disable.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", admin);
+            disable.Headers.Add("X-Elevation", await api.AdminElevationAsync(admin, Ct));
             Assert.Equal(HttpStatusCode.NoContent, (await api.CreateClient().SendAsync(disable, Ct)).StatusCode);
         }
         Assert.Equal(HttpStatusCode.Unauthorized, (await LoginAsync(account.UserName, ApiFixture.NewUserPassword)).StatusCode);

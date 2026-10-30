@@ -30,6 +30,9 @@ public class UsersModel(TradePulseApiClient api, SessionTokenStore store) : Admi
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
+        if (!IsConfirmed())
+            return ConfirmFirst("/Users");
+
         Done = TempData["Done"] as string;
         if (TempData["PasswordUser"] is string userName && TempData["PasswordValue"] is string password)
             Password = new OneTimePassword(Guid.Empty, userName, password);
@@ -66,6 +69,8 @@ public class UsersModel(TradePulseApiClient api, SessionTokenStore store) : Admi
     {
         if (result.SessionRejected)
             return await EndSessionAsync();
+        if (result.StepUpRequired)
+            return ConfirmFirst("/Users");
 
         if (!result.Success)
         {

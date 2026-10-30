@@ -359,6 +359,9 @@ public sealed class TradePulseApiClient(HttpClient http)
     {
         if (response.IsSuccessStatusCode)
             return new ApiResult(true, []);
+        // Before the check for rejection: a 403 that asks for a confirmation is not a lost role.
+        if (response.StatusCode == HttpStatusCode.Forbidden && await AsksForStepUpAsync(response, cancellationToken))
+            return new ApiResult(false, [], StepUpRequired: true);
         if (IsRejected(response))
             return new ApiResult(false, [], SessionRejected: true);
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -366,6 +369,36 @@ public sealed class TradePulseApiClient(HttpClient http)
 
         var reasons = await ReadReasonsAsync(response, cancellationToken);
         return new ApiResult(false, reasons.Count > 0 ? reasons : [$"The API answered {(int)response.StatusCode}."]);
+    }
+
+    private static async Task<bool> AsksForStepUpAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            return document.RootElement.TryGetProperty("code", out var code) && code.GetString() == "step_up_required";
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Confirms with a code that it is really this user. The grant goes to <see cref="SessionTokenStore"/>; nothing else keeps it.</summary>
+    public async Task<(ApiResult Result, ElevationGrant? Grant)> StepUpAsync(string code, string method, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/step-up", new { Code = code, Method = method }, cancellationToken);
+        var result = await ToResultAsync(response, "The account does not exist.", cancellationToken);
+        return result.Success
+            ? (result, await response.Content.ReadFromJsonAsync<ElevationGrant>(cancellationToken))
+            : (result, null);
+    }
+
+    public async Task<ApiResult> SendStepUpEmailCodeAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("api/account/step-up/email", content: null, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
     }
 
     private static async Task<List<string>> ReadReasonsAsync(HttpResponseMessage response, CancellationToken cancellationToken)

@@ -19,6 +19,8 @@ public class AccountController(ICommandDispatcher dispatcher) : BaseController
     public record RecoveryCodesRequest(string Password);
     public record RecoveryCodesResponse(IReadOnlyList<string> RecoveryCodes);
     public record EmailCodeRequest(string Code);
+    /// <param name="Method">Authenticator (the default) or Email.</param>
+    public record StepUpRequest(string Code, string? Method = null);
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken cancellationToken) =>
@@ -83,6 +85,33 @@ public class AccountController(ICommandDispatcher dispatcher) : BaseController
             return Unauthorized();
 
         await dispatcher.SendAsync<DisableEmailCodesCommand, bool>(new DisableEmailCodesCommand(userId, payload.Password), cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Confirms with a second-factor code that it is really this user, and returns a short-lived elevation token. Send it in
+    /// <c>X-Elevation</c> to the actions that need it. A recovery code does not count.
+    /// </summary>
+    [HttpPost("step-up")]
+    [EnableRateLimiting(AuthController.LoginRateLimitPolicy)]
+    public async Task<IActionResult> StepUp([FromBody] StepUpRequest payload, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(GetUserId(), out var userId))
+            return Unauthorized();
+
+        var method = Enum.TryParse<TwoFactorMethod>(payload.Method, ignoreCase: true, out var parsed) ? parsed : TwoFactorMethod.Authenticator;
+        return Ok(await dispatcher.SendAsync<StepUpCommand, ElevationDto>(new StepUpCommand(userId, payload.Code, method), cancellationToken));
+    }
+
+    /// <summary>Mails a code for a step-up (for a user who turned email codes on).</summary>
+    [HttpPost("step-up/email")]
+    [EnableRateLimiting(AuthController.LoginRateLimitPolicy)]
+    public async Task<IActionResult> StepUpEmailCode(CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(GetUserId(), out var userId))
+            return Unauthorized();
+
+        await dispatcher.SendAsync<SendStepUpEmailCodeCommand, bool>(new SendStepUpEmailCodeCommand(userId), cancellationToken);
         return NoContent();
     }
 }

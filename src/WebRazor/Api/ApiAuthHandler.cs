@@ -34,6 +34,9 @@ public sealed class ApiAuthHandler(
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
         // Says which device is asking, so "sign out my other devices" leaves this one alone.
         request.Headers.TryAddWithoutValidation(DeviceHeader, sessionId);
+        // The proof of a recent second-factor code, when the session has one. The API asks for it only where it matters.
+        if (store.TryGetElevation(sessionId, out var elevation))
+            request.Headers.TryAddWithoutValidation("X-Elevation", elevation);
         return await base.SendAsync(request, cancellationToken);
     }
 

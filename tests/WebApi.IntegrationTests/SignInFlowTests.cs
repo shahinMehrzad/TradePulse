@@ -24,14 +24,23 @@ public class SignInFlowTests(ApiFixture api) : IClassFixture<ApiFixture>
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage response) => (await response.Content.ReadFromJsonAsync<T>(Ct))!;
 
-    private Task<HttpResponseMessage> PostAsync(string url, object? body, string? bearer = null, string? device = null)
+    private Task<HttpResponseMessage> PostAsync(string url, object? body, string? bearer = null, string? device = null, string? elevation = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = body is null ? null : JsonContent.Create(body) };
         if (bearer is not null)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
         if (device is not null)
             request.Headers.Add("X-Device-Id", device);
+        if (elevation is not null)
+            request.Headers.Add("X-Elevation", elevation);
         return api.CreateClient().SendAsync(request, Ct);
+    }
+
+    /// <summary>A change to the accounts as the seeded administrator makes it: signed in, and just confirmed with a code.</summary>
+    private async Task<HttpResponseMessage> AdminPostAsync(string url, object? body)
+    {
+        var token = await AdminTokenAsync();
+        return await PostAsync(url, body, token, elevation: await api.AdminElevationAsync(token, Ct));
     }
 
     private async Task<string> AdminTokenAsync() =>
@@ -39,7 +48,7 @@ public class SignInFlowTests(ApiFixture api) : IClassFixture<ApiFixture>
 
     private async Task<Temporary> CreateAdministratorAsync(string name)
     {
-        var response = await PostAsync("/api/admin/users", new { UserName = name, Email = $"{name}@example.com" }, await AdminTokenAsync());
+        var response = await AdminPostAsync("/api/admin/users", new { UserName = name, Email = $"{name}@example.com" });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await ReadAsync<Temporary>(response);
     }
@@ -185,7 +194,7 @@ public class SignInFlowTests(ApiFixture api) : IClassFixture<ApiFixture>
         var account = await SetUpAdministratorAsync("resetpw");
         var session = await ReadAsync<Step>(await FullLoginAsync(account, device: "laptop"));
 
-        var reset = await PostAsync($"/api/admin/users/{account.Id}/reset-password", null, await AdminTokenAsync());
+        var reset = await AdminPostAsync($"/api/admin/users/{account.Id}/reset-password", null);
         var temporary = await ReadAsync<Temporary>(reset);
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await PostAsync("/api/auth/refresh-token", new { session.RefreshToken }, device: "laptop")).StatusCode);
@@ -201,7 +210,7 @@ public class SignInFlowTests(ApiFixture api) : IClassFixture<ApiFixture>
     {
         var account = await SetUpAdministratorAsync("reset2fa");
 
-        var reset = await PostAsync($"/api/admin/users/{account.Id}/reset-two-factor", null, await AdminTokenAsync());
+        var reset = await AdminPostAsync($"/api/admin/users/{account.Id}/reset-two-factor", null);
 
         Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
         var step = await ReadAsync<Step>(await LoginAsync(account.UserName, Password));
@@ -215,14 +224,12 @@ public class SignInFlowTests(ApiFixture api) : IClassFixture<ApiFixture>
     {
         var account = await SetUpAdministratorAsync("disabled");
         var session = await ReadAsync<Step>(await FullLoginAsync(account, device: "phone"));
-        var admin = await AdminTokenAsync();
-
-        Assert.Equal(HttpStatusCode.NoContent, (await PostAsync($"/api/admin/users/{account.Id}/disable", null, admin)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AdminPostAsync($"/api/admin/users/{account.Id}/disable", null)).StatusCode);
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await LoginAsync(account.UserName, Password)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await PostAsync("/api/auth/refresh-token", new { session.RefreshToken }, device: "phone")).StatusCode);
 
-        Assert.Equal(HttpStatusCode.NoContent, (await PostAsync($"/api/admin/users/{account.Id}/enable", null, admin)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await AdminPostAsync($"/api/admin/users/{account.Id}/enable", null)).StatusCode);
         Assert.Equal("Authenticated", (await ReadAsync<Step>(await FullLoginAsync(account))).Stage);
     }
 
@@ -231,10 +238,11 @@ public class SignInFlowTests(ApiFixture api) : IClassFixture<ApiFixture>
     {
         var account = await SetUpAdministratorAsync("self");
         var token = (await ReadAsync<Step>(await FullLoginAsync(account))).AccessToken!;
+        var elevation = await api.ElevationAsync(token, account.AuthenticatorKey, Ct);
 
-        Assert.Equal(HttpStatusCode.Conflict, (await PostAsync($"/api/admin/users/{account.Id}/disable", null, token)).StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await PostAsync($"/api/admin/users/{account.Id}/reset-two-factor", null, token)).StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await PostAsync($"/api/admin/users/{account.Id}/reset-password", null, token)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostAsync($"/api/admin/users/{account.Id}/disable", null, token, elevation: elevation)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostAsync($"/api/admin/users/{account.Id}/reset-two-factor", null, token, elevation: elevation)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostAsync($"/api/admin/users/{account.Id}/reset-password", null, token, elevation: elevation)).StatusCode);
     }
 
     [Fact]
@@ -260,7 +268,7 @@ public class SignInFlowTests(ApiFixture api) : IClassFixture<ApiFixture>
     {
         var account = await SetUpAdministratorAsync("taken");
 
-        var response = await PostAsync("/api/admin/users", new { account.UserName, Email = "other@example.com" }, await AdminTokenAsync());
+        var response = await AdminPostAsync("/api/admin/users", new { account.UserName, Email = "other@example.com" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

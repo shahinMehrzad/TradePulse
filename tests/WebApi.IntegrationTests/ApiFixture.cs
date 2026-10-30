@@ -102,6 +102,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
         using var create = new HttpRequestMessage(HttpMethod.Post, "/api/admin/users") { Content = JsonContent.Create(new { UserName = name, Email = $"{name}@example.com" }) };
         create.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", admin);
+        create.Headers.Add("X-Elevation", await AdminElevationAsync(admin, cancellationToken));
         var created = await (await CreateClient().SendAsync(create, cancellationToken)).Content.ReadFromJsonAsync<Created>(cancellationToken);
 
         using var client = CreateClient();
@@ -129,6 +130,23 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     }
 
     public record Tokens(string AccessToken, string RefreshToken, string[]? RecoveryCodes);
+    private record Elevation(string Token);
+
+    /// <summary>The proof of a fresh second-factor code that the sensitive actions ask for (<c>X-Elevation</c>), for the user with this authenticator key.</summary>
+    public async Task<string> ElevationAsync(string accessToken, string authenticatorKey, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/account/step-up") { Content = JsonContent.Create(new { Code = Totp.Code(authenticatorKey) }) };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+        var response = await CreateClient().SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<Elevation>(cancellationToken))!.Token;
+    }
+
+    public async Task<string> AdminElevationAsync(string adminAccessToken, CancellationToken cancellationToken)
+    {
+        await EnsureAdminSetUpAsync(cancellationToken);
+        return await ElevationAsync(adminAccessToken, _adminAuthenticatorKey!, cancellationToken);
+    }
     private record Created(Guid UserId, string TemporaryPassword);
 
     private async Task EnsureAdminSetUpAsync(CancellationToken cancellationToken)

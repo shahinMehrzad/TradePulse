@@ -102,6 +102,7 @@ public static class DependencyInjection
         services.AddSingleton<IMailSender, Notifications.SmtpMailSender>();
         services.AddSingleton<IAccessTokenService, JwtAccessTokenService>();
         services.AddSingleton<IChallengeTokenService, JwtChallengeTokenService>();
+        services.AddSingleton<IElevationTokenService, JwtElevationTokenService>();
         services.TryAddSingleton(TimeProvider.System);
 
         return services;

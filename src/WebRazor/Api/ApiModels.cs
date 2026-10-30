@@ -78,7 +78,10 @@ public record AuditPage(IReadOnlyList<AuditEntry> Items, int PageNumber, int Pag
 public record SeriesRequest(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest, bool CollectMarketStatistics);
 
 /// <summary>Outcome of a write. <see cref="SessionRejected"/> means the API no longer accepts the signed-in session.</summary>
-public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false);
+/// <param name="StepUpRequired">The API wants a fresh second-factor confirmation for this (not a lack of rights): see the StepUp page.</param>
+public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false, bool StepUpRequired = false);
+
+public record ElevationGrant(string Token, DateTime ExpiresAt);
 
 /// <summary>
 /// One kind of data an exchange market provides (the API publishes it from the same rule that refuses the impossible choices).
