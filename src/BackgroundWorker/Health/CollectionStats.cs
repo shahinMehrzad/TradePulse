@@ -3,7 +3,7 @@ using Domain.Enums;
 namespace BackgroundWorker.Health;
 
 /// <summary>Rows newly stored since the last time the counters were taken.</summary>
-public readonly record struct StoredCounts(long Candles, long FundingRates, long OpenInterest, long Liquidations);
+public readonly record struct StoredCounts(long Candles, long FundingRates, long OpenInterest, long Liquidations, long MarketStatistics = 0);
 
 /// <summary>
 /// How much the collector has stored, for the periodic summary in the log. The collectors report after every batch they write:
@@ -25,7 +25,9 @@ public sealed class CollectionStats
         Take(MarketDataTypeEnum.Candle),
         Take(MarketDataTypeEnum.FundingRate),
         Take(MarketDataTypeEnum.OpenInterest),
-        Take(MarketDataTypeEnum.Liquidation));
+        Take(MarketDataTypeEnum.Liquidation),
+        // Long/short ratio and taker volume are one switch for the admin, so one number in the summary.
+        Take(MarketDataTypeEnum.LongShortRatio) + Take(MarketDataTypeEnum.TakerVolume));
 
     private long Take(MarketDataTypeEnum dataType) => Interlocked.Exchange(ref _stored[(int)dataType], 0);
 }

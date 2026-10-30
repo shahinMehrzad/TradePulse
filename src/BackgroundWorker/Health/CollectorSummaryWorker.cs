@@ -68,14 +68,14 @@ public sealed class CollectorSummaryWorker(
             if (series == 0)
             {
                 logger.LogInformation(
-                    "Last {Minutes} min: stored {Candles} candles, {FundingRates} funding rates, {OpenInterest} open interest, {Liquidations} liquidations. No candle series configured yet. Streams up {StreamsUp}/{StreamsTotal}.",
-                    (int)period.TotalMinutes, stored.Candles, stored.FundingRates, stored.OpenInterest, stored.Liquidations, streamsUp, streams.Count);
+                    "Last {Minutes} min: stored {Candles} candles, {FundingRates} funding rates, {OpenInterest} open interest, {MarketStatistics} market statistics, {Liquidations} liquidations. No candle series configured yet. Streams up {StreamsUp}/{StreamsTotal}.",
+                    (int)period.TotalMinutes, stored.Candles, stored.FundingRates, stored.OpenInterest, stored.MarketStatistics, stored.Liquidations, streamsUp, streams.Count);
             }
             else if (tables is null)
             {
                 logger.LogInformation(
-                    "Last {Minutes} min: stored {Candles} candles, {FundingRates} funding rates, {OpenInterest} open interest, {Liquidations} liquidations. {Series} candle series, freshness unknown (database not answering). Streams up {StreamsUp}/{StreamsTotal}.",
-                    (int)period.TotalMinutes, stored.Candles, stored.FundingRates, stored.OpenInterest, stored.Liquidations, series, streamsUp, streams.Count);
+                    "Last {Minutes} min: stored {Candles} candles, {FundingRates} funding rates, {OpenInterest} open interest, {MarketStatistics} market statistics, {Liquidations} liquidations. {Series} candle series, freshness unknown (database not answering). Streams up {StreamsUp}/{StreamsTotal}.",
+                    (int)period.TotalMinutes, stored.Candles, stored.FundingRates, stored.OpenInterest, stored.MarketStatistics, stored.Liquidations, series, streamsUp, streams.Count);
             }
             else
             {
@@ -84,8 +84,8 @@ public sealed class CollectorSummaryWorker(
                 var mostBehind = tables.Select(t => t.CandlesBehind).DefaultIfEmpty(0).Max();
 
                 logger.LogInformation(
-                    "Last {Minutes} min: stored {Candles} candles, {FundingRates} funding rates, {OpenInterest} open interest, {Liquidations} liquidations. {Series} candle series, {Behind} behind (at most {MostBehind} candles), newest candle {Newest:yyyy-MM-dd HH:mm}. Streams up {StreamsUp}/{StreamsTotal}.",
-                    (int)period.TotalMinutes, stored.Candles, stored.FundingRates, stored.OpenInterest, stored.Liquidations,
+                    "Last {Minutes} min: stored {Candles} candles, {FundingRates} funding rates, {OpenInterest} open interest, {MarketStatistics} market statistics, {Liquidations} liquidations. {Series} candle series, {Behind} behind (at most {MostBehind} candles), newest candle {Newest:yyyy-MM-dd HH:mm}. Streams up {StreamsUp}/{StreamsTotal}.",
+                    (int)period.TotalMinutes, stored.Candles, stored.FundingRates, stored.OpenInterest, stored.MarketStatistics, stored.Liquidations,
                     series, behind, mostBehind, newest, streamsUp, streams.Count);
             }
         }

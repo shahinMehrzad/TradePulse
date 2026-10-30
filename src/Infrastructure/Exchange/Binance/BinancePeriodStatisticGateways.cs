@@ -30,8 +30,8 @@ public abstract class BinancePeriodStatisticGateway<TRow>(IBinanceRestClient cli
     /// </summary>
     internal static DateTime WindowEnd(DateTime from, TimeFrameEnum timeFrame) => from.AddSeconds((double)(int)timeFrame * MaxLimit);
 
-    /// <summary>One request to the endpoint: the rows it returned, how many of them (also the ones without a time), or its error.</summary>
-    protected abstract Task<(string? Error, int Received, List<TRow> Rows)> FetchAsync(
+    /// <summary>One request to the endpoint: the rows it returned, or its error.</summary>
+    protected abstract Task<(string? Error, List<TRow> Rows)> FetchAsync(
         string symbol, PeriodInterval period, DateTime from, DateTime to, CancellationToken cancellationToken);
 
     public async Task<ExchangeResult<ExchangePage<TRow>>> GetAsync(
@@ -46,7 +46,7 @@ public abstract class BinancePeriodStatisticGateway<TRow>(IBinanceRestClient cli
 
         await rateLimiters.For(MarketTypeEnum.Futures).AcquireAsync(1, cancellationToken);
 
-        var (error, received, rows) = await FetchAsync(symbol.ToString(), period, from, WindowEnd(from, timeFrame), cancellationToken);
+        var (error, rows) = await FetchAsync(symbol.ToString(), period, from, WindowEnd(from, timeFrame), cancellationToken);
         if (error is not null)
             return ExchangeResult<ExchangePage<TRow>>.Fail(error);
 
@@ -60,13 +60,13 @@ public sealed class BinanceLongShortRatioGateway(IBinanceRestClient client, Bina
 {
     protected override string Name => "long/short ratio";
 
-    protected override async Task<(string? Error, int Received, List<LongShortRatio> Rows)> FetchAsync(
+    protected override async Task<(string? Error, List<LongShortRatio> Rows)> FetchAsync(
         string symbol, PeriodInterval period, DateTime from, DateTime to, CancellationToken cancellationToken)
     {
         var result = await Client.UsdFuturesApi.ExchangeData.GetGlobalLongShortAccountRatioAsync(
             symbol, period, limit: MaxLimit, startTime: from, endTime: to, ct: cancellationToken);
         if (!result.Success)
-            return (result.Error?.Message ?? "Unknown error.", 0, []);
+            return (result.Error?.Message ?? "Unknown error.", []);
 
         var data = result.Data.ToList();
         var rows = data
@@ -74,7 +74,7 @@ public sealed class BinanceLongShortRatioGateway(IBinanceRestClient client, Bina
             .Select(d => new LongShortRatio(d.Timestamp!.Value, d.LongShortRatio, d.LongAccount, d.ShortAccount))
             .ToList();
 
-        return (null, data.Count, rows);
+        return (null, rows);
     }
 }
 
@@ -84,13 +84,13 @@ public sealed class BinanceTakerVolumeGateway(IBinanceRestClient client, Binance
 {
     protected override string Name => "taker volume";
 
-    protected override async Task<(string? Error, int Received, List<TakerVolume> Rows)> FetchAsync(
+    protected override async Task<(string? Error, List<TakerVolume> Rows)> FetchAsync(
         string symbol, PeriodInterval period, DateTime from, DateTime to, CancellationToken cancellationToken)
     {
         var result = await Client.UsdFuturesApi.ExchangeData.GetTakerBuySellVolumeRatioAsync(
             symbol, period, limit: MaxLimit, startTime: from, endTime: to, ct: cancellationToken);
         if (!result.Success)
-            return (result.Error?.Message ?? "Unknown error.", 0, []);
+            return (result.Error?.Message ?? "Unknown error.", []);
 
         var data = result.Data.ToList();
         var rows = data
@@ -98,6 +98,6 @@ public sealed class BinanceTakerVolumeGateway(IBinanceRestClient client, Binance
             .Select(d => new TakerVolume(d.Timestamp!.Value, d.BuySellRatio, d.BuyVolume, d.SellVolume))
             .ToList();
 
-        return (null, data.Count, rows);
+        return (null, rows);
     }
 }
