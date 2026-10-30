@@ -53,6 +53,7 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
   or a Postgres you run yourself.
 - **HTTP on this machine only.** The containers speak plain HTTP on `127.0.0.1`. The panel's cookie is `Secure` outside Development: Chrome and Firefox
   accept it on `http://localhost`, but for any other host you need HTTPS: see the next section.
+- **The key vault** (`trader`) has no published port and is reached only by the panel. It needs `VAULT_MASTER_KEY`: keep a copy outside the server, see [docs/exchange-keys.md](../docs/exchange-keys.md).
 - **Secrets** are only in `deploy/.env` (git-ignored). Use long random values; the signing key needs at least 32 characters.
 - **Sessions** of the panel are in its memory: restarting the panel signs everyone out (the cookie keys survive, the sessions do not).
 - **Backups.** The data is in the `pgdata` volume. Liquidations, open interest and the like cannot be downloaded again from the

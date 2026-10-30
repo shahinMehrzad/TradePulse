@@ -18,6 +18,8 @@ The **Users** page lists the accounts and adds administrators. A new administrat
 
 Pages that change what matters (the **Users** page today) first ask for a code: the **Confirm it's you** page takes the 6-digit code of the authenticator app (or one mailed to a user who turned that on). The proof lasts ten minutes, stays on the panel's server with the session and goes to the API with every call; when it runs out the next action sends the user back to the code page. Signing in again asks again.
 
+The **Exchange keys** page (only when the key vault is part of the installation) is where an administrator makes and checks their own Binance Futures keys; it asks for a code first, like **Users**. The private key never reaches the panel. See [Exchange keys](exchange-keys.md).
+
 The **My account** page (the user name at the top right) changes the password (the other devices are signed out, this one stays) and makes new recovery codes after asking for the password again (the new codes are shown once), and, when the server has mail settings, turns sign-in codes by email on (a test code is mailed first) and off. With it on, the code step of the sign-in has an **Email me a code** button and a choice of where the code is from.
 
 The **Collector health** page shows what the collector says about itself: the overall status and each component (database, the exchange REST and WebSocket connections, whether the candle tables are up to date, which series have gaps the exchange has no candles for, ...), the ones with a problem first, with the details the collector reports. It needs `Collector:HealthUrl` in the API's settings, see [Collector health](api.md#collector-health); without it, or with a collector that is down, the page says so instead of showing an empty table.

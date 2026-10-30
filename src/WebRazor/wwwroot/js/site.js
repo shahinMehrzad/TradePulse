@@ -1,4 +1,12 @@
-﻿// The eye in a password field shows the text only while it is held down (mouse, touch or the space bar) and hides it again on release.
+﻿// A read-only box with data-select-on-click selects all of its text when clicked, for copying (inline handlers are blocked by the content security policy).
+document.addEventListener('click', function (event) {
+    var box = event.target.closest && event.target.closest('[data-select-on-click]');
+    if (box) {
+        box.select();
+    }
+});
+
+// The eye in a password field shows the text only while it is held down (mouse, touch or the space bar) and hides it again on release.
 (function () {
     function reveal(button, show) {
         button.parentElement.querySelector('input').type = show ? 'text' : 'password';

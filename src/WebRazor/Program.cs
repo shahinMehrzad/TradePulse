@@ -34,6 +34,17 @@ namespace WebRazor
             builder.Services.AddHttpClient<TradePulseApiClient>(ConfigureApiClient)
                 .AddHttpMessageHandler<ApiAuthHandler>();
 
+            // The key vault (the Trader program) is optional: without Trader:BaseUrl the Exchange keys page says so and the menu does not show it.
+            builder.Services.Configure<TraderOptions>(builder.Configuration.GetSection(TraderOptions.SectionName));
+            builder.Services.AddHttpClient<TraderApiClient>((services, client) =>
+                {
+                    var trader = services.GetRequiredService<IOptions<TraderOptions>>().Value;
+                    if (trader.Enabled)
+                        client.BaseAddress = new Uri(trader.BaseUrl.TrimEnd('/') + "/");
+                    client.Timeout = TimeSpan.FromSeconds(60); // making a 4096-bit key pair and asking Binance take a few seconds
+                })
+                .AddHttpMessageHandler<ApiAuthHandler>();
+
             // The browser only ever holds this cookie; the API tokens stay in SessionTokenStore on the server.
             builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(options =>

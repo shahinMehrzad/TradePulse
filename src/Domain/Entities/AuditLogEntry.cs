@@ -15,6 +15,9 @@ public static class AuditEntityTypes
 
     /// <summary>A panel account. Users have a Guid, not an int id, so these entries carry <c>EntityId</c> 0 and name the user in the summary.</summary>
     public const string User = "User";
+
+    /// <summary>A user's key for the exchange (written by the Trader program). EntityId is 0 and the summary is the label the user gave it; no key is ever written.</summary>
+    public const string ExchangeKey = "ExchangeKey";
 }
 
 /// <summary>Who changed which collection setting, and how. Written by the admin API only; never edited.</summary>

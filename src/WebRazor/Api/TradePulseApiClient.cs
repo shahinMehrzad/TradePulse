@@ -11,7 +11,7 @@ public sealed class TradePulseApiClient(HttpClient http)
     private const string NotFoundSeries = "That series does not exist (anymore). Reload the page.";
     private const string NotFoundSymbolData = "That setting does not exist (anymore). Reload the page.";
 
-    private static bool IsRejected(HttpResponseMessage response) =>
+    internal static bool IsRejected(HttpResponseMessage response) =>
         response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
 
     /// <returns>The admin the token belongs to, or null when the session is no longer accepted by the API.</returns>
@@ -355,7 +355,7 @@ public sealed class TradePulseApiClient(HttpClient http)
     }
 
     /// <summary>Success, or the reasons the API gave (a ProblemDetails <c>detail</c>, or the <c>errors</c> of a validation problem).</summary>
-    private static async Task<ApiResult> ToResultAsync(HttpResponseMessage response, string notFound, CancellationToken cancellationToken)
+    internal static async Task<ApiResult> ToResultAsync(HttpResponseMessage response, string notFound, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
             return new ApiResult(true, []);

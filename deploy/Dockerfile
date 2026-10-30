@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# One file for the three programs. The build context is the repository root:
+# One file for the four programs. The build context is the repository root:
 #   docker build -f deploy/Dockerfile --target collector -t tradepulse-collector .
 # (docker compose does this; see deploy/docker-compose.yml)
 
@@ -12,15 +12,18 @@ COPY src/Infrastructure/Infrastructure.csproj src/Infrastructure/
 COPY src/BackgroundWorker/BackgroundWorker.csproj src/BackgroundWorker/
 COPY src/WebApi/WebApi.csproj src/WebApi/
 COPY src/WebRazor/WebRazor.csproj src/WebRazor/
+COPY src/Trader/Trader.csproj src/Trader/
 RUN dotnet restore src/BackgroundWorker/BackgroundWorker.csproj \
  && dotnet restore src/WebApi/WebApi.csproj \
- && dotnet restore src/WebRazor/WebRazor.csproj
+ && dotnet restore src/WebRazor/WebRazor.csproj \
+ && dotnet restore src/Trader/Trader.csproj
 
 FROM restore AS build
 COPY src ./src
 RUN dotnet publish src/BackgroundWorker/BackgroundWorker.csproj -c Release --no-restore -p:UseAppHost=false -o /out/collector \
  && dotnet publish src/WebApi/WebApi.csproj -c Release --no-restore -p:UseAppHost=false -o /out/api \
- && dotnet publish src/WebRazor/WebRazor.csproj -c Release --no-restore -p:UseAppHost=false -o /out/panel
+ && dotnet publish src/WebRazor/WebRazor.csproj -c Release --no-restore -p:UseAppHost=false -o /out/panel \
+ && dotnet publish src/Trader/Trader.csproj -c Release --no-restore -p:UseAppHost=false -o /out/trader
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
@@ -41,6 +44,10 @@ ENTRYPOINT ["dotnet", "BackgroundWorker.dll"]
 FROM runtime AS api
 COPY --from=build /out/api .
 ENTRYPOINT ["dotnet", "WebApi.dll"]
+
+FROM runtime AS trader
+COPY --from=build /out/trader .
+ENTRYPOINT ["dotnet", "Trader.dll"]
 
 FROM runtime AS panel
 COPY --from=build /out/panel .

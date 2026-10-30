@@ -1,3 +1,6 @@
+@using Microsoft.Extensions.Options
+@using WebRazor.Api
+@inject IOptions<TraderOptions> TraderOptions
 @{
     var current = ViewContext.RouteData.Values["page"]?.ToString();
     string Active(string page) => string.Equals(current, page, StringComparison.OrdinalIgnoreCase) ? "active" : "";
@@ -63,6 +66,15 @@
                                 <span class="nav-link-title">Users</span>
                             </a>
                         </li>
+                        @if (TraderOptions.Value.Enabled)
+                        {
+                            <li class="nav-item @Active("/ExchangeKeys")">
+                                <a class="nav-link" asp-page="/ExchangeKeys">
+                                    <span class="nav-link-icon d-md-none d-lg-inline-block"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4M18 5l3 3M15 8l3 3"/></svg></span>
+                                    <span class="nav-link-title">Exchange keys</span>
+                                </a>
+                            </li>
+                        }
                     </ul>
                 </div>
             </div>

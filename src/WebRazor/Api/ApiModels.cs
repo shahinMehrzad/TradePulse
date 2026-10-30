@@ -83,6 +83,11 @@ public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool Session
 
 public record ElevationGrant(string Token, DateTime ExpiresAt);
 
+/// <summary>A key of the signed-in user at the exchange, as the Trader program describes it. Never a private key.</summary>
+public record ExchangeKeyInfo(
+    Guid Id, string Label, string Exchange, string Algorithm, string Status, string PublicKeyPem,
+    string? ApiKeyHint, string[] Problems, DateTime CreatedAt, DateTime? VerifiedAt);
+
 /// <summary>
 /// One kind of data an exchange market provides (the API publishes it from the same rule that refuses the impossible choices).
 /// <c>TimeFrameIds</c> is null for data without a time frame.
