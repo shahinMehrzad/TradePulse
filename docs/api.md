@@ -53,6 +53,12 @@ Nothing is ever moved unless one of the `POST`s is called; each change is writte
 
 Admin only. `GET /api/admin/collector/health` relays the running collector's own `/health` (its components, each `Healthy`, `Degraded` or `Unhealthy`, with their details). It always answers `200`; `state` says whether the collector could be asked: `answered` (then `status` and `checks` are filled), `notConfigured` (`Collector:HealthUrl` is empty) or `unreachable` (down, too slow, or not answering with a health report). `Collector:HealthUrl` is the collector's `Health:Url` plus `/health` (default `http://localhost:5080/health`), and is the only place the API takes the address from. The wait is 5 seconds at most and the answer is cut off at 256 KB; why a collector was unreachable goes to the API log, never into the response.
 
+## Behind a proxy
+
+In the Docker stack the API is called by the panel and the panel by Caddy, so every request arrives from a private address. Both programs use `UseForwardedHeaders` and believe `X-Forwarded-For`/`-Proto` **only from a private network** (127/8, 10/8, 172.16/12, 192.168/16, ::1, fc00::/7); from a public address the headers are ignored, so nobody can choose the address the login rate limit counts. The panel adds the visitor's address when it calls the login endpoints, so `RateLimiting:LoginPermitsPerMinute` is a budget per visitor, not one for the whole panel. The refresh-token audit rows store that address too (the `X-Forwarded-For` header is never read directly any more).
+
+`DataProtection:KeysPath` (set to `/keys` in the containers, on a volume) keeps the keys of data protection across restarts.
+
 ## Authentication
 
 A completed sign-in (see below) issues a JWT; the candle endpoints validate its signature (HMAC-SHA256 only), issuer, audience and lifetime (30 s clock skew) and answer 401 otherwise. The signing secret, the seeded admin credentials and the connection strings are **in no committed file**, `appsettings.Development.json` included. On a developer machine they are user secrets (`dotnet user-secrets set "JwtConfigurations:Secret" ... --project src/WebApi`, see the README); anywhere else supply `JwtConfigurations__Secret` (at least 32 bytes), `ConnectionStrings__DefaultConnection` and `ConnectionStrings__AuthConnection` and, to seed an admin, `AdminConfigurations__Email` and `AdminConfigurations__Password` as environment variables. The host refuses to start without a strong secret instead of running with forgeable tokens. Never run a public deployment with `ASPNETCORE_ENVIRONMENT=Development`.

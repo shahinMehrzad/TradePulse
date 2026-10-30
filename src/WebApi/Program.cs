@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using System.Threading.RateLimiting;
 using Application;
 using Application.Interfaces;
@@ -7,6 +8,7 @@ using WebApi.Authentication;
 using WebApi.Controllers;
 using WebApi.Endpoints;
 using WebApi.ErrorHandling;
+using WebApi.Hosting;
 using WebApi.OData;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,7 +20,11 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 
-builder.Services.AddDataProtection();
+// Keys of data protection (the tokens of password resets, ...) survive a restart when a folder is given; the deploy stack mounts a volume there.
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("TradePulse.WebApi");
+if (builder.Configuration["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+builder.Services.AddProxyHeaders();
 builder.Services.AddApplicationServices();
 builder.Services.AddApiOnlyApplicationServices();
 
@@ -65,6 +71,8 @@ if (corsOrigins.Length > 0)
 
 var app = builder.Build();
 
+// First, so that everything after it (the rate limiter, the audit trail) sees the real client address.
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())

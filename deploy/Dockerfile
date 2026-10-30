@@ -26,6 +26,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
+# Keys of data protection, on a volume (see docker-compose.yml). The folder is made here so that the volume starts out writable for the app user.
+RUN mkdir /keys && chown $APP_UID /keys
+ENV DataProtection__KeysPath=/keys
 # Not root.
 USER $APP_UID
 

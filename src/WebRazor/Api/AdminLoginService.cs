@@ -33,7 +33,7 @@ public record EnrollmentOutcome(LoginFailure Failure, TwoFactorEnrollment? Enrol
 /// Signs in against WebApi, one step per call, and lets only an administrator into the panel. The role check is WebApi's own
 /// (<c>GET /api/admin/me</c> answers 403 to anyone else), so the panel never decodes or trusts a token itself.
 /// </summary>
-public sealed class AdminLoginService(IHttpClientFactory clientFactory, SessionTokenStore store)
+public sealed class AdminLoginService(IHttpClientFactory clientFactory, SessionTokenStore store, IHttpContextAccessor httpContext)
 {
     public async Task<LoginOutcome> LoginAsync(string identifier, string password, CancellationToken cancellationToken)
     {
@@ -158,6 +158,9 @@ public sealed class AdminLoginService(IHttpClientFactory clientFactory, SessionT
     {
         var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
         request.Headers.Add(ApiAuthHandler.DeviceHeader, sessionId);
+        // The API sees only this server as the caller. Without this its login limit would be one budget for every visitor of the panel.
+        if (httpContext.HttpContext?.Connection.RemoteIpAddress is { } client)
+            request.Headers.TryAddWithoutValidation("X-Forwarded-For", client.ToString());
         return clientFactory.CreateClient(ApiAuthHandler.RawClientName).SendAsync(request, cancellationToken);
     }
 

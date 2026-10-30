@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,11 @@ namespace WebRazor
                 .Validate(o => Uri.TryCreate(o.BaseUrl, UriKind.Absolute, out _), "Api:BaseUrl must be an absolute URL.")
                 .ValidateOnStart();
 
+            // Keys of data protection (the sign-in cookies, antiforgery) survive a restart when a folder is given; the deploy stack mounts a volume there.
+            var dataProtection = builder.Services.AddDataProtection().SetApplicationName("TradePulse.Panel");
+            if (builder.Configuration["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
+                dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+            builder.Services.AddProxyHeaders();
             builder.Services.AddSingleton(TimeProvider.System);
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddSingleton<SessionTokenStore>();
@@ -69,6 +75,9 @@ namespace WebRazor
             });
 
             var app = builder.Build();
+
+            // First, so that the scheme and the client address are the visitor's, not the proxy's.
+            app.UseForwardedHeaders();
 
             if (!app.Environment.IsDevelopment())
             {
