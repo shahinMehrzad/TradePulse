@@ -29,6 +29,9 @@ public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         if (request.CollectOpenInterest)
             OpenInterestValidation.EnsureSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
 
+        if (request.CollectMarketStatistics)
+            OpenInterestValidation.EnsureMarketStatisticsSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
+
         // A row that does not exist is reported by the update itself.
         var before = await workerConfigurationRepository.GetConfigurationById(request.Id, cancellationToken);
 
@@ -40,7 +43,8 @@ public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerC
             SymbolId = request.SymbolId,
             TimeFrameId = request.TimeFrameId,
             StartDate = startDate,
-            CollectOpenInterest = request.CollectOpenInterest
+            CollectOpenInterest = request.CollectOpenInterest,
+            CollectMarketStatistics = request.CollectMarketStatistics
         }, cancellationToken);
 
         if (before is not null && AuditDescriptions.Changes(before, updated) is { } changes)

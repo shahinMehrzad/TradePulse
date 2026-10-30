@@ -34,7 +34,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         PlanRunner.RunGroupedAsync(seriesProvider,
-            plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false }).ToList(),
+            plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false, CollectMarketStatistics = false }).ToList(),
             plan => (int)plan.Series.Timeframe,
             CollectAsync, logger, "candle series", stoppingToken);
 

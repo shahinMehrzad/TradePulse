@@ -78,9 +78,9 @@ public class AuditLogEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
             Assert.Equal(userName, e.UserName);
             Assert.StartsWith("binance / futures / btcusdt / ", e.Summary);
         });
-        Assert.Equal("start date 2020-01-01, open interest off", entries[0].Details);
+        Assert.Equal("start date 2020-01-01, open interest off, market statistics off", entries[0].Details);
         Assert.Equal("start date 2020-01-01 -> 2021-06-01", entries[1].Details);
-        Assert.Equal("start date 2021-06-01, open interest off", entries[2].Details);   // what the removed row held
+        Assert.Equal("start date 2021-06-01, open interest off, market statistics off", entries[2].Details);   // what the removed row held
     }
 
     [Fact]

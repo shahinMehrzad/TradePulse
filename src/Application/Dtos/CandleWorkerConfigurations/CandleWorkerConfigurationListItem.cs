@@ -18,6 +18,7 @@ public sealed class CandleWorkerConfigurationListItem
     /// <summary>UTC.</summary>
     public DateTime StartDate { get; set; }
     public bool CollectOpenInterest { get; set; }
+    public bool CollectMarketStatistics { get; set; }
 
     /// <summary>UTC.</summary>
     public DateTime CreateDate { get; set; }

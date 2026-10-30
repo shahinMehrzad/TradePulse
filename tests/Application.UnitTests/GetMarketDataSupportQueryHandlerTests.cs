@@ -20,7 +20,7 @@ public class GetMarketDataSupportQueryHandlerTests
         var all = await HandleAsync();
 
         Assert.Equal(["Candle"], all.Where(s => s.MarketId == Spot).Select(s => s.DataType));
-        Assert.Equal(["Candle", "FundingRate", "OpenInterest", "Liquidation"], all.Where(s => s.MarketId == Futures).Select(s => s.DataType));
+        Assert.Equal(["Candle", "FundingRate", "OpenInterest", "Liquidation", "LongShortRatio", "TakerVolume"], all.Where(s => s.MarketId == Futures).Select(s => s.DataType));
         Assert.All(all, s => Assert.Equal(Binance, s.ExchangeId));
     }
 

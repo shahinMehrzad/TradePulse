@@ -5,9 +5,10 @@ namespace Domain.ValueObjects;
 
 /// <summary>
 /// A series the admin wants collected, the date its history should start from (UTC), and whether its open interest is wanted too.
-/// The flag is taken as stored: whether the market can really provide it is checked by whoever collects open interest.
+/// <c>CollectMarketStatistics</c> asks for the long/short ratio and taker volume of the series. The flags are taken as stored:
+/// whether the market can really provide the data is checked by whoever collects it.
 /// </summary>
-public readonly record struct CandleSeriesPlan(CandleSeries Series, DateTime StartDate, bool CollectOpenInterest = false)
+public readonly record struct CandleSeriesPlan(CandleSeries Series, DateTime StartDate, bool CollectOpenInterest = false, bool CollectMarketStatistics = false)
 {
     /// <summary>
     /// Turns a stored configuration row (ids are the enum values) into a plan. False, with the reason, when an id is not a
@@ -29,7 +30,7 @@ public readonly record struct CandleSeriesPlan(CandleSeries Series, DateTime Sta
         {
             var series = new CandleSeries((ExchangeEnum)row.ExchangeId, (MarketTypeEnum)row.MarketId, (SymbolEnum)row.SymbolId, (TimeFrameEnum)row.TimeFrameId);
             // Stored as timestamp without a zone, always UTC.
-            plan = new CandleSeriesPlan(series, DateTime.SpecifyKind(row.StartDate, DateTimeKind.Utc), row.CollectOpenInterest);
+            plan = new CandleSeriesPlan(series, DateTime.SpecifyKind(row.StartDate, DateTimeKind.Utc), row.CollectOpenInterest, row.CollectMarketStatistics);
             reason = string.Empty;
             return true;
         }

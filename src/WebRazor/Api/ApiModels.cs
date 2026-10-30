@@ -33,7 +33,7 @@ public record Lookups(
 }
 
 /// <summary>One candle series the collector should fetch, as the API stores it (ids, not names).</summary>
-public record CandleWorkerSeries(int Id, int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest);
+public record CandleWorkerSeries(int Id, int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest, bool CollectMarketStatistics);
 
 /// <summary>A series whose first stored candle is on a later day than its start date (both UTC): the symbol was listed later.</summary>
 public record LateStart(int Id, DateTime StartDate, DateTime FirstCandle);
@@ -63,7 +63,7 @@ public record AuditPage(IReadOnlyList<AuditEntry> Items, int PageNumber, int Pag
 }
 
 /// <summary>What the panel sends to add or change a series. <c>StartDate</c> is a UTC date.</summary>
-public record SeriesRequest(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest);
+public record SeriesRequest(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest, bool CollectMarketStatistics);
 
 /// <summary>Outcome of a write. <see cref="SessionRejected"/> means the API no longer accepts the signed-in session.</summary>
 public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false);

@@ -69,7 +69,7 @@
                 <div class="table-responsive">
                     <table class="table card-table table-vcenter">
                         <thead>
-                            <tr><th>Exchange</th><th>Market</th><th>Symbol</th><th>Time frame</th><th>From (UTC)</th><th>Open interest</th><th></th></tr>
+                            <tr><th>Exchange</th><th>Market</th><th>Symbol</th><th>Time frame</th><th>From (UTC)</th><th>Open interest</th><th>Statistics</th><th></th></tr>
                         </thead>
                         <tbody>
                             @foreach (var series in Model.Series)
@@ -87,6 +87,7 @@
                                         }
                                     </td>
                                     <td>@if (series.CollectOpenInterest) { <span class="badge bg-green-lt">On</span> } else { <span class="text-secondary">-</span> }</td>
+                                    <td>@if (series.CollectMarketStatistics) { <span class="badge bg-green-lt">On</span> } else { <span class="text-secondary">-</span> }</td>
                                     <td class="text-nowrap text-end">
                                         <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-route-edit="@series.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Edit</a>
                                         @if (Model.LateStarts.ContainsKey(series.Id))
@@ -189,6 +190,13 @@
                             <span class="form-check-label">Also collect open interest</span>
                         </label>
                         <div class="form-hint">@Model.OpenInterestRule The exchange keeps only about 30 days of it, so it is recorded from the moment the worker runs.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-check mb-1">
+                            <input asp-for="Input.CollectMarketStatistics" type="checkbox" class="form-check-input" data-support-type="LongShortRatio" disabled="@(!Model.MarketStatisticsAvailable)" />
+                            <span class="form-check-label">Also collect long/short ratio and taker volume</span>
+                        </label>
+                        <div class="form-hint">Same markets and time frames as open interest. The exchange keeps only about 30 days of them, so they are recorded from the moment the worker runs.</div>
                     </div>
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary flex-fill">@(Model.IsEditing ? "Save changes" : "Add series")</button>

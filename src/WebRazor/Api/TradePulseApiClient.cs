@@ -216,7 +216,7 @@ public sealed class TradePulseApiClient(HttpClient http)
     {
         using var response = await http.PutAsJsonAsync(
             $"{SeriesRoot}/update-config",
-            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest },
+            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest, request.CollectMarketStatistics },
             cancellationToken);
         return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }

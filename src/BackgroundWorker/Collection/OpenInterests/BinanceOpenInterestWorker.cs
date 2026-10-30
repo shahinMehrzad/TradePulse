@@ -33,7 +33,7 @@ public class BinanceOpenInterestWorker(
         PlanRunner.RunGroupedAsync(seriesProvider,
             plans => OpenInterestPlans.SelectForBinance(plans, (s, reason) =>
                 logger.LogWarning("Open interest is not collected for {Symbol} {Interval}: {Reason}", s.Series.Symbol, s.Series.Timeframe, reason))
-                .Select(p => p with { StartDate = default }).ToList(),
+                .Select(p => p with { StartDate = default, CollectMarketStatistics = false }).ToList(),
             plan => plan.Series.Timeframe,
             CollectAsync, logger, "open interest series", stoppingToken);
 

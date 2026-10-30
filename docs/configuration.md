@@ -13,6 +13,7 @@ Which candle series (market, symbol, time frame and start date) the collector fe
 - A database that cannot be read does not stop the process either. Before any list is known the worker waits, keeps retrying every 30 s and reports `candle-series` as unhealthy. Once a list is known, a failing read changes nothing that runs: the last list stays in use, `candle-series` becomes degraded (changes made now are not seen) and the next successful read catches up.
 - The tables of the series are created by the worker once it knows them. Removing a series stops fetching it and keeps its stored candles.
 - **Open interest** is a flag on the same row (`CollectOpenInterest`, off by default): a series flagged on also has its open interest collected, at the same time frame. Only futures series at the time frames Binance offers can carry it (5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d); the admin API refuses the rest with the reason.
+- **Market statistics** (the global long/short account ratio and the taker buy/sell volume) are one more flag on the same row (`CollectMarketStatistics`, off by default). Flagged on, the series has both collected at the same time frame, into `..._longshortratio` and `..._takervolume` tables; the rules are those of open interest.
 
 ## Funding rate and liquidations (chosen in the database)
 

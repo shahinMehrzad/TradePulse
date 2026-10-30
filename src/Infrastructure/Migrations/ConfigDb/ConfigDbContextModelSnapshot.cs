@@ -77,6 +77,11 @@ namespace Infrastructure.Migrations.ConfigDb
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("CollectMarketStatistics")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("CollectOpenInterest")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")

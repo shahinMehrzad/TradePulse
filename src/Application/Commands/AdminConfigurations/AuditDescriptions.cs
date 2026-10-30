@@ -16,7 +16,7 @@ internal static class AuditDescriptions
 
     /// <summary>The values of a series that was just added (or removed).</summary>
     public static string Values(CandleWorkerConfiguration c) =>
-        $"start date {Date(c.StartDate)}, open interest {OnOff(c.CollectOpenInterest)}";
+        $"start date {Date(c.StartDate)}, open interest {OnOff(c.CollectOpenInterest)}, market statistics {OnOff(c.CollectMarketStatistics)}";
 
     public static string Values(SymbolDataConfiguration c) =>
         $"funding rate {OnOff(c.CollectFundingRate)}{(c.FundingStartDate is { } start ? $" from {Date(start)}" : "")}, liquidations {OnOff(c.CollectLiquidation)}";
@@ -28,7 +28,8 @@ internal static class AuditDescriptions
         Change("symbol", Name((SymbolEnum)before.SymbolId), Name((SymbolEnum)after.SymbolId)),
         Change("time frame", Name((TimeFrameEnum)before.TimeFrameId), Name((TimeFrameEnum)after.TimeFrameId)),
         Change("start date", Date(before.StartDate), Date(after.StartDate)),
-        Change("open interest", OnOff(before.CollectOpenInterest), OnOff(after.CollectOpenInterest)));
+        Change("open interest", OnOff(before.CollectOpenInterest), OnOff(after.CollectOpenInterest)),
+        Change("market statistics", OnOff(before.CollectMarketStatistics), OnOff(after.CollectMarketStatistics)));
 
     public static string? Changes(SymbolDataConfiguration before, SymbolDataConfiguration after) => Join(
         Change("exchange", Name((ExchangeEnum)before.ExchangeId), Name((ExchangeEnum)after.ExchangeId)),

@@ -7,6 +7,7 @@
 | **Candles (OHLCV)** | REST | Spot and USD-M Futures, any configured symbol and timeframe from 1s to 1d. Resumes from the newest stored candle, repairs gaps automatically. |
 | **Funding rates** | REST | Futures. Full history from a configured start date, polled hourly. |
 | **Open interest** | REST | Futures, per period (5m to 1d). Binance only keeps ~30 days of history, so this must run continuously to build a long series. |
+| **Long/short ratio, taker volume** | REST | Futures, per period (5m to 1d), like open interest: Binance keeps ~30 days, so they must run continuously. One admin flag (`CollectMarketStatistics`) turns on both for a series. |
 | **Liquidations** | WebSocket | Futures. No history exists, so only what arrives while the worker runs is stored. Binance sends at most one liquidation per symbol per second, so this is a sample, not a complete record. |
 
 Highlights of the collection path:

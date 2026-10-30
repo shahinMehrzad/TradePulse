@@ -22,6 +22,7 @@ public sealed class CandleWorkerConfigurationReadModel(ConfigDbContext context) 
             IntervalSeconds = c.TimeFrame.IntervalToSeconds,
             StartDate = c.StartDate,
             CollectOpenInterest = c.CollectOpenInterest,
+            CollectMarketStatistics = c.CollectMarketStatistics,
             CreateDate = c.CreateDate,
         });
 }
