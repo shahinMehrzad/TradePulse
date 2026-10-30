@@ -56,7 +56,7 @@ public class SmtpEmailTransportTests
                         }
                         else
                         {
-                            data.AppendLine(line);
+                            data.Append(line).Append("\r\n");   // SMTP's own line ending, not the one of the machine the test runs on
                         }
 
                         continue;
