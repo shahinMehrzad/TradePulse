@@ -93,7 +93,7 @@ dotnet run --project src/WebRazor     # the admin panel, by default on http://lo
 dotnet run --project src/BackgroundWorker
 ```
 
-Sign in to the panel with the admin you gave above. The first sign-in asks for a new password and sets up two-factor authentication (scan the QR code with Google or Microsoft Authenticator and keep the recovery codes). Then add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. A change made later applies by itself within about half a minute; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
+Sign in to the panel with the admin you gave above (if every administrator ever loses both the phone and the recovery codes, [docs/api.md](docs/api.md#getting-back-in-from-the-server) shows the way back in from the server). The first sign-in asks for a new password and sets up two-factor authentication (scan the QR code with Google or Microsoft Authenticator and keep the recovery codes). Then add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. A change made later applies by itself within about half a minute; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
 
 Or everything in containers, with its own database: [deploy/README.md](deploy/README.md).
 

@@ -32,17 +32,17 @@
             <form method="post" asp-page-handler="ChangePassword" autocomplete="off">
                 <div class="mb-3">
                     <label asp-for="Password.Current" class="form-label">Temporary password</label>
-                    <div class="input-group"><input asp-for="Password.Current" class="form-control" autocomplete="current-password" autofocus /><button type="button" class="btn" data-show-password tabindex="-1">Show</button></div>
+                    <div class="position-relative"><input asp-for="Password.Current" class="form-control pe-5" autocomplete="current-password" autofocus /><button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
                     <span asp-validation-for="Password.Current" class="text-danger"></span>
                 </div>
                 <div class="mb-3">
                     <label asp-for="Password.New" class="form-label">New password</label>
-                    <div class="input-group"><input asp-for="Password.New" class="form-control" autocomplete="new-password" /><button type="button" class="btn" data-show-password tabindex="-1">Show</button></div>
+                    <div class="position-relative"><input asp-for="Password.New" class="form-control pe-5" autocomplete="new-password" /><button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
                     <span asp-validation-for="Password.New" class="text-danger"></span>
                 </div>
                 <div class="mb-3">
                     <label asp-for="Password.Repeat" class="form-label">Repeat the new password</label>
-                    <div class="input-group"><input asp-for="Password.Repeat" class="form-control" autocomplete="new-password" /><button type="button" class="btn" data-show-password tabindex="-1">Show</button></div>
+                    <div class="position-relative"><input asp-for="Password.Repeat" class="form-control pe-5" autocomplete="new-password" /><button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
                     <span asp-validation-for="Password.Repeat" class="text-danger"></span>
                 </div>
                 <ul class="list-unstyled small mb-3" data-password-rules="Password_New" data-repeat="Password_Repeat">

@@ -32,6 +32,13 @@ public interface IIdentityService
     /// <summary>Replaces a password that has to be changed (a first password or one an admin reset). Clears the "must change" flag.</summary>
     Task<PasswordChangeResult> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken);
 
+    /// <returns>How many recovery codes the user has left.</returns>
+    Task<int> CountRecoveryCodesAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>Replaces all recovery codes with new ones. Needs the current password; a wrong one counts towards the lockout.</summary>
+    /// <returns>The new codes, or null when the password is wrong or two-factor is off.</returns>
+    Task<IReadOnlyList<string>?> RegenerateRecoveryCodesAsync(Guid userId, string password, CancellationToken cancellationToken);
+
     /// <returns>The key to put in an authenticator app, or null when two-factor is already on.</returns>
     Task<TwoFactorEnrollment?> BeginTwoFactorEnrollmentAsync(Guid userId, CancellationToken cancellationToken);
 

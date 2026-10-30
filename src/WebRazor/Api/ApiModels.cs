@@ -6,6 +6,8 @@ public record LoginResponse(
     string Stage, string? AccessToken, DateTime? ExpiresAt, string? UserName, string? RefreshToken,
     string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string[]? RecoveryCodes);
 
+public record AccountInfo(string UserName, string Email, string[] Roles, bool TwoFactorEnabled, int RecoveryCodesLeft);
+
 public record TwoFactorEnrollment(string SharedKey, string AuthenticatorUri);
 
 public record UserRow(Guid Id, string UserName, string Email, string[] Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled);

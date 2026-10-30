@@ -51,6 +51,11 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         if (user is null)
             return new PasswordChangeResult(false, ["The user does not exist."]);
 
+        // A wrong current password counts towards the lockout like at sign-in: a stolen access token must not be a free password oracle.
+        var check = await signInManager.CheckPasswordSignInAsync(user, currentPassword, lockoutOnFailure: true);
+        if (!check.Succeeded)
+            return new PasswordChangeResult(false, [check.IsLockedOut ? "Too many wrong passwords. Try again later." : "The current password is incorrect."]);
+
         var result = await userManager.ChangePasswordAsync(user, currentPassword, newPassword);
         if (!result.Succeeded)
             return new PasswordChangeResult(false, [.. result.Errors.Select(e => e.Description)]);
@@ -60,6 +65,24 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         return update.Succeeded
             ? new PasswordChangeResult(true, [])
             : new PasswordChangeResult(false, [.. update.Errors.Select(e => e.Description)]);
+    }
+
+    public async Task<int> CountRecoveryCodesAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(userId.ToString());
+        return user is null ? 0 : await userManager.CountRecoveryCodesAsync(user);
+    }
+
+    public async Task<IReadOnlyList<string>?> RegenerateRecoveryCodesAsync(Guid userId, string password, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(userId.ToString());
+        if (user is null || user.IsDisabled() || !user.TwoFactorEnabled)
+            return null;
+        if (!(await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true)).Succeeded)
+            return null;
+
+        var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, RecoveryCodeCount);
+        return [.. codes ?? []];
     }
 
     public async Task<TwoFactorEnrollment?> BeginTwoFactorEnrollmentAsync(Guid userId, CancellationToken cancellationToken)

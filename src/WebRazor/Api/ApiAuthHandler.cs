@@ -32,6 +32,8 @@ public sealed class ApiAuthHandler(
             tokens = await RefreshAsync(sessionId, cancellationToken) ?? tokens;
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+        // Says which device is asking, so "sign out my other devices" leaves this one alone.
+        request.Headers.TryAddWithoutValidation(DeviceHeader, sessionId);
         return await base.SendAsync(request, cancellationToken);
     }
 

@@ -42,6 +42,11 @@ public class SignInHandlersTests
             return Task.FromResult(PasswordChange);
         }
 
+        public Task<int> CountRecoveryCodesAsync(Guid userId, CancellationToken cancellationToken) => Task.FromResult(7);
+
+        public Task<IReadOnlyList<string>?> RegenerateRecoveryCodesAsync(Guid userId, string password, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>?>(password == "right" ? ["n-1", "n-2"] : null);
+
         public Task<TwoFactorEnrollment?> BeginTwoFactorEnrollmentAsync(Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult<TwoFactorEnrollment?>(new("KEY", "otpauth://totp/x"));
 
@@ -65,7 +70,7 @@ public class SignInHandlersTests
         public List<Guid> RevokedUsers { get; } = [];
         public Task<Guid?> ConsumeAsync(string tokenHash, string deviceId, CancellationToken cancellationToken = default) => Task.FromResult<Guid?>(UserId);
         public Task AddAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task RevokeAllAsync(Guid userId, CancellationToken cancellationToken = default)
+        public Task RevokeAllAsync(Guid userId, CancellationToken cancellationToken = default, string? exceptDeviceId = null)
         {
             RevokedUsers.Add(userId);
             return Task.CompletedTask;

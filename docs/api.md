@@ -79,4 +79,12 @@ Five wrong passwords or codes lock the account for 15 minutes. All these endpoin
 
 Admin only, under `/api/admin/users`: `GET` lists the accounts (state only, never a secret); `POST { userName, email }` creates an administrator and returns their generated one-time password, **once**; `POST {id}/reset-password` returns a new one-time password; `POST {id}/reset-two-factor` makes the user enrol again; `POST {id}/disable` and `POST {id}/enable`. Resets and disabling end all of the user's sessions. Nobody can reset, disable or reset the two-factor of their own account (`409`), and the last active administrator cannot be disabled. Every change is in the audit log (entity `User`, with `entityId` 0 and the user name in the summary).
 
+### My account
+
+Any signed-in user (not only an administrator), always about the user in the token: `GET /api/account` (user name, email, roles, whether two-factor is on, how many recovery codes are left; never a secret); `POST /api/account/change-password` `{ currentPassword, newPassword }` signs the user out everywhere except the device named in `X-Device-Id`; `POST /api/account/recovery-codes` `{ password }` makes ten new recovery codes (shown only in this answer) and the old ones stop working. A wrong password on either counts towards the lockout, and both share the login rate limit.
+
+### Getting back in from the server
+
+When the only administrator has lost the phone and the recovery codes, nobody in the panel can help. Somebody with a shell on the server runs `dotnet WebApi.dll reset-access <user name or email>` (in the deploy stack: `docker compose exec api dotnet WebApi.dll reset-access admin`). It enables the account, lifts a lockout, forgets two-factor and the recovery codes, ends all sessions, prints a new one-time password on the console (never in a log) and exits; the audit log records it as done by the `server console`. The user signs in with it, chooses a new password and sets up two-factor again. Exit code 1 means there is no such user.
+
 `POST /api/auth/refresh-token` with `{ "refreshToken": "..." }` (and the same `X-Device-Id` header used at login) returns a new access token and a new refresh token. It needs no access token, since that is usually expired by then. Refresh tokens are single-use (rotated), bound to the device they were issued to, expire after `RefreshTokenDurationInDays`, and only their SHA-256 hash is stored. Concurrent use of one token succeeds exactly once.

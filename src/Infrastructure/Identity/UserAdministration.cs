@@ -74,6 +74,27 @@ public sealed class UserAdministration(UserManager<ApplicationUser> userManager,
         return UserChangeOutcome.Done;
     }
 
+    public async Task<(UserSummary User, string TemporaryPassword)?> RecoverAccessAsync(string userNameOrEmail, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByNameAsync(userNameOrEmail) ?? await userManager.FindByEmailAsync(userNameOrEmail);
+        if (user is null)
+            return null;
+
+        var password = TemporaryPassword.Generate();
+        var reset = await userManager.ResetPasswordAsync(user, await userManager.GeneratePasswordResetTokenAsync(user), password);
+        if (!reset.Succeeded)
+            throw new InvalidOperationException("Could not reset the password: " + string.Join(" ", reset.Errors.Select(e => e.Description)));
+
+        user.MustChangePassword = true;
+        await userManager.UpdateAsync(user);
+        await userManager.SetLockoutEndDateAsync(user, null);
+        await userManager.ResetAccessFailedCountAsync(user);
+        await userManager.SetTwoFactorEnabledAsync(user, false);
+        await userManager.ResetAuthenticatorKeyAsync(user);
+        await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 0);
+        return (await ToSummaryAsync(user), password);
+    }
+
     public async Task<UserChangeOutcome> SetDisabledAsync(Guid userId, bool disabled, Guid actingUserId, CancellationToken cancellationToken)
     {
         if (userId == actingUserId)

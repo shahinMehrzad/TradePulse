@@ -70,7 +70,7 @@
         <header class="navbar navbar-expand-md d-print-none">
             <div class="container-xl">
                 <div class="navbar-nav flex-row ms-auto align-items-center">
-                    <span class="nav-link text-secondary">@User.Identity?.Name</span>
+                    <a asp-page="/Account" class="nav-link text-secondary" title="My account">@User.Identity?.Name</a>
                     <form method="post" asp-page="/Logout" class="ms-2">
                         <button type="submit" class="btn btn-outline-secondary btn-sm">Sign out</button>
                     </form>

@@ -1,16 +1,40 @@
-﻿// Password fields: a button shows what was typed, and a checklist (data-password-rules) ticks off the rules of the new password live.
-document.addEventListener('click', function (event) {
-    var button = event.target.closest && event.target.closest('[data-show-password]');
-    if (!button) {
-        return;
+﻿// The eye in a password field shows the text only while it is held down (mouse, touch or the space bar) and hides it again on release.
+(function () {
+    function reveal(button, show) {
+        button.parentElement.querySelector('input').type = show ? 'text' : 'password';
     }
 
-    var input = button.parentElement.querySelector('input');
-    var show = input.type === 'password';
-    input.type = show ? 'text' : 'password';
-    button.textContent = show ? 'Hide' : 'Show';
-});
+    document.addEventListener('pointerdown', function (event) {
+        var button = event.target.closest && event.target.closest('[data-reveal-password]');
+        if (button) {
+            event.preventDefault(); // keep the focus (and the caret) in the text box
+            reveal(button, true);
+        }
+    });
 
+    ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach(function (type) {
+        document.addEventListener(type, function () {
+            document.querySelectorAll('[data-reveal-password]').forEach(function (button) { reveal(button, false); });
+        }, true);
+    });
+
+    document.addEventListener('keydown', function (event) {
+        var button = event.target.closest && event.target.closest('[data-reveal-password]');
+        if (button && (event.key === ' ' || event.key === 'Enter')) {
+            event.preventDefault();
+            reveal(button, true);
+        }
+    });
+
+    document.addEventListener('keyup', function (event) {
+        var button = event.target.closest && event.target.closest('[data-reveal-password]');
+        if (button) {
+            reveal(button, false);
+        }
+    });
+})();
+
+// Password fields: a checklist (data-password-rules) ticks off the rules of the new password live.
 (function () {
     var list = document.querySelector('[data-password-rules]');
     if (!list) {

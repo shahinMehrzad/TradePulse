@@ -74,6 +74,10 @@ if (app.Environment.IsDevelopment())
 
 await Infrastructure.DependencyInjection.SeedAsync(app.Services, app.Configuration);
 
+// `WebApi.dll reset-access <user name or email>`: the way back in for somebody with access to the server, then exit.
+if (args is ["reset-access", var who])
+    return await AccessRecovery.RunAsync(app.Services, who);
+
 app.UseHttpsRedirection();
 
 if (corsOrigins.Length > 0)
@@ -87,6 +91,7 @@ app.MapControllers();
 app.MapCandleEndpoints();
 
 app.Run();
+return 0;
 
 // Lets WebApplicationFactory<Program> reach the entry point from the integration tests.
 public partial class Program;

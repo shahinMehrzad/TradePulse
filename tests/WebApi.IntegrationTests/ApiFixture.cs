@@ -79,6 +79,47 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             new { step.ChallengeToken, Code = Totp.Code(_adminAuthenticatorKey!), IsRecoveryCode = false }, device, cancellationToken);
     }
 
+    public const string NewUserPassword = "BrandNewPassword789!";
+
+    public record TestAccount(string UserName, Guid Id, string AuthenticatorKey, string[] RecoveryCodes);
+
+    /// <summary>A new administrator who has been through the whole first-time setup (password changed to <see cref="NewUserPassword"/>, two-factor on).</summary>
+    public async Task<TestAccount> SetUpAdministratorAsync(string prefix, CancellationToken cancellationToken)
+    {
+        var admin = (await (await AdminLoginAsync(CreateClient(), cancellationToken)).Content.ReadFromJsonAsync<Tokens>(cancellationToken))!.AccessToken;
+        var name = prefix + Guid.NewGuid().ToString("N")[..8];
+
+        using var create = new HttpRequestMessage(HttpMethod.Post, "/api/admin/users") { Content = JsonContent.Create(new { UserName = name, Email = $"{name}@example.com" }) };
+        create.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", admin);
+        var created = await (await CreateClient().SendAsync(create, cancellationToken)).Content.ReadFromJsonAsync<Created>(cancellationToken);
+
+        using var client = CreateClient();
+        var login = await PostAsync(client, "/api/auth/login", new { Email = "", Username = name, Password = created!.TemporaryPassword }, null, cancellationToken);
+        var challenge = (await login.Content.ReadFromJsonAsync<Step>(cancellationToken))!.ChallengeToken;
+        var changed = await PostAsync(client, "/api/auth/setup/password",
+            new { ChallengeToken = challenge, CurrentPassword = created.TemporaryPassword, NewPassword = NewUserPassword }, null, cancellationToken);
+        challenge = (await changed.Content.ReadFromJsonAsync<Step>(cancellationToken))!.ChallengeToken;
+        var key = (await (await PostAsync(client, "/api/auth/setup/two-factor/begin", new { ChallengeToken = challenge }, null, cancellationToken))
+            .Content.ReadFromJsonAsync<Enrollment>(cancellationToken))!.SharedKey;
+        var done = await (await PostAsync(client, "/api/auth/setup/two-factor/confirm", new { ChallengeToken = challenge, Code = Totp.Code(key) }, null, cancellationToken))
+            .Content.ReadFromJsonAsync<Tokens>(cancellationToken);
+
+        return new TestAccount(name, created.UserId, key, done!.RecoveryCodes!);
+    }
+
+    /// <summary>Password and code, as a returning user signs in. Returns the answer of the last step, with the tokens.</summary>
+    public async Task<HttpResponseMessage> LoginAsync(TestAccount account, string password, CancellationToken cancellationToken, string? device = null)
+    {
+        using var client = CreateClient();
+        var login = await PostAsync(client, "/api/auth/login", new { Email = "", Username = account.UserName, Password = password }, device, cancellationToken);
+        var step = (await login.Content.ReadFromJsonAsync<Step>(cancellationToken))!;
+        return await PostAsync(client, "/api/auth/login/two-factor",
+            new { step.ChallengeToken, Code = Totp.Code(account.AuthenticatorKey), IsRecoveryCode = false }, device, cancellationToken);
+    }
+
+    public record Tokens(string AccessToken, string RefreshToken, string[]? RecoveryCodes);
+    private record Created(Guid UserId, string TemporaryPassword);
+
     private async Task EnsureAdminSetUpAsync(CancellationToken cancellationToken)
     {
         await _adminSetup.WaitAsync(cancellationToken);

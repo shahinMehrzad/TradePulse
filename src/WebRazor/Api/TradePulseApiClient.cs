@@ -260,6 +260,35 @@ public sealed class TradePulseApiClient(HttpClient http)
     }
 
     private const string UsersRoot = "api/admin/users";
+
+    /// <returns>The signed-in user's own account, or null when the session is no longer accepted by the API.</returns>
+    public async Task<AccountInfo?> GetAccountAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("api/account", cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AccountInfo>(cancellationToken);
+    }
+
+    public async Task<ApiResult> ChangeOwnPasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/change-password", new { CurrentPassword = currentPassword, NewPassword = newPassword }, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
+    }
+
+    /// <summary>New recovery codes (the old ones stop working); they are shown once.</summary>
+    public async Task<(ApiResult Result, string[]? Codes)> RegenerateRecoveryCodesAsync(string password, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/recovery-codes", new { Password = password }, cancellationToken);
+        var result = await ToResultAsync(response, "The account does not exist.", cancellationToken);
+        return result.Success
+            ? (result, (await response.Content.ReadFromJsonAsync<RecoveryCodesBody>(cancellationToken))?.RecoveryCodes)
+            : (result, null);
+    }
+
+    private record RecoveryCodesBody(string[] RecoveryCodes);
     private const string NotFoundUser = "That user does not exist (anymore). Reload the page.";
 
     /// <returns>The accounts of the panel, or null when the session is no longer accepted by the API.</returns>

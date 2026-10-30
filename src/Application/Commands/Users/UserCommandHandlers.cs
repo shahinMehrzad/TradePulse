@@ -98,6 +98,26 @@ public sealed class SetUserDisabledCommandHandler(IUserAdministration users, IRe
     }
 }
 
+public readonly record struct RecoverAccessCommand(string UserNameOrEmail);
+
+/// <summary>Run from the server's own command line (see <c>reset-access</c>), so there is no signed-in user: the audit entry names the console.</summary>
+public sealed class RecoverAccessCommandHandler(IUserAdministration users, IRefreshTokenRepository refreshTokens, AuditTrail audit)
+    : ICommandHandler<RecoverAccessCommand, TemporaryPasswordDto>
+{
+    public const string AuditUserName = "server console";
+
+    public async Task<TemporaryPasswordDto> HandleAsync(RecoverAccessCommand request, CancellationToken cancellationToken)
+    {
+        var recovered = await users.RecoverAccessAsync(request.UserNameOrEmail.Trim(), cancellationToken)
+                        ?? throw new ConfigurationNotFoundException("There is no user with that name or email.");
+
+        await refreshTokens.RevokeAllAsync(recovered.User.Id, cancellationToken);
+        await audit.RecordAsync(AuditAction.Updated, AuditEntityTypes.User, 0, recovered.User.UserName,
+            "access recovered from the server: new one-time password, two-factor reset, enabled", cancellationToken, userName: AuditUserName);
+        return new TemporaryPasswordDto(recovered.User.Id, recovered.User.UserName, recovered.TemporaryPassword);
+    }
+}
+
 /// <summary>The administrators and other users of the panel, for the user page.</summary>
 public readonly record struct ListUsersQuery;
 

@@ -16,6 +16,8 @@ The **Audit log** page lists every change to those settings (who, when, which se
 
 The **Users** page lists the accounts and adds administrators. A new administrator gets a generated one-time password that is shown once; at the first sign-in they must replace it and set up two-factor. Per user: reset the password (a new one-time password, shown once), reset two-factor, disable and enable. You cannot do these to your own account, and the last active administrator cannot be disabled. The changes are in the audit log.
 
+The **My account** page (the user name at the top right) changes the password (the other devices are signed out, this one stays) and makes new recovery codes after asking for the password again. The new codes are shown once.
+
 The **Collector health** page shows what the collector says about itself: the overall status and each component (database, the exchange REST and WebSocket connections, whether the candle tables are up to date, which series have gaps the exchange has no candles for, ...), the ones with a problem first, with the details the collector reports. It needs `Collector:HealthUrl` in the API's settings, see [Collector health](api.md#collector-health); without it, or with a collector that is down, the page says so instead of showing an empty table.
 
 WebApi side: the `Admin` policy (role from `AdminConfigurations:Role`) guards `/api/admin/*`, `POST /api/auth/login` is limited to `RateLimiting:LoginPermitsPerMinute` (default 10) per client IP, and CORS stays off until `Cors:AllowedOrigins` lists origins. The panel itself needs no CORS since it calls the API from the server.
