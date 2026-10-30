@@ -22,8 +22,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        var connectionString = configuration.RequiredConnectionString("DefaultConnection");
 
         services.AddScoped<ICandleRepository>(provider => new CandleRepository(connectionString));
         services.AddScoped<IMarketDataRepository<FundingRate>>(_ => new TimeSeriesRepository<FundingRate>(connectionString, new FundingRateTable()));
@@ -62,11 +61,21 @@ public static class DependencyInjection
         });
         return services;
     }
+    
+    public static string RequiredConnectionString(this IConfiguration configuration, string name) =>
+        configuration.GetConnectionString(name) is { Length: > 0 } value
+            ? value
+            : throw new InvalidOperationException(
+                $"Connection string '{name}' is not set. It is not in appsettings.json on purpose: give it as a user secret " +
+                $"(dotnet user-secrets set \"ConnectionStrings:{name}\" \"Host=...;Database=...;Username=...;Password=...\" --project <the project>) " +
+                $"or as the environment variable ConnectionStrings__{name}.");
 
     public static IServiceCollection AddAuthInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        var authConnection = configuration.RequiredConnectionString("AuthConnection");
+
         services.AddDbContext<AuthDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("AuthConnection"), npgsqlOptions =>
+            options.UseNpgsql(authConnection, npgsqlOptions =>
             {
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "auth");
             }));

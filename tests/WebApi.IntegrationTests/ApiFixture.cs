@@ -14,9 +14,12 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string CandleUrl = "/api/candles/binance/futures/btcusdt/1h/latest?limit=5";
 
-    // The same values the Development settings seed.
+    // What the administrator is seeded with in these tests.
     public const string AdminEmail = "admin@example.com";
     public const string AdminPassword = "AdminPassword123!";
+
+    /// <summary>The key the API signs its tokens with in these tests; tests that make a token of their own use it too.</summary>
+    public const string JwtSecret = "signing-key-of-the-integration-tests-of-the-api-0123456789";
 
     public string ConnectionString => _postgres.GetConnectionString();
 
@@ -42,6 +45,9 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:AuthConnection", connectionString);
         builder.UseSetting("ConnectionStrings:ConfigConnection", connectionString);
         builder.UseSetting("ConnectionStrings:Redis", "");
+        builder.UseSetting("JwtConfigurations:Secret", JwtSecret);
+        builder.UseSetting("AdminConfigurations:Email", AdminEmail);
+        builder.UseSetting("AdminConfigurations:Password", AdminPassword);
         // No collector runs next to the tests (the default address would find a real one on a developer machine).
         builder.UseSetting("Collector:HealthUrl", "");
         // Many tests log in within a minute; the throttle itself is tested with its own low limit.
