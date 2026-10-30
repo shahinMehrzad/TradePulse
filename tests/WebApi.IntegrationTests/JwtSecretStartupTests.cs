@@ -19,9 +19,9 @@ public class JwtSecretStartupTests
     }
 
     [Fact]
-    public void OutsideDevelopmentTheCommittedSettingsAloneAreNotEnoughToStart()
+    public void TheCommittedSettingsAloneAreNotEnoughToStart()
     {
-        // The Development file carries the only built-in secret; production has to supply its own.
+        // No committed file carries a signing key; every environment has to supply its own (Production reads no user secrets either).
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.UseEnvironment("Production"));
 

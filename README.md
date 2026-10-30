@@ -73,6 +73,18 @@ A [Tabler](https://tabler.io)-based panel that only the seeded administrator can
 
 Requirements: .NET 10 SDK, Docker.
 
+The programs need what is not in the repository: a connection string, a signing key for the tokens and the first administrator. They are
+kept as *user secrets* (in your Windows profile, not in a file of the project). The connection string below matches the Postgres of `docker-compose.yml`:
+
+```bash
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/WebApi
+dotnet user-secrets set "ConnectionStrings:AuthConnection"    "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/WebApi
+dotnet user-secrets set "JwtConfigurations:Secret"            "<at least 32 random characters>"                                          --project src/WebApi
+dotnet user-secrets set "AdminConfigurations:Email"           "admin@example.com"                                                        --project src/WebApi
+dotnet user-secrets set "AdminConfigurations:Password"        "<a strong password>"                                                      --project src/WebApi
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/BackgroundWorker
+```
+
 ```bash
 docker-compose up -d                  # PostgreSQL (plus Redis and RabbitMQ for upcoming features)
 dotnet run --project src/WebApi       # creates the schema, seeds the admin (Development), serves the API
@@ -80,7 +92,7 @@ dotnet run --project src/WebRazor     # the admin panel, by default on http://lo
 dotnet run --project src/BackgroundWorker
 ```
 
-Sign in to the panel with the Development admin from [`appsettings.Development.json`](src/WebApi/appsettings.Development.json) and add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. A change made later applies by itself within about half a minute; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
+Sign in to the panel with the admin you gave above and add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. A change made later applies by itself within about half a minute; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
 
 Or everything in containers, with its own database: [deploy/README.md](deploy/README.md).
 

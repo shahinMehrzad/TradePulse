@@ -13,7 +13,7 @@ public class CandleEndpointAuthTests(ApiFixture api) : IClassFixture<ApiFixture>
     // Same values as appsettings.json / appsettings.Development.json.
     private const string Issuer = "TradePulseApi";
     private const string Audience = "TradePulseClient";
-    private const string Secret = "Development-only-signing-key-change-me-0123456789";
+    private const string Secret = ApiFixture.JwtSecret;
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
