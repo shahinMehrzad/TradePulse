@@ -26,8 +26,10 @@ public sealed class BinanceOpenInterestGateway(IBinanceRestClient client, Binanc
 
         await rateLimiters.For(MarketTypeEnum.Futures).AcquireAsync(1, cancellationToken);
 
+        // Binance returns the NEWEST rows when only a start is given, so ask for a window of one page from the start.
+        var to = from.AddSeconds((double)(int)timeFrame * MaxLimit);
         var result = await client.UsdFuturesApi.ExchangeData.GetOpenInterestHistoryAsync(
-            symbol.ToString(), period, limit: MaxLimit, startTime: from, ct: cancellationToken);
+            symbol.ToString(), period, limit: MaxLimit, startTime: from, endTime: to, ct: cancellationToken);
 
         if (!result.Success)
             return ExchangeResult<ExchangePage<OpenInterest>>.Fail(result.Error?.Message);
@@ -38,6 +40,6 @@ public sealed class BinanceOpenInterestGateway(IBinanceRestClient client, Binanc
             .Select(r => new OpenInterest(r.Timestamp!.Value, r.SumOpenInterest, r.SumOpenInterestValue))
             .ToList();
 
-        return ExchangeResult<ExchangePage<OpenInterest>>.Ok(new ExchangePage<OpenInterest>(rows, HasMore: data.Count >= MaxLimit));
+        return ExchangeResult<ExchangePage<OpenInterest>>.Ok(new ExchangePage<OpenInterest>(rows, HasMore: to < DateTime.UtcNow));
     }
 }

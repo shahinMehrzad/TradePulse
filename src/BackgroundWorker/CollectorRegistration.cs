@@ -4,6 +4,7 @@ using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Collection.Candles;
 using BackgroundWorker.Collection.FundingRates;
 using BackgroundWorker.Collection.Liquidations;
+using BackgroundWorker.Collection.MarketStatistics;
 using BackgroundWorker.Collection.OpenInterests;
 using BackgroundWorker.Health;
 using BackgroundWorker.SymbolData;
@@ -53,6 +54,8 @@ public static class CollectorRegistration
         services.AddHostedService<BinanceLiveCandleWorker>();
         services.AddHostedService<BinanceFundingRateWorker>();
         services.AddHostedService<BinanceOpenInterestWorker>();
+        services.AddHostedService<BinanceLongShortRatioWorker>();
+        services.AddHostedService<BinanceTakerVolumeWorker>();
         services.AddHostedService<BinanceLiquidationWorker>();
         services.AddHostedService<CollectorSummaryWorker>();
 

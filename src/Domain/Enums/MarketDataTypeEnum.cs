@@ -6,4 +6,6 @@ public enum MarketDataTypeEnum : byte
     FundingRate = 2,
     OpenInterest = 3,
     Liquidation = 4,
+    LongShortRatio = 5,
+    TakerVolume = 6,
 }

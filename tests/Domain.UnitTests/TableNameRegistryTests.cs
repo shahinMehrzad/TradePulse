@@ -87,6 +87,18 @@ public partial class TableNameRegistryTests
         Assert.Equal(expected, TableNameRegistry.GetOpenInterestTableName(ExchangeEnum.Binance, symbol, timeFrame));
 
     [Theory]
+    [InlineData(SymbolEnum.BTCUSDT, TimeFrameEnum._1H, "binance_futures_btcusdt_1h_longshortratio")]
+    [InlineData(SymbolEnum.SOLUSDT, TimeFrameEnum._15M, "binance_futures_solusdt_15m_longshortratio")]
+    public void BuildsTheLongShortRatioTableName(SymbolEnum symbol, TimeFrameEnum timeFrame, string expected) =>
+        Assert.Equal(expected, TableNameRegistry.GetLongShortRatioTableName(ExchangeEnum.Binance, symbol, timeFrame));
+
+    [Theory]
+    [InlineData(SymbolEnum.BTCUSDT, TimeFrameEnum._1H, "binance_futures_btcusdt_1h_takervolume")]
+    [InlineData(SymbolEnum.SOLUSDT, TimeFrameEnum._15M, "binance_futures_solusdt_15m_takervolume")]
+    public void BuildsTheTakerVolumeTableName(SymbolEnum symbol, TimeFrameEnum timeFrame, string expected) =>
+        Assert.Equal(expected, TableNameRegistry.GetTakerVolumeTableName(ExchangeEnum.Binance, symbol, timeFrame));
+
+    [Theory]
     [InlineData(SymbolEnum.BTCUSDT, "binance_futures_btcusdt_liquidation")]
     [InlineData(SymbolEnum.XRPUSDT, "binance_futures_xrpusdt_liquidation")]
     public void BuildsTheLiquidationTableName(SymbolEnum symbol, string expected) =>

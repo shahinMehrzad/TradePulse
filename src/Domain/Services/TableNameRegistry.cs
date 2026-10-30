@@ -29,6 +29,24 @@ namespace Domain.Services
             return $"{prefix}{Lower(timeframe)}_openinterest";
         }
 
+        /// <summary>Long/short ratio of all accounts per period, e.g. <c>binance_futures_btcusdt_1h_longshortratio</c>.</summary>
+        public static string GetLongShortRatioTableName(ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeframe)
+        {
+            var prefix = Prefix(exchange, MarketTypeEnum.Futures, symbol);
+            ValidateTimeFrame(timeframe);
+
+            return $"{prefix}{Lower(timeframe)}_longshortratio";
+        }
+
+        /// <summary>Taker buy and sell volume per period, e.g. <c>binance_futures_btcusdt_1h_takervolume</c>.</summary>
+        public static string GetTakerVolumeTableName(ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeframe)
+        {
+            var prefix = Prefix(exchange, MarketTypeEnum.Futures, symbol);
+            ValidateTimeFrame(timeframe);
+
+            return $"{prefix}{Lower(timeframe)}_takervolume";
+        }
+
         /// <summary>Forced liquidation orders, e.g. <c>binance_futures_btcusdt_liquidation</c>.</summary>
         public static string GetLiquidationTableName(ExchangeEnum exchange, SymbolEnum symbol) =>
             $"{Prefix(exchange, MarketTypeEnum.Futures, symbol)}_liquidation";

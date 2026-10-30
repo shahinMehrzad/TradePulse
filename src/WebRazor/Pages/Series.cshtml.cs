@@ -65,6 +65,9 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
         /// <summary>Also collect the open interest of this series. The API refuses it where the market has none.</summary>
         public bool CollectOpenInterest { get; set; }
+
+        /// <summary>Also collect the long/short ratio and taker volume of this series.</summary>
+        public bool CollectMarketStatistics { get; set; }
     }
 
     public SelectList ExchangeItems => new(Lookups.Exchanges, nameof(Lookup.Id), nameof(Lookup.Name), Input.ExchangeId);
@@ -98,6 +101,11 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
         }
     }
 
+    /// <summary>Whether the series the form describes right now can carry market statistics (the checkbox is disabled when not).</summary>
+    public bool MarketStatisticsAvailable =>
+        Lookups.Supports(Input.ExchangeId, Input.MarketId, "LongShortRatio", Input.TimeFrameId)
+        && Lookups.Supports(Input.ExchangeId, Input.MarketId, "TakerVolume", Input.TimeFrameId);
+
     /// <summary>The Edit button links here with <c>?edit=id</c>, which fills the form with that series.</summary>
     public async Task<IActionResult> OnGetAsync(int? edit, CancellationToken cancellationToken)
     {
@@ -122,7 +130,8 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
                     SymbolId = series.SymbolId,
                     TimeFrameId = series.TimeFrameId,
                     StartDate = series.StartDate,
-                    CollectOpenInterest = series.CollectOpenInterest
+                    CollectOpenInterest = series.CollectOpenInterest,
+                    CollectMarketStatistics = series.CollectMarketStatistics
                 };
         }
 
@@ -139,7 +148,8 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
             var request = new SeriesRequest(
                 Input.ExchangeId, Input.MarketId, Input.SymbolId, Input.TimeFrameId,
                 DateTime.SpecifyKind(Input.StartDate!.Value.Date, DateTimeKind.Utc),
-                Input.CollectOpenInterest);
+                Input.CollectOpenInterest,
+                Input.CollectMarketStatistics);
 
             var result = await CallAsync(() => IsEditing
                 ? api.UpdateSeriesAsync(Input.Id, request, cancellationToken)

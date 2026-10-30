@@ -63,7 +63,7 @@ public class HealthRegistrationTests
             {
                 "binance-candle-stream-futures", "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket",
                 "binance-liquidation-stream", "binance-spot-rest", "candle-freshness", "candle-gaps", "candle-requests", "candle-series", "database",
-                "funding-rate-requests", "open-interest-requests", "symbol-data",
+                "funding-rate-requests", "long-short-ratio-requests", "open-interest-requests", "symbol-data", "taker-volume-requests",
             },
             report.Entries.Keys.Order());
     }

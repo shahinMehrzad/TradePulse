@@ -27,6 +27,9 @@ public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         if (request.CollectOpenInterest)
             OpenInterestValidation.EnsureSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
 
+        if (request.CollectMarketStatistics)
+            OpenInterestValidation.EnsureMarketStatisticsSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
+
         var existingConfiguration =await workerConfigurationRepository.GetConfiguration(request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, cancellationToken);
         if (existingConfiguration is not null)
             throw new ConfigurationConflictException("Configuration already exists.");
@@ -38,7 +41,8 @@ public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerC
             StartDate = startDate,
             TimeFrameId = request.TimeFrameId,
             SymbolId = request.SymbolId,
-            CollectOpenInterest = request.CollectOpenInterest
+            CollectOpenInterest = request.CollectOpenInterest,
+            CollectMarketStatistics = request.CollectMarketStatistics
         };
 
         var id = await workerConfigurationRepository.AddNewCandleWorkerConfiguration(configuration, cancellationToken);

@@ -46,6 +46,7 @@ namespace Infrastructure.Repositories
             config.TimeFrameId = configuration.TimeFrameId;
             config.StartDate = DateTime.SpecifyKind(configuration.StartDate, DateTimeKind.Unspecified);
             config.CollectOpenInterest = configuration.CollectOpenInterest;
+            config.CollectMarketStatistics = configuration.CollectMarketStatistics;
             await SaveAsync(cancellationToken);
 
             return config;

@@ -71,6 +71,34 @@ public class TimeSeriesRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task LongShortRatioRoundTrips()
+    {
+        var repository = new TimeSeriesRepository<LongShortRatio>(postgres.ConnectionString, new LongShortRatioTable());
+        var table = NewTable("1h_longshortratio");
+        await repository.EnsureTableExistsAsync(table, Ct);
+
+        var rows = Enumerable.Range(0, 3).Select(i => new LongShortRatio(Start.AddHours(i), 1.5m + i, 0.6m, 0.4m));
+
+        Assert.Equal(3, await repository.BulkInsert(table, rows, Ct));
+        Assert.Equal(0, await repository.BulkInsert(table, rows, Ct));   // re-fetching a range is safe
+        Assert.Equal(Start.AddHours(2), await repository.GetLatestTimeAsync(table, Ct));
+    }
+
+    [Fact]
+    public async Task TakerVolumeRoundTrips()
+    {
+        var repository = new TimeSeriesRepository<TakerVolume>(postgres.ConnectionString, new TakerVolumeTable());
+        var table = NewTable("1h_takervolume");
+        await repository.EnsureTableExistsAsync(table, Ct);
+
+        var rows = Enumerable.Range(0, 3).Select(i => new TakerVolume(Start.AddHours(i), 1.1m, 1000m + i, 900m + i));
+
+        Assert.Equal(3, await repository.BulkInsert(table, rows, Ct));
+        Assert.Equal(0, await repository.BulkInsert(table, rows, Ct));
+        Assert.Equal(Start.AddHours(2), await repository.GetLatestTimeAsync(table, Ct));
+    }
+
+    [Fact]
     public async Task LiquidationsWithTheSameTimestampAreAllKept()
     {
         // No primary key on purpose: the stream carries no unique id and several events can share a millisecond.

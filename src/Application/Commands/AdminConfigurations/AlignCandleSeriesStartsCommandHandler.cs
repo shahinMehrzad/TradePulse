@@ -41,6 +41,7 @@ public sealed class AlignCandleSeriesStartsCommandHandler(
                 TimeFrameId = before.TimeFrameId,
                 StartDate = target.FirstCandle,
                 CollectOpenInterest = before.CollectOpenInterest,
+                CollectMarketStatistics = before.CollectMarketStatistics,
             }, cancellationToken);
 
             if (AuditDescriptions.Changes(before, updated) is { } changes)

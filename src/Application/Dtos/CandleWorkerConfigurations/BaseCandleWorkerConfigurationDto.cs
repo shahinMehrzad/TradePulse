@@ -8,4 +8,5 @@ public class BaseCandleWorkerConfigurationDto
     public int TimeFrameId { get; set; }
     public DateTime StartDate { get; set; }
     public bool CollectOpenInterest { get; set; } = false;
+    public bool CollectMarketStatistics { get; set; } = false;
 }

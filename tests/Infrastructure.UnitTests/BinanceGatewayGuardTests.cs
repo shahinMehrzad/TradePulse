@@ -47,6 +47,42 @@ public class BinanceGatewayGuardTests
             () => gateway.GetOpenInterestAsync(ExchangeEnum.Binance, SymbolEnum.BTCUSDT, timeFrame, From, Ct));
     }
 
+    [Fact]
+    public async Task TheStatisticGatewaysServeBinanceOnly()
+    {
+        var longShort = new BinanceLongShortRatioGateway(client: null!, rateLimiters: null!);
+        var taker = new BinanceTakerVolumeGateway(client: null!, rateLimiters: null!);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => longShort.GetAsync((ExchangeEnum)99, SymbolEnum.BTCUSDT, TimeFrameEnum._1H, From, Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => taker.GetAsync((ExchangeEnum)99, SymbolEnum.BTCUSDT, TimeFrameEnum._1H, From, Ct));
+    }
+
+    [Theory]
+    [InlineData(TimeFrameEnum._1S)]
+    [InlineData(TimeFrameEnum._1M)]
+    [InlineData(TimeFrameEnum._3M)]
+    [InlineData(TimeFrameEnum._8H)]
+    public async Task TheStatisticGatewaysRefuseATimeFrameBinanceHasNoPeriodFor(TimeFrameEnum timeFrame)
+    {
+        var longShort = new BinanceLongShortRatioGateway(client: null!, rateLimiters: null!);
+        var taker = new BinanceTakerVolumeGateway(client: null!, rateLimiters: null!);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => longShort.GetAsync(ExchangeEnum.Binance, SymbolEnum.BTCUSDT, timeFrame, From, Ct));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => taker.GetAsync(ExchangeEnum.Binance, SymbolEnum.BTCUSDT, timeFrame, From, Ct));
+    }
+
+    [Theory]
+    [InlineData(TimeFrameEnum._15M, 500 * 15 * 60)]
+    [InlineData(TimeFrameEnum._1H, 500 * 60 * 60)]
+    [InlineData(TimeFrameEnum._1D, 500 * 24 * 60 * 60)]
+    public void ARequestAsksForExactlyOnePageStartingAtTheCursor(TimeFrameEnum timeFrame, int seconds)
+    {
+        // Binance returns the newest rows when only a start is given, which made a catch-up skip the middle of the history.
+        var to = BinancePeriodStatisticGateway<LongShortRatio>.WindowEnd(From, timeFrame);
+
+        Assert.Equal(From.AddSeconds(seconds), to);
+    }
+
     private sealed class NoListener : ILiveCandleListener, ILiquidationListener
     {
         public void OnMessage() { }
@@ -79,5 +115,7 @@ public class BinanceGatewayGuardTests
         var maxHistory = new BinanceOpenInterestGateway(client: null!, rateLimiters: null!).MaxHistory;
 
         Assert.InRange(maxHistory, TimeSpan.FromDays(28), TimeSpan.FromDays(30));
+        Assert.Equal(maxHistory, new BinanceLongShortRatioGateway(client: null!, rateLimiters: null!).MaxHistory);
+        Assert.Equal(maxHistory, new BinanceTakerVolumeGateway(client: null!, rateLimiters: null!).MaxHistory);
     }
 }
