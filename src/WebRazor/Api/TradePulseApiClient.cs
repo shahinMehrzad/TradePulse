@@ -234,6 +234,41 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await response.Content.ReadFromJsonAsync<List<SymbolListingItem>>(cancellationToken) ?? [];
     }
 
+    /// <param name="keyword">Matched by the API against the name, the description and the exchanges' names for the symbol.</param>
+    /// <returns>One page of the symbols, or null when the session is no longer accepted by the API.</returns>
+    public async Task<SymbolsPage?> GetSymbolsPageAsync(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
+    {
+        var url = $"{SymbolsRoot}?pageNumber={pageNumber}&pageSize={pageSize}";
+        if (!string.IsNullOrWhiteSpace(keyword))
+            url += $"&keyword={Uri.EscapeDataString(keyword)}";
+
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SymbolsPage>(cancellationToken);
+    }
+
+    /// <returns>The symbol with its markets; <c>Detail</c> is null when it does not exist (anymore), <c>SessionRejected</c> when the API no longer accepts the session.</returns>
+    public async Task<(SymbolDetail? Detail, bool SessionRejected)> GetSymbolDetailAsync(int id, CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync($"{SymbolsRoot}/{id}", cancellationToken);
+        if (IsRejected(response))
+            return (null, true);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return (null, false);
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<SymbolDetail>(cancellationToken), false);
+    }
+
+    public async Task<ApiResult> UpdateSymbolAsync(int id, string? description, CancellationToken cancellationToken)
+    {
+        using var response = await http.PutAsJsonAsync(SymbolsRoot, new { id, description }, cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbol, cancellationToken);
+    }
+
     public async Task<ApiResult> AddSymbolAsync(string? name, string? description, CancellationToken cancellationToken)
     {
         using var response = await http.PostAsJsonAsync(SymbolsRoot, new { name, description }, cancellationToken);

@@ -13,11 +13,9 @@ public sealed class AddSymbolCommandHandler(ISymbolCatalogRepository repository,
     {
         var name = SymbolNames.Normalize(request.Name);
 
-        var description = request.Description?.Trim();
-        if (description is { Length: > SymbolNames.MaxDescriptionLength })
-            throw new ConfigurationValidationException($"Description can have at most {SymbolNames.MaxDescriptionLength} characters.");
+        var description = SymbolNames.NormalizeDescription(request.Description);
 
-        var id = await repository.AddSymbol(new SymbolLookup { Name = name, Description = string.IsNullOrEmpty(description) ? null : description }, cancellationToken);
+        var id = await repository.AddSymbol(new SymbolLookup { Name = name, Description = description }, cancellationToken);
         await audit.RecordAsync(AuditAction.Added, AuditEntityTypes.Symbol, id, name, description, cancellationToken);
         return id;
     }

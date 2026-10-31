@@ -21,6 +21,16 @@ internal static partial class SymbolNames
         return normalized;
     }
 
+    /// <summary>Trimmed; null when there is nothing left. Too long is refused.</summary>
+    public static string? NormalizeDescription(string? description)
+    {
+        var trimmed = description?.Trim();
+        if (trimmed is { Length: > MaxDescriptionLength })
+            throw new ConfigurationValidationException($"Description can have at most {MaxDescriptionLength} characters.");
+
+        return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+    }
+
     [GeneratedRegex("^[A-Z0-9]{1,20}/[A-Z0-9]{1,20}$")]
     private static partial Regex BaseAndQuote();
 }

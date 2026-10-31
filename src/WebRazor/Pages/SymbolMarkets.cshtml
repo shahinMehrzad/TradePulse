@@ -1,0 +1,152 @@
+@page "/Symbols/{id:int}"
+@model SymbolMarketsModel
+@{
+    ViewData["Title"] = Model.Detail.Name;
+}
+
+<div class="mb-3">
+    <a asp-page="/Symbols" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" class="text-secondary">&larr; All symbols</a>
+</div>
+
+@if (Model.Saved is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.Saved</div>
+}
+@if (Model.Errors.Count > 0)
+{
+    <div class="alert alert-danger" role="alert">
+        <ul class="mb-0">
+            @foreach (var error in Model.Errors)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="row row-cards">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title">@Model.Detail.Name</h3>
+                    @if (!string.IsNullOrWhiteSpace(Model.Detail.Description))
+                    {
+                        <div class="text-secondary">@Model.Detail.Description</div>
+                    }
+                </div>
+            </div>
+            @if (Model.Detail.Markets.Count == 0)
+            {
+                <div class="card-body text-secondary">
+                    It is not listed on any exchange market yet, so it cannot be chosen for a series. List it on the right.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table card-table table-vcenter">
+                        <thead>
+                            <tr><th>Exchange</th><th>Market</th><th>Its name there</th><th>Used by</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var market in Model.Detail.Markets)
+                            {
+                                <tr>
+                                    <td>@market.Exchange</td>
+                                    <td><span class="badge @(market.Market == "Futures" ? "bg-purple-lt" : "bg-blue-lt")">@market.Market</span></td>
+                                    <td class="fw-bold">@market.ExchangeSymbol</td>
+                                    <td class="text-secondary">
+                                        @if (!market.InUse)
+                                        {
+                                            <span>-</span>
+                                        }
+                                        else
+                                        {
+                                            @if (market.SeriesCount > 0)
+                                            {
+                                                <a asp-page="/Series" asp-route-keyword="@Model.Detail.Name">@market.SeriesCount series</a>
+                                            }
+                                            @if (market.SeriesCount > 0 && market.SettingsCount > 0)
+                                            {
+                                                <span>, </span>
+                                            }
+                                            @if (market.SettingsCount > 0)
+                                            {
+                                                <a asp-page="/SymbolData">@market.SettingsCount @(market.SettingsCount == 1 ? "setting" : "settings")</a>
+                                            }
+                                        }
+                                    </td>
+                                    <td class="text-nowrap text-end">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#remove-@market.ListingId"
+                                                disabled="@market.InUse" title="@(market.InUse ? "A series or a setting uses it, so it cannot be removed." : null)">Remove</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @foreach (var market in Model.Detail.Markets.Where(m => !m.InUse))
+                {
+                <div class="modal modal-blur fade text-start" id="remove-@market.ListingId" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-sm modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-body">
+                                <div class="modal-title">Remove this listing?</div>
+                                <div class="text-secondary">
+                                    @Model.Detail.Name on @market.Exchange @market.Market (@market.ExchangeSymbol).
+                                    Nothing uses it. The tables already collected stay in the database.
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
+                                <form method="post" asp-page-handler="Remove" asp-route-id="@Model.Id" asp-route-listingId="@market.ListingId" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">
+                                    <button type="submit" class="btn btn-danger">Remove</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">List on another market</h3>
+            </div>
+            <div class="card-body">
+                @if (Model.AvailableMarkets.Count == 0)
+                {
+                    <div class="text-secondary">It is listed on every exchange market there is.</div>
+                }
+                else
+                {
+                    <form method="post" asp-page-handler="Add" asp-route-id="@Model.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" autocomplete="off">
+                        <div class="mb-3">
+                            <label asp-for="Input.Market" class="form-label">Exchange market</label>
+                            <select asp-for="Input.Market" class="form-select">
+                                <option value="">Select...</option>
+                                @foreach (var option in Model.AvailableMarkets)
+                                {
+                                    <option value="@option.Value" selected="@(Model.Input.Market == option.Value)">@option.Label</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label asp-for="Input.ExchangeSymbol" class="form-label">Its name on that exchange</label>
+                            <input asp-for="Input.ExchangeSymbol" class="form-control" value="@(Model.Input.ExchangeSymbol ?? Model.SuggestedExchangeSymbol)" />
+                            <div class="form-hint">
+                                As the exchange writes it. The exchange is asked whether it trades that name, so a typo or a delisted symbol is refused.
+                                The collector's tables are named after it, for example binance_futures_@(Model.SuggestedExchangeSymbol.ToLowerInvariant())_4h.
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">List symbol</button>
+                    </form>
+                }
+            </div>
+        </div>
+    </div>
+</div>

@@ -2,6 +2,7 @@ using Application.Commands.Symbols;
 using Application.Dtos.Symbols;
 using Application.Interfaces;
 using Application.Queries.Symbols;
+using Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 
 namespace WebApi.Controllers.Admin;
@@ -11,6 +12,24 @@ namespace WebApi.Controllers.Admin;
 /// </summary>
 public class SymbolsController(ICommandDispatcher dispatcher) : AdminControllerBase
 {
+    /// <summary>
+    /// One page of the symbols by name, each with the exchange markets it is listed on. The keyword matches the name, the description
+    /// or an exchange's name for it.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetSymbols([FromQuery] string? keyword, CancellationToken cancellationToken, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+        => Ok(await dispatcher.SendAsync<GetSymbolsPageQuery, SymbolPage>(new GetSymbolsPageQuery(keyword, pageNumber, pageSize), cancellationToken));
+
+    /// <summary>One symbol with the markets it is listed on and how many series and settings use each listing.</summary>
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetSymbol(int id, CancellationToken cancellationToken)
+        => Ok(await dispatcher.SendAsync<GetSymbolDetailQuery, SymbolDetail>(new GetSymbolDetailQuery(id), cancellationToken));
+
+    /// <summary>Changes the description. The name is never changed.</summary>
+    [HttpPut]
+    public async Task<IActionResult> UpdateSymbol(UpdateSymbolDto payload, CancellationToken cancellationToken)
+        => Ok(await dispatcher.SendAsync<UpdateSymbolDto, SymbolLookup>(payload, cancellationToken));
+
     [HttpPost]
     public async Task<IActionResult> AddSymbol(AddSymbolDto payload, CancellationToken cancellationToken)
     {

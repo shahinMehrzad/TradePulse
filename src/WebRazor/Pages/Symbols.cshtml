@@ -5,10 +5,8 @@
 }
 
 <div class="alert alert-info" role="alert">
-    A symbol (<span class="fw-bold">BTC/USDT</span>) is listed on an exchange market under the name that exchange itself uses (<span class="fw-bold">BTCUSDT</span>).
-    A series or a funding rate setting can only be chosen for a symbol that is listed on its market. When you list one, the exchange is asked
-    whether it trades that name, so a typo or a delisted symbol is refused here instead of failing in the collector later.
-    The collector's tables are named after the exchange's name: <span class="fw-bold">binance_futures_btcusdt_4h</span>.
+    The symbols the collector can be told about, like BTC/USDT. A series or a funding rate setting can only be chosen for a symbol that is listed on an exchange market.
+    Open a symbol to see where it is listed and to list it on another exchange market. A symbol that is listed somewhere cannot be removed.
 </div>
 
 @if (Model.Saved is not null)
@@ -31,67 +29,25 @@
     <div class="col-lg-8">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Listed on exchange markets (@Model.Listings.Count)</h3>
-            </div>
-            @if (Model.Listings.Count == 0)
-            {
-                <div class="card-body text-secondary">Nothing is listed yet. Add a symbol, then list it on the right.</div>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table card-table table-vcenter">
-                        <thead>
-                            <tr><th>Exchange</th><th>Market</th><th>Symbol</th><th>Exchange's name</th><th></th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var listing in Model.Listings)
-                            {
-                                <tr>
-                                    <td>@listing.Exchange</td>
-                                    <td><span class="badge @(listing.Market == "Futures" ? "bg-purple-lt" : "bg-blue-lt")">@listing.Market</span></td>
-                                    <td class="fw-bold">@listing.Symbol</td>
-                                    <td class="text-secondary">@listing.ExchangeSymbol</td>
-                                    <td class="text-nowrap text-end">
-                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-listing-@listing.Id">Remove</button>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                <h3 class="card-title">Symbols (@Model.TotalItems)</h3>
+                <div class="card-actions">
+                    <form method="get" asp-page="/Symbols" class="d-flex gap-2">
+                        <input type="search" name="Keyword" value="@Model.Keyword" class="form-control form-control-sm" placeholder="Search..." aria-label="Search the symbols" />
+                        <button type="submit" class="btn btn-sm">Search</button>
+                        @if (!string.IsNullOrWhiteSpace(Model.Keyword))
+                        {
+                            <a class="btn btn-sm btn-ghost-secondary" asp-page="/Symbols">Clear</a>
+                        }
+                    </form>
                 </div>
-                @foreach (var listing in Model.Listings)
-                {
-                <div class="modal modal-blur fade text-start" id="delete-listing-@listing.Id" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-sm modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-body">
-                                <div class="modal-title">Remove this listing?</div>
-                                <div class="text-secondary">
-                                    @listing.ExchangeSymbol on @listing.Exchange @listing.Market.
-                                    It is refused while a series or a funding rate / liquidation setting still uses it. The tables already collected stay in the database.
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
-                                <form method="post" asp-page-handler="DeleteListing" asp-route-id="@listing.Id">
-                                    <button type="submit" class="btn btn-danger">Remove</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                }
-            }
-        </div>
-
-        <div class="card mt-3">
-            <div class="card-header">
-                <h3 class="card-title">Symbols (@Model.Lookups.Symbols.Count)</h3>
             </div>
-            @if (Model.Lookups.Symbols.Count == 0)
+            @if (Model.Symbols.Count == 0)
             {
-                <div class="card-body text-secondary">There are no symbols yet.</div>
+                <div class="card-body text-secondary">
+                    @(string.IsNullOrWhiteSpace(Model.Keyword)
+                        ? "There are no symbols yet. Add the first one on the right."
+                        : $"No symbol matches \"{Model.Keyword}\".")
+                </div>
             }
             else
             {
@@ -101,25 +57,54 @@
                             <tr><th>Symbol</th><th>Description</th><th>Listed on</th><th></th></tr>
                         </thead>
                         <tbody>
-                            @foreach (var symbol in Model.Lookups.Symbols)
+                            @foreach (var symbol in Model.Symbols)
                             {
-                                var listedOn = Model.ListedOn(symbol.Id);
                                 <tr>
-                                    <td class="fw-bold">@symbol.Name</td>
+                                    <td class="fw-bold text-nowrap">
+                                        <a asp-page="/SymbolMarkets" asp-route-id="@symbol.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" class="text-reset">@symbol.Name</a>
+                                    </td>
                                     <td class="text-secondary">@symbol.Description</td>
-                                    <td>@(listedOn == 0 ? "-" : $"{listedOn} market(s)")</td>
+                                    <td>
+                                        @if (symbol.Markets.Count == 0)
+                                        {
+                                            <span class="text-secondary">-</span>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var market in symbol.Markets)
+                                            {
+                                                <span class="badge @(market.Market == "Futures" ? "bg-purple-lt" : "bg-blue-lt") me-1" title="@market.ExchangeSymbol">@market.Exchange @market.Market</span>
+                                            }
+                                        }
+                                    </td>
                                     <td class="text-nowrap text-end">
-                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-symbol-@symbol.Id"
-                                                disabled="@(listedOn > 0)" title="@(listedOn > 0 ? "Remove its listings first." : null)">Remove</button>
+                                        <a class="btn btn-sm btn-primary" asp-page="/SymbolMarkets" asp-route-id="@symbol.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Markets</a>
+                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Symbols" asp-route-edit="@symbol.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Edit</a>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-@symbol.Id"
+                                                disabled="@(symbol.Markets.Count > 0)" title="@(symbol.Markets.Count > 0 ? "It is listed on an exchange market, so it cannot be removed." : null)">Remove</button>
                                     </td>
                                 </tr>
                             }
                         </tbody>
                     </table>
                 </div>
-                @foreach (var symbol in Model.Lookups.Symbols.Where(s => Model.ListedOn(s.Id) == 0))
+                @if (Model.TotalPages > 1)
                 {
-                <div class="modal modal-blur fade text-start" id="delete-symbol-@symbol.Id" tabindex="-1" aria-hidden="true">
+                    <div class="card-footer d-flex align-items-center">
+                        <span class="text-secondary">Page @Model.PageNumber of @Model.TotalPages</span>
+                        <ul class="pagination m-0 ms-auto">
+                            <li class="page-item @(Model.HasPrevious ? "" : "disabled")">
+                                <a class="page-link" asp-page="/Symbols" asp-route-pageNumber="@Math.Max(1, Model.PageNumber - 1)" asp-route-keyword="@Model.Keyword">Previous</a>
+                            </li>
+                            <li class="page-item @(Model.HasNext ? "" : "disabled")">
+                                <a class="page-link" asp-page="/Symbols" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-keyword="@Model.Keyword">Next</a>
+                            </li>
+                        </ul>
+                    </div>
+                }
+                @foreach (var symbol in Model.Symbols.Where(s => s.Markets.Count == 0))
+                {
+                <div class="modal modal-blur fade text-start" id="delete-@symbol.Id" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog modal-sm modal-dialog-centered">
                         <div class="modal-content">
                             <div class="modal-body">
@@ -128,7 +113,7 @@
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
-                                <form method="post" asp-page-handler="DeleteSymbol" asp-route-id="@symbol.Id">
+                                <form method="post" asp-page-handler="Delete" asp-route-id="@symbol.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">
                                     <button type="submit" class="btn btn-danger">Remove</button>
                                 </form>
                             </div>
@@ -143,54 +128,35 @@
     <div class="col-lg-4">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">List a symbol on a market</h3>
+                <h3 class="card-title">@(Model.IsEditing ? "Change symbol" : "Add a symbol")</h3>
             </div>
             <div class="card-body">
-                <form method="post" asp-page-handler="AddListing" autocomplete="off">
+                <form method="post" asp-page-handler="Save" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" autocomplete="off">
+                    <input type="hidden" asp-for="Input.Id" />
                     <div class="mb-3">
-                        <label asp-for="NewListing.ExchangeId" class="form-label">Exchange</label>
-                        <select asp-for="NewListing.ExchangeId" asp-items="Model.ExchangeItems" class="form-select">
-                            <option value="0">Select...</option>
-                        </select>
+                        <label asp-for="Input.Name" class="form-label">Name</label>
+                        @if (Model.IsEditing)
+                        {
+                            <input asp-for="Input.Name" class="form-control" readonly />
+                            <div class="form-hint">The name stays: the collector's tables are named after the exchange's name for the symbol.</div>
+                        }
+                        else
+                        {
+                            <input asp-for="Input.Name" class="form-control" placeholder="BTC/USDT" />
+                            <div class="form-hint">BASE/QUOTE, letters and digits only. Kept in upper case.</div>
+                        }
                     </div>
                     <div class="mb-3">
-                        <label asp-for="NewListing.MarketId" class="form-label">Market</label>
-                        <select asp-for="NewListing.MarketId" asp-items="Model.MarketItems" class="form-select">
-                            <option value="0">Select...</option>
-                        </select>
+                        <label asp-for="Input.Description" class="form-label">Description (optional)</label>
+                        <input asp-for="Input.Description" class="form-control" maxlength="100" />
                     </div>
-                    <div class="mb-3">
-                        <label asp-for="NewListing.SymbolId" class="form-label">Symbol</label>
-                        <select asp-for="NewListing.SymbolId" asp-items="Model.SymbolItems" class="form-select">
-                            <option value="0">Select...</option>
-                        </select>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">@(Model.IsEditing ? "Save changes" : "Add symbol")</button>
+                        @if (Model.IsEditing)
+                        {
+                            <a class="btn" asp-page="/Symbols" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Cancel</a>
+                        }
                     </div>
-                    <div class="mb-3">
-                        <label asp-for="NewListing.ExchangeSymbol" class="form-label">The exchange's name for it</label>
-                        <input asp-for="NewListing.ExchangeSymbol" class="form-control" placeholder="BTCUSDT" />
-                        <div class="form-hint">Letters and digits as the exchange writes them. Dashes and slashes are left out of the table name.</div>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">List symbol</button>
-                </form>
-            </div>
-        </div>
-
-        <div class="card mt-3">
-            <div class="card-header">
-                <h3 class="card-title">Add a symbol</h3>
-            </div>
-            <div class="card-body">
-                <form method="post" asp-page-handler="AddSymbol" autocomplete="off">
-                    <div class="mb-3">
-                        <label asp-for="NewSymbol.Name" class="form-label">Name</label>
-                        <input asp-for="NewSymbol.Name" class="form-control" placeholder="BTC/USDT" />
-                        <div class="form-hint">BASE/QUOTE, letters and digits only. Kept in upper case.</div>
-                    </div>
-                    <div class="mb-3">
-                        <label asp-for="NewSymbol.Description" class="form-label">Description (optional)</label>
-                        <input asp-for="NewSymbol.Description" class="form-control" maxlength="100" />
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Add symbol</button>
                 </form>
             </div>
         </div>

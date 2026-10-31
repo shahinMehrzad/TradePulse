@@ -21,6 +21,46 @@ public class SymbolCatalogRepository(ConfigDbContext context) : ISymbolCatalogRe
     public async Task<SymbolLookup?> GetSymbol(int id, CancellationToken cancellationToken)
         => await context.Symbols.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
 
+    public async Task<(IReadOnlyList<SymbolLookup> Items, int Total)> GetSymbolsPage(string? keyword, int skip, int take, CancellationToken cancellationToken)
+    {
+        var query = context.Symbols.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var term = keyword.Trim().ToLower();
+            query = query.Where(s =>
+                s.Name.ToLower().Contains(term)
+                || (s.Description != null && s.Description.ToLower().Contains(term))
+                || context.SymbolListings.Any(l => l.SymbolId == s.Id && l.ExchangeSymbol.ToLower().Contains(term)));
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query.OrderBy(s => s.Name).Skip(skip).Take(take).ToListAsync(cancellationToken);
+        return (items, total);
+    }
+
+    public async Task<IReadOnlyDictionary<int, (int Series, int Settings)>> GetListingUsage(int symbolId, CancellationToken cancellationToken)
+    {
+        var listings = context.SymbolListings.Where(l => l.SymbolId == symbolId).Select(l => l.Id);
+
+        var series = await context.CandleWorkerConfigurations.Where(c => listings.Contains(c.SymbolListingId))
+            .GroupBy(c => c.SymbolListingId).Select(g => new { Listing = g.Key, Count = g.Count() }).ToListAsync(cancellationToken);
+        var settings = await context.SymbolDataConfigurations.Where(c => listings.Contains(c.SymbolListingId))
+            .GroupBy(c => c.SymbolListingId).Select(g => new { Listing = g.Key, Count = g.Count() }).ToListAsync(cancellationToken);
+
+        return series.Select(x => x.Listing).Union(settings.Select(x => x.Listing)).ToDictionary(
+            id => id,
+            id => (series.FirstOrDefault(x => x.Listing == id)?.Count ?? 0, settings.FirstOrDefault(x => x.Listing == id)?.Count ?? 0));
+    }
+
+    public async Task<SymbolLookup> UpdateSymbolDescription(int id, string? description, CancellationToken cancellationToken)
+    {
+        var entity = await context.Symbols.SingleOrDefaultAsync(s => s.Id == id, cancellationToken)
+            ?? throw new ConfigurationNotFoundException("Symbol does not exist.");
+        entity.Description = description;
+        await context.SaveChangesAsync(cancellationToken);
+        return entity;
+    }
+
     public async Task<int> AddSymbol(SymbolLookup symbol, CancellationToken cancellationToken)
     {
         context.Symbols.Add(symbol);

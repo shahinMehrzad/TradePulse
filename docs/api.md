@@ -45,6 +45,9 @@ Admin only. A series or a funding rate / liquidation setting names a **symbol li
 
 | Request | Does |
 |---|---|
+| `GET /api/admin/symbols?keyword=&pageNumber=1&pageSize=10` | One page of the symbols by name (`pageSize` 1-100): `items` with `id`, `name`, `description` and the `markets` each is listed on (`listingId`, `exchange`, `market`, `exchangeSymbol`), plus `pageNumber`, `pageSize`, `totalItems`, `totalPages`. The keyword (any case) matches the name, the description or an exchange's name for the symbol (`btcusdt` finds `BTC/USDT`). |
+| `GET /api/admin/symbols/{id}` | One symbol with every market it is listed on: `listingId`, exchange, market, `exchangeSymbol`, and `seriesCount` / `settingsCount` (how many candle series and funding rate / liquidation settings use that listing; a listing that is used cannot be removed). `404` if it does not exist. |
+| `PUT /api/admin/symbols` | Changes the description: `{ "id": 1, "description": "..." }` (at most 100 characters, empty clears it). The name is never changed. `404` if it does not exist. |
 | `POST /api/admin/symbols` | Adds a symbol: `{ "name": "BTC/USDT", "description": "..." }`. Upper-cased, `BASE/QUOTE`, letters and digits only; `409` if it exists. |
 | `DELETE /api/admin/symbols/{id}` | Removes it; `409` while it is listed anywhere. |
 | `GET /api/admin/symbols/listings` | Every listing: `id`, exchange, market, symbol and `exchangeSymbol`. |
