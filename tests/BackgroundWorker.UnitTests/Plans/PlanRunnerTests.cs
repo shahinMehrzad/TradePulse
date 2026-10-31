@@ -16,10 +16,10 @@ public class PlanRunnerTests : IAsyncLifetime
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static readonly CandleSeriesPlan Btc1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
-    private static readonly CandleSeriesPlan Eth1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H);
-    private static readonly CandleSeriesPlan Btc4hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
-    private static readonly CandleSeriesPlan Btc1hSpot = TestPlans.Binance(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Btc1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Eth1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.ETHUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Btc4hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H);
+    private static readonly CandleSeriesPlan Btc1hSpot = TestPlans.Binance(MarketTypeEnum.Spot, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly FakeCandleSeriesSource _source = new();
@@ -66,7 +66,7 @@ public class PlanRunnerTests : IAsyncLifetime
             select ?? (plans => plans.Where(p => p.Series.MarketType == MarketTypeEnum.Futures).ToList()),
             run ?? (async (items, ct) =>
             {
-                Record($"start {string.Join("+", items.Select(i => i.Series.Symbol).Order())}");
+                Record($"start {string.Join("+", items.Select(i => i.Series.Symbol.Value).Order(StringComparer.Ordinal))}");
                 try
                 {
                     await Task.Delay(Timeout.Infinite, ct);
@@ -209,7 +209,7 @@ public class PlanRunnerTests : IAsyncLifetime
             plan => plan.Series.Timeframe,
             run ?? (async (key, items, ct) =>
             {
-                Record($"start {key} {string.Join("+", items.Select(i => i.Series.Symbol).Order())}");
+                Record($"start {key} {string.Join("+", items.Select(i => i.Series.Symbol.Value).Order(StringComparer.Ordinal))}");
                 try
                 {
                     await Task.Delay(Timeout.Infinite, ct);

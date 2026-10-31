@@ -1,6 +1,7 @@
 using Application.Commands.Candles;
 using Application.Dtos;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Application.UnitTests;
 
@@ -16,7 +17,7 @@ public class SaveCandlesCommandHandlerTests
     {
         var repository = new FakeCandleRepository();
         var handler = new SaveCandlesCommandHandler(repository);
-        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.SOLUSDT, TimeFrameEnum._1H,
+        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.SOLUSDT.Sym(), TimeFrameEnum._1H,
             [Dto(Open)]);
 
         await handler.HandleAsync(command, TestContext.Current.CancellationToken);
@@ -30,7 +31,7 @@ public class SaveCandlesCommandHandlerTests
     {
         var repository = new FakeCandleRepository();
         var handler = new SaveCandlesCommandHandler(repository);
-        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H,
+        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H,
             [Dto(Open), Dto(Open.AddHours(1))]);
 
         await handler.HandleAsync(command, TestContext.Current.CancellationToken);
@@ -49,7 +50,7 @@ public class SaveCandlesCommandHandlerTests
     {
         var repository = new FakeCandleRepository { InsertResult = 1 };
         var handler = new SaveCandlesCommandHandler(repository);
-        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H,
+        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H,
             [Dto(Open), Dto(Open.AddHours(1))]);
 
         var inserted = await handler.HandleAsync(command, TestContext.Current.CancellationToken);
@@ -59,13 +60,20 @@ public class SaveCandlesCommandHandlerTests
     }
 
     [Fact]
-    public async Task RejectsUndefinedEnumValuesBeforeTouchingTheRepository()
+    public async Task RejectsUndefinedEnumValuesAndUnsafeSymbolNamesBeforeTouchingTheRepository()
     {
         var repository = new FakeCandleRepository();
         var handler = new SaveCandlesCommandHandler(repository);
-        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, (SymbolEnum)999, TimeFrameEnum._1H, [Dto(Open)]);
+        var commands = new[]
+        {
+            new SaveCandlesCommand((ExchangeEnum)99, MarketTypeEnum.Spot, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H, [Dto(Open)]),
+            new SaveCandlesCommand(ExchangeEnum.Binance, (MarketTypeEnum)99, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H, [Dto(Open)]),
+            new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, SeededSymbol.BTCUSDT.Sym(), (TimeFrameEnum)12345, [Dto(Open)]),
+            new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, new ExchangeSymbol("BTCUSDT; DROP TABLE x"), TimeFrameEnum._1H, [Dto(Open)]),
+        };
 
-        await Assert.ThrowsAsync<ArgumentException>(() => handler.HandleAsync(command, TestContext.Current.CancellationToken));
+        foreach (var command in commands)
+            await Assert.ThrowsAsync<ArgumentException>(() => handler.HandleAsync(command, TestContext.Current.CancellationToken));
 
         Assert.Empty(repository.Inserts);
     }

@@ -3,6 +3,7 @@ using Application.Interfaces;
 using Application.Queries.Dashboard;
 using Domain.Enums;
 using Domain.Extensions;
+using Domain.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace WebApi.Controllers.Admin
@@ -35,17 +36,21 @@ namespace WebApi.Controllers.Admin
 
             TryParseName(nameof(exchange), exchange, out ExchangeEnum parsedExchange);
             TryParseName(nameof(market), market, out MarketTypeEnum parsedMarket);
-            TryParseName(nameof(symbol), symbol, out SymbolEnum parsedSymbol);
 
             TimeFrameEnum? parsedTimeframe = null;
             if (!string.IsNullOrWhiteSpace(timeframe) && TryParseName(nameof(timeframe), timeframe, out TimeFrameEnum frame))
                 parsedTimeframe = frame;
 
+            // The symbol is named by its table-name part (btcusdt); what that makes of the exchange's names is the registry's business.
+            var symbolPart = "";
+            if (ModelState.IsValid && !TableNameRegistry.TryGetSymbolPart(parsedExchange, parsedMarket, symbol, out symbolPart, out var reason))
+                ModelState.AddModelError(nameof(symbol), $"'{symbol}' is not a valid symbol: {reason}.");
+
             if (!ModelState.IsValid)
                 return ValidationProblem(ModelState);
 
             return Ok(await dispatcher.SendAsync<GetDashboardSeriesDetailQuery, DashboardSeriesDetail>(
-                new GetDashboardSeriesDetailQuery(parsedExchange, parsedMarket, parsedSymbol, parsedTimeframe, candles), cancellationToken));
+                new GetDashboardSeriesDetailQuery(parsedExchange, parsedMarket, symbolPart, parsedTimeframe, candles), cancellationToken));
         }
 
         private bool TryParseName<T>(string parameter, string value, out T result) where T : struct, Enum

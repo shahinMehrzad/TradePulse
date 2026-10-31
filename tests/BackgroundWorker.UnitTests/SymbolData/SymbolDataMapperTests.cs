@@ -7,13 +7,15 @@ namespace BackgroundWorker.UnitTests.SymbolData;
 public class SymbolDataMapperTests
 {
     private static SymbolDataConfiguration Row(
-        int id = 1, int exchange = (int)ExchangeEnum.Binance, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SymbolEnum.BTCUSDT,
+        int id = 1, int exchange = (int)ExchangeEnum.Binance, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SeededSymbol.BTCUSDT,
         bool funding = true, bool liquidation = true) => new()
     {
         Id = id,
-        ExchangeId = exchange,
-        MarketId = market,
-        SymbolId = symbol,
+        SymbolListing = new SymbolListing
+        {
+            ExchangeId = exchange, MarketId = market, SymbolId = symbol,
+            ExchangeSymbol = Enum.IsDefined((SeededSymbol)symbol) ? ((SeededSymbol)symbol).ToString() : "NOSUCHUSDT"
+        },
         CollectFundingRate = funding,
         FundingStartDate = funding ? new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified) : null,
         CollectLiquidation = liquidation,
@@ -24,7 +26,7 @@ public class SymbolDataMapperTests
     {
         var plan = Assert.Single(SymbolDataMapper.ToPlans([Row(symbol: 3)]));
 
-        Assert.Equal((ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, true, true),
+        Assert.Equal((ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.ETHUSDT.Sym(), true, true),
             (plan.Exchange, plan.MarketType, plan.Symbol, plan.CollectFundingRate, plan.CollectLiquidation));
         Assert.Equal((new DateTime(2020, 1, 1), DateTimeKind.Utc), (plan.FundingStartDate!.Value, plan.FundingStartDate.Value.Kind));
     }
@@ -40,7 +42,6 @@ public class SymbolDataMapperTests
     [Theory]
     [InlineData(99, 2, 3, "unknown exchange")]
     [InlineData(1, 99, 3, "unknown market")]
-    [InlineData(1, 2, 999, "unknown symbol")]
     public void ARowItCannotNameIsSkippedAndReportedNotFatal(int exchange, int market, int symbol, string reason)
     {
         var skipped = new List<(int Id, string Reason)>();
@@ -49,6 +50,19 @@ public class SymbolDataMapperTests
 
         Assert.Single(plans);
         Assert.Equal([(2, reason)], skipped);
+    }
+
+    [Fact]
+    public void ARowWhoseSymbolIsNotListedIsSkippedAndReportedNotFatal()
+    {
+        var unlisted = Row(id: 2);
+        unlisted.SymbolListing = null;
+        var skipped = new List<(int Id, string Reason)>();
+
+        var plans = SymbolDataMapper.ToPlans([unlisted, Row(id: 1)], (row, why) => skipped.Add((row.Id, why)));
+
+        Assert.Single(plans);
+        Assert.Equal([(2, "the symbol is not listed on this exchange market")], skipped);
     }
 
     [Fact]

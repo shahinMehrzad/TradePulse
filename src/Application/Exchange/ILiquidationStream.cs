@@ -1,12 +1,13 @@
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Application.Exchange;
 
 public interface ILiquidationListener : IStreamListener
 {
     /// <summary>A forced liquidation order was reported for <paramref name="symbol"/>.</summary>
-    void OnLiquidation(SymbolEnum symbol, Liquidation liquidation);
+    void OnLiquidation(ExchangeSymbol symbol, Liquidation liquidation);
 }
 
 /// <summary>
@@ -20,5 +21,5 @@ public interface ILiquidationStream
     /// Disposing the returned handle unsubscribes.
     /// </summary>
     Task<ExchangeResult<IAsyncDisposable>> SubscribeAsync(
-        ExchangeEnum exchange, IReadOnlyList<SymbolEnum> symbols, ILiquidationListener listener, CancellationToken cancellationToken);
+        ExchangeEnum exchange, IReadOnlyList<ExchangeSymbol> symbols, ILiquidationListener listener, CancellationToken cancellationToken);
 }

@@ -1,0 +1,164 @@
+@page
+@model SymbolsModel
+@{
+    ViewData["Title"] = "Symbols";
+}
+
+<div class="alert alert-info" role="alert">
+    The symbols the collector can be told about, like BTC/USDT. A series or a funding rate setting can only be chosen for a symbol that is listed on an exchange market.
+    Open a symbol to see where it is listed and to list it on another exchange market. A symbol that is listed somewhere cannot be removed.
+</div>
+
+@if (Model.Saved is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.Saved</div>
+}
+@if (Model.Errors.Count > 0)
+{
+    <div class="alert alert-danger" role="alert">
+        <ul class="mb-0">
+            @foreach (var error in Model.Errors)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="row row-cards">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Symbols (@Model.TotalItems)</h3>
+                <div class="card-actions">
+                    <form method="get" asp-page="/Symbols" class="d-flex gap-2">
+                        <input type="search" name="Keyword" value="@Model.Keyword" class="form-control form-control-sm" placeholder="Search..." aria-label="Search the symbols" />
+                        <button type="submit" class="btn btn-sm">Search</button>
+                        @if (!string.IsNullOrWhiteSpace(Model.Keyword))
+                        {
+                            <a class="btn btn-sm btn-ghost-secondary" asp-page="/Symbols">Clear</a>
+                        }
+                    </form>
+                </div>
+            </div>
+            @if (Model.Symbols.Count == 0)
+            {
+                <div class="card-body text-secondary">
+                    @(string.IsNullOrWhiteSpace(Model.Keyword)
+                        ? "There are no symbols yet. Add the first one on the right."
+                        : $"No symbol matches \"{Model.Keyword}\".")
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table card-table table-vcenter">
+                        <thead>
+                            <tr><th>Symbol</th><th>Description</th><th>Listed on</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var symbol in Model.Symbols)
+                            {
+                                <tr>
+                                    <td class="fw-bold text-nowrap">
+                                        <a asp-page="/SymbolMarkets" asp-route-id="@symbol.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" class="text-reset">@symbol.Name</a>
+                                    </td>
+                                    <td class="text-secondary">@symbol.Description</td>
+                                    <td>
+                                        @if (symbol.Markets.Count == 0)
+                                        {
+                                            <span class="text-secondary">-</span>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var market in symbol.Markets)
+                                            {
+                                                <span class="badge @(market.Market == "Futures" ? "bg-purple-lt" : "bg-blue-lt") me-1" title="@market.ExchangeSymbol">@market.Exchange @market.Market</span>
+                                            }
+                                        }
+                                    </td>
+                                    <td class="text-nowrap text-end">
+                                        <a class="btn btn-sm btn-primary" asp-page="/SymbolMarkets" asp-route-id="@symbol.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Markets</a>
+                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Symbols" asp-route-edit="@symbol.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Edit</a>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-@symbol.Id"
+                                                disabled="@(symbol.Markets.Count > 0)" title="@(symbol.Markets.Count > 0 ? "It is listed on an exchange market, so it cannot be removed." : null)">Remove</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (Model.TotalPages > 1)
+                {
+                    <div class="card-footer d-flex align-items-center">
+                        <span class="text-secondary">Page @Model.PageNumber of @Model.TotalPages</span>
+                        <ul class="pagination m-0 ms-auto">
+                            <li class="page-item @(Model.HasPrevious ? "" : "disabled")">
+                                <a class="page-link" asp-page="/Symbols" asp-route-pageNumber="@Math.Max(1, Model.PageNumber - 1)" asp-route-keyword="@Model.Keyword">Previous</a>
+                            </li>
+                            <li class="page-item @(Model.HasNext ? "" : "disabled")">
+                                <a class="page-link" asp-page="/Symbols" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-keyword="@Model.Keyword">Next</a>
+                            </li>
+                        </ul>
+                    </div>
+                }
+                @foreach (var symbol in Model.Symbols.Where(s => s.Markets.Count == 0))
+                {
+                <div class="modal modal-blur fade text-start" id="delete-@symbol.Id" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-sm modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-body">
+                                <div class="modal-title">Remove this symbol?</div>
+                                <div class="text-secondary">@symbol.Name is listed nowhere, so nothing collected depends on it.</div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
+                                <form method="post" asp-page-handler="Delete" asp-route-id="@symbol.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">
+                                    <button type="submit" class="btn btn-danger">Remove</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">@(Model.IsEditing ? "Change symbol" : "Add a symbol")</h3>
+            </div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="Save" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" autocomplete="off">
+                    <input type="hidden" asp-for="Input.Id" />
+                    <div class="mb-3">
+                        <label asp-for="Input.Name" class="form-label">Name</label>
+                        @if (Model.IsEditing)
+                        {
+                            <input asp-for="Input.Name" class="form-control" readonly />
+                            <div class="form-hint">The name stays: the collector's tables are named after the exchange's name for the symbol.</div>
+                        }
+                        else
+                        {
+                            <input asp-for="Input.Name" class="form-control" placeholder="BTC/USDT" />
+                            <div class="form-hint">BASE/QUOTE, letters and digits only. Kept in upper case.</div>
+                        }
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.Description" class="form-label">Description (optional)</label>
+                        <input asp-for="Input.Description" class="form-control" maxlength="100" />
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">@(Model.IsEditing ? "Save changes" : "Add symbol")</button>
+                        @if (Model.IsEditing)
+                        {
+                            <a class="btn" asp-page="/Symbols" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Cancel</a>
+                        }
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

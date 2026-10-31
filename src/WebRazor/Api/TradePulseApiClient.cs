@@ -10,6 +10,8 @@ public sealed class TradePulseApiClient(HttpClient http)
     private const string SeriesRoot = "api/admin/configurations";
     private const string NotFoundSeries = "That series does not exist (anymore). Reload the page.";
     private const string NotFoundSymbolData = "That setting does not exist (anymore). Reload the page.";
+    private const string SymbolsRoot = "api/admin/symbols";
+    private const string NotFoundSymbol = "That symbol or listing does not exist (anymore). Reload the page.";
 
     private static bool IsRejected(HttpResponseMessage response) =>
         response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
@@ -206,17 +208,114 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }
 
+    /// <summary>
+    /// The API names a symbol on an exchange market by one id (its listing); the form still asks for the three choices, so the
+    /// listing they name is looked up here. A combination nobody listed is a failure the admin can read.
+    /// </summary>
+    private async Task<(int ListingId, ApiResult? Failure)> ResolveListingAsync(int exchangeId, int marketId, int symbolId, CancellationToken cancellationToken)
+    {
+        var listings = await GetListingsAsync(cancellationToken);
+        if (listings is null)
+            return (0, new ApiResult(false, [], SessionRejected: true));
+
+        return listings.FirstOrDefault(l => l.ExchangeId == exchangeId && l.MarketId == marketId && l.SymbolId == symbolId) is { } listing
+            ? (listing.Id, null)
+            : (0, new ApiResult(false, ["That symbol is not listed on this exchange market."], false));
+    }
+
+    /// <returns>Every symbol listing, or null when the session is no longer accepted by the API.</returns>
+    public async Task<IReadOnlyList<SymbolListingItem>?> GetListingsAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync($"{SymbolsRoot}/listings", cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<SymbolListingItem>>(cancellationToken) ?? [];
+    }
+
+    /// <param name="keyword">Matched by the API against the name, the description and the exchanges' names for the symbol.</param>
+    /// <returns>One page of the symbols, or null when the session is no longer accepted by the API.</returns>
+    public async Task<SymbolsPage?> GetSymbolsPageAsync(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
+    {
+        var url = $"{SymbolsRoot}?pageNumber={pageNumber}&pageSize={pageSize}";
+        if (!string.IsNullOrWhiteSpace(keyword))
+            url += $"&keyword={Uri.EscapeDataString(keyword)}";
+
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SymbolsPage>(cancellationToken);
+    }
+
+    /// <returns>The symbol with its markets; <c>Detail</c> is null when it does not exist (anymore), <c>SessionRejected</c> when the API no longer accepts the session.</returns>
+    public async Task<(SymbolDetail? Detail, bool SessionRejected)> GetSymbolDetailAsync(int id, CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync($"{SymbolsRoot}/{id}", cancellationToken);
+        if (IsRejected(response))
+            return (null, true);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return (null, false);
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<SymbolDetail>(cancellationToken), false);
+    }
+
+    public async Task<ApiResult> UpdateSymbolAsync(int id, string? description, CancellationToken cancellationToken)
+    {
+        using var response = await http.PutAsJsonAsync(SymbolsRoot, new { id, description }, cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbol, cancellationToken);
+    }
+
+    public async Task<ApiResult> AddSymbolAsync(string? name, string? description, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync(SymbolsRoot, new { name, description }, cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbol, cancellationToken);
+    }
+
+    public async Task<ApiResult> DeleteSymbolAsync(int id, CancellationToken cancellationToken)
+    {
+        using var response = await http.DeleteAsync($"{SymbolsRoot}/{id}", cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbol, cancellationToken);
+    }
+
+    /// <summary>The API asks the exchange whether it trades the name, so this can fail because the exchange could not be reached.</summary>
+    public async Task<ApiResult> AddListingAsync(int exchangeId, int marketId, int symbolId, string? exchangeSymbol, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync($"{SymbolsRoot}/listings", new { exchangeId, marketId, symbolId, exchangeSymbol }, cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbol, cancellationToken);
+    }
+
+    public async Task<ApiResult> DeleteListingAsync(int id, CancellationToken cancellationToken)
+    {
+        using var response = await http.DeleteAsync($"{SymbolsRoot}/listings/{id}", cancellationToken);
+        return await ToResultAsync(response, NotFoundSymbol, cancellationToken);
+    }
+
     public async Task<ApiResult> AddSeriesAsync(SeriesRequest request, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsJsonAsync($"{SeriesRoot}/add-config", request, cancellationToken);
+        var (listingId, failure) = await ResolveListingAsync(request.ExchangeId, request.MarketId, request.SymbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
+        using var response = await http.PostAsJsonAsync(
+            $"{SeriesRoot}/add-config",
+            new { symbolListingId = listingId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest, request.CollectMarketStatistics },
+            cancellationToken);
         return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }
 
     public async Task<ApiResult> UpdateSeriesAsync(int id, SeriesRequest request, CancellationToken cancellationToken)
     {
+        var (listingId, failure) = await ResolveListingAsync(request.ExchangeId, request.MarketId, request.SymbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
         using var response = await http.PutAsJsonAsync(
             $"{SeriesRoot}/update-config",
-            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest, request.CollectMarketStatistics },
+            new { id, symbolListingId = listingId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest, request.CollectMarketStatistics },
             cancellationToken);
         return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }
@@ -240,15 +339,26 @@ public sealed class TradePulseApiClient(HttpClient http)
 
     public async Task<ApiResult> AddSymbolDataAsync(SymbolDataRequest request, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsJsonAsync($"{SeriesRoot}/add-symbol-data", request, cancellationToken);
+        var (listingId, failure) = await ResolveListingAsync(request.ExchangeId, request.MarketId, request.SymbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
+        using var response = await http.PostAsJsonAsync(
+            $"{SeriesRoot}/add-symbol-data",
+            new { symbolListingId = listingId, request.CollectFundingRate, request.FundingStartDate, request.CollectLiquidation },
+            cancellationToken);
         return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
     }
 
     public async Task<ApiResult> UpdateSymbolDataAsync(int id, SymbolDataRequest request, CancellationToken cancellationToken)
     {
+        var (listingId, failure) = await ResolveListingAsync(request.ExchangeId, request.MarketId, request.SymbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
         using var response = await http.PutAsJsonAsync(
             $"{SeriesRoot}/update-symbol-data",
-            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.CollectFundingRate, request.FundingStartDate, request.CollectLiquidation },
+            new { id, symbolListingId = listingId, request.CollectFundingRate, request.FundingStartDate, request.CollectLiquidation },
             cancellationToken);
         return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
     }

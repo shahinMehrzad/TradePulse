@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Application.Exchange;
 using Binance.Net.Interfaces.Clients;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Infrastructure.Exchange.Binance;
 
@@ -29,7 +30,7 @@ public sealed class BinanceExchangeProbe(IBinanceRestClient restClient, IBinance
     }
 
     public async Task<ExchangeResult<IAsyncDisposable>> SubscribeToProbeStreamAsync(
-        ExchangeEnum exchange, SymbolEnum symbol, IProbeStreamListener listener, CancellationToken cancellationToken)
+        ExchangeEnum exchange, ExchangeSymbol symbol, IProbeStreamListener listener, CancellationToken cancellationToken)
     {
         EnsureBinance(exchange);
 

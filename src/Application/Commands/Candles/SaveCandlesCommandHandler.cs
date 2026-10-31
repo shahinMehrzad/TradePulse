@@ -14,7 +14,7 @@ public class SaveCandlesCommandHandler(ICandleRepository candleRepository) : ICo
         var tableName = TableNameRegistry.GetCandleTableName(
             command.Exchange,
             command.MarketType,
-            command.Symbol,
+            command.Symbol.Value,
             command.Timeframe
         );
 

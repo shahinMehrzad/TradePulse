@@ -10,17 +10,18 @@ namespace Infrastructure.Repositories;
 public class SymbolDataConfigurationRepository(ConfigDbContext context) : ISymbolDataConfigurationRepository
 {
     public async Task<IReadOnlyList<SymbolDataConfiguration>> GetAll(CancellationToken cancellationToken)
-        => await context.SymbolDataConfigurations.AsNoTracking()
-            .OrderBy(c => c.Symbol!.Name).ThenBy(c => c.Id)
+        => await context.SymbolDataConfigurations.AsNoTracking().Include(c => c.SymbolListing)
+            .OrderBy(c => c.SymbolListing!.ExchangeSymbol).ThenBy(c => c.Id)
             .ToListAsync(cancellationToken);
 
     public async Task<SymbolDataConfiguration?> GetById(int id, CancellationToken cancellationToken)
-        => await context.SymbolDataConfigurations.AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
+        => await context.SymbolDataConfigurations.AsNoTracking().Include(c => c.SymbolListing).SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
 
     public async Task<int> Add(SymbolDataConfiguration configuration, CancellationToken cancellationToken)
     {
         configuration.FundingStartDate = ToTimestamp(configuration.FundingStartDate);
 
+        configuration.SymbolListing = await FindListingAsync(configuration.SymbolListingId, cancellationToken);
         context.SymbolDataConfigurations.Add(configuration);
         await SaveAsync(cancellationToken);
 
@@ -32,9 +33,7 @@ public class SymbolDataConfigurationRepository(ConfigDbContext context) : ISymbo
         var config = await context.SymbolDataConfigurations.SingleOrDefaultAsync(c => c.Id == configuration.Id, cancellationToken)
             ?? throw new ConfigurationNotFoundException("Configuration does not exist.");
 
-        config.ExchangeId = configuration.ExchangeId;
-        config.MarketId = configuration.MarketId;
-        config.SymbolId = configuration.SymbolId;
+        config.SymbolListing = await FindListingAsync(configuration.SymbolListingId, cancellationToken);
         config.CollectFundingRate = configuration.CollectFundingRate;
         config.FundingStartDate = ToTimestamp(configuration.FundingStartDate);
         config.CollectLiquidation = configuration.CollectLiquidation;
@@ -50,6 +49,11 @@ public class SymbolDataConfigurationRepository(ConfigDbContext context) : ISymbo
         context.SymbolDataConfigurations.Remove(entity);
         await SaveAsync(cancellationToken);
     }
+
+    /// <summary>The listing a configuration points at, tracked so that it is not added again; a missing one is the caller's mistake.</summary>
+    private async Task<SymbolListing> FindListingAsync(int symbolListingId, CancellationToken cancellationToken)
+        => await context.SymbolListings.SingleOrDefaultAsync(l => l.Id == symbolListingId, cancellationToken)
+            ?? throw new ConfigurationValidationException("Unknown exchange, market or symbol.");
 
     // The date is UTC (the caller normalises it). timestamp columns hold no zone and Npgsql rejects Kind=Utc for them.
     private static DateTime? ToTimestamp(DateTime? utc) => utc is { } value ? DateTime.SpecifyKind(value, DateTimeKind.Unspecified) : null;

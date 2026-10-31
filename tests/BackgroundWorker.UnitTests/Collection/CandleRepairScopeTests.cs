@@ -24,9 +24,9 @@ public class CandleRepairScopeTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static readonly CandleSeriesPlan Btc1h = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
-    private static readonly CandleSeriesPlan Eth1h = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H);
-    private static readonly CandleSeriesPlan Btc4h = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
+    private static readonly CandleSeriesPlan Btc1h = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Eth1h = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.ETHUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Btc4h = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H);
 
     private static DateTime Utc(int year, int month, int day, int hour = 0) => new(year, month, day, hour, 0, 0, DateTimeKind.Utc);
 

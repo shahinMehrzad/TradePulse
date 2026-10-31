@@ -8,7 +8,7 @@ using Application.Services;
 
 namespace Application.Commands.AdminConfigurations;
 
-public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerConfigurationRepository workerConfigurationRepository, AuditTrail audit)
+public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerConfigurationRepository workerConfigurationRepository, ISymbolCatalogRepository catalog, AuditTrail audit)
     : ICommandHandler<UpdateCandleWorkerConfigurationDto, CandleWorkerConfiguration>
 {
     public async Task<CandleWorkerConfiguration> HandleAsync(UpdateCandleWorkerConfigurationDto request, CancellationToken cancellationToken)
@@ -16,8 +16,8 @@ public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         if (request.Id == default)
             throw new ConfigurationValidationException("Id is required.");
 
-        if (request.ExchangeId == default || request.MarketId == default || request.SymbolId == default || request.TimeFrameId == default)
-            throw new ConfigurationValidationException("Exchange, market, symbol and time frame are required.");
+        if (request.SymbolListingId == default || request.TimeFrameId == default)
+            throw new ConfigurationValidationException("Symbol listing and time frame are required.");
 
         if (request.StartDate == default)
             throw new ConfigurationValidationException("StartDate is required.");
@@ -26,21 +26,22 @@ public sealed class UpdateCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         if (startDate >= DateTime.UtcNow)
             throw new ConfigurationValidationException("StartDate must be in the past.");
 
+        var listing = await catalog.GetListing(request.SymbolListingId, cancellationToken)
+            ?? throw new ConfigurationValidationException("Unknown symbol listing.");
+
         if (request.CollectOpenInterest)
-            OpenInterestValidation.EnsureSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
+            OpenInterestValidation.EnsureSupported(listing.ExchangeId, listing.MarketId, request.TimeFrameId);
 
         if (request.CollectMarketStatistics)
-            OpenInterestValidation.EnsureMarketStatisticsSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
+            OpenInterestValidation.EnsureMarketStatisticsSupported(listing.ExchangeId, listing.MarketId, request.TimeFrameId);
 
         // A row that does not exist is reported by the update itself.
         var before = await workerConfigurationRepository.GetConfigurationById(request.Id, cancellationToken);
 
         var updated = await workerConfigurationRepository.UpdateCandleWorkerConfiguration(new CandleWorkerConfiguration
         {
-            ExchangeId = request.ExchangeId,
             Id = request.Id,
-            MarketId = request.MarketId,
-            SymbolId = request.SymbolId,
+            SymbolListingId = request.SymbolListingId,
             TimeFrameId = request.TimeFrameId,
             StartDate = startDate,
             CollectOpenInterest = request.CollectOpenInterest,

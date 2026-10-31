@@ -22,12 +22,12 @@ public class LiquidationWorkerTests
 
     private sealed class FakeLiquidationStream : ILiquidationStream
     {
-        public List<IReadOnlyList<SymbolEnum>> Subscriptions { get; } = [];
+        public List<IReadOnlyList<ExchangeSymbol>> Subscriptions { get; } = [];
         public List<ILiquidationListener> Listeners { get; } = [];
         public int Disposed;
 
         public Task<ExchangeResult<IAsyncDisposable>> SubscribeAsync(
-            ExchangeEnum exchange, IReadOnlyList<SymbolEnum> symbols, ILiquidationListener listener, CancellationToken cancellationToken)
+            ExchangeEnum exchange, IReadOnlyList<ExchangeSymbol> symbols, ILiquidationListener listener, CancellationToken cancellationToken)
         {
             Subscriptions.Add(symbols);
             Listeners.Add(listener);
@@ -115,13 +115,13 @@ public class LiquidationWorkerTests
     public async Task ItCreatesTheTablesAndSubscribesToTheSymbolsThatAskedForLiquidationsOnly()
     {
         await using var rig = await Rig.StartAsync(
-            SymbolDataTestSupport.Binance(SymbolEnum.BTCUSDT, funding: false, liquidation: true),
-            SymbolDataTestSupport.Binance(SymbolEnum.ETHUSDT, funding: true, liquidation: false),
-            SymbolDataTestSupport.Binance(SymbolEnum.BNBUSDT, funding: true, liquidation: true));
+            SymbolDataTestSupport.Binance(SeededSymbol.BTCUSDT, funding: false, liquidation: true),
+            SymbolDataTestSupport.Binance(SeededSymbol.ETHUSDT, funding: true, liquidation: false),
+            SymbolDataTestSupport.Binance(SeededSymbol.BNBUSDT, funding: true, liquidation: true));
 
         await WaitUntilAsync(() => rig.Stream.Subscriptions.Count == 1, "the subscription");
 
-        Assert.Equal([SymbolEnum.BTCUSDT, SymbolEnum.BNBUSDT], rig.Stream.Subscriptions[0].Order(Comparer<SymbolEnum>.Create((a, b) => ((int)a).CompareTo((int)b))));
+        Assert.Equal<ExchangeSymbol>([SeededSymbol.BTCUSDT.Sym(), SeededSymbol.BNBUSDT.Sym()], rig.Stream.Subscriptions[0].OrderBy(s => s.Value, StringComparer.Ordinal).Reverse());
         Assert.Equal(["binance_futures_btcusdt_liquidation", "binance_futures_bnbusdt_liquidation"], rig.Repository.Created.Order(StringComparer.Ordinal).Reverse());
         Assert.True(rig.Health.Get(HealthComponents.LiquidationStream).Connected);
     }
@@ -131,7 +131,7 @@ public class LiquidationWorkerTests
     {
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
         var source = new FakeSymbolDataSource();
-        source.Plans.Add(SymbolDataTestSupport.Binance(SymbolEnum.BTCUSDT, funding: false, liquidation: true));
+        source.Plans.Add(SymbolDataTestSupport.Binance(SeededSymbol.BTCUSDT, funding: false, liquidation: true));
         using var provider = SymbolDataTestSupport.NewProvider(source, time);
         await provider.StartAsync(Ct);
 
@@ -150,16 +150,16 @@ public class LiquidationWorkerTests
         }, $"the provider to publish version {version}");
 
         // A symbol is added: the old subscription is closed first, then one for both symbols is opened.
-        source.Plans.Add(SymbolDataTestSupport.Binance(SymbolEnum.ETHUSDT, funding: false, liquidation: true));
+        source.Plans.Add(SymbolDataTestSupport.Binance(SeededSymbol.ETHUSDT, funding: false, liquidation: true));
         await WaitForVersionAsync(2);
         await WaitUntilAsync(() => rig.Stream.Subscriptions.Count == 2, "the second subscription");
 
         Assert.Equal(1, rig.Stream.Disposed);
-        Assert.Equal([SymbolEnum.BTCUSDT, SymbolEnum.ETHUSDT], rig.Stream.Subscriptions[1].Order());
+        Assert.Equal<ExchangeSymbol>([SeededSymbol.BTCUSDT.Sym(), SeededSymbol.ETHUSDT.Sym()], rig.Stream.Subscriptions[1].OrderBy(s => s.Value, StringComparer.Ordinal));
         Assert.Contains("binance_futures_ethusdt_liquidation", rig.Repository.Created);
 
         // A symbol that only wants its funding rate is no concern of this worker.
-        source.Plans.Add(SymbolDataTestSupport.Binance(SymbolEnum.BNBUSDT, funding: true, liquidation: false));
+        source.Plans.Add(SymbolDataTestSupport.Binance(SeededSymbol.BNBUSDT, funding: true, liquidation: false));
         await WaitForVersionAsync(3);
         await Task.Delay(100, Ct);
 
@@ -173,14 +173,14 @@ public class LiquidationWorkerTests
     public async Task ALiquidationIsStoredInTheTableOfItsSymbolAndCountsAsAMessage()
     {
         await using var rig = await Rig.StartAsync(
-            SymbolDataTestSupport.Binance(SymbolEnum.BTCUSDT, funding: false, liquidation: true),
-            SymbolDataTestSupport.Binance(SymbolEnum.ETHUSDT, funding: false, liquidation: true));
+            SymbolDataTestSupport.Binance(SeededSymbol.BTCUSDT, funding: false, liquidation: true),
+            SymbolDataTestSupport.Binance(SeededSymbol.ETHUSDT, funding: false, liquidation: true));
         await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "the subscription");
         var listener = rig.Stream.Listeners[0];
 
-        listener.OnLiquidation(SymbolEnum.BTCUSDT, Sample(100m));
-        listener.OnLiquidation(SymbolEnum.ETHUSDT, Sample(200m));
-        listener.OnLiquidation(SymbolEnum.BTCUSDT, Sample(101m));
+        listener.OnLiquidation(SeededSymbol.BTCUSDT.Sym(), Sample(100m));
+        listener.OnLiquidation(SeededSymbol.ETHUSDT.Sym(), Sample(200m));
+        listener.OnLiquidation(SeededSymbol.BTCUSDT.Sym(), Sample(101m));
 
         await WaitUntilAsync(() => rig.Repository.Inserts.Sum(i => i.Rows.Count) == 3, "all three being stored");
         var btc = rig.Repository.Inserts.Where(i => i.Table == "binance_futures_btcusdt_liquidation").SelectMany(i => i.Rows).Select(r => r.Price);
@@ -209,7 +209,7 @@ public class LiquidationWorkerTests
         var rig = await Rig.StartAsync(SymbolDataTestSupport.Binance(funding: false, liquidation: true));
         await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "the subscription");
 
-        rig.Stream.Listeners[0].OnLiquidation(SymbolEnum.BTCUSDT, Sample(100m));
+        rig.Stream.Listeners[0].OnLiquidation(SeededSymbol.BTCUSDT.Sym(), Sample(100m));
         await rig.DisposeAsync();   // stops long before the writer's batching window is over
 
         Assert.Equal([100m], rig.Repository.Inserts.SelectMany(i => i.Rows).Select(r => r.Price));

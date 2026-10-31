@@ -1,19 +1,15 @@
 namespace Domain.Entities;
 
 /// <summary>
-/// Which of the data that has no time frame (funding rate, liquidations) the admin wants collected for one symbol of one
-/// exchange market. One row per exchange + market + symbol; candles and open interest are chosen per time frame in
+/// Which of the data that has no time frame (funding rate, liquidations) the admin wants collected for one symbol listing
+/// (a symbol on an exchange market). One row per listing; candles and open interest are chosen per time frame in
 /// <see cref="CandleWorkerConfiguration"/> instead.
 /// </summary>
 public class SymbolDataConfiguration
 {
     public int Id { get; set; }
-    public int ExchangeId { get; set; }
-    public int MarketId { get; set; }
-    public int SymbolId { get; set; }
-    public ExchangeLookup? Exchange { get; set; }
-    public MarketLookup? Market { get; set; }
-    public SymbolLookup? Symbol { get; set; }
+    public int SymbolListingId { get; set; }
+    public SymbolListing? SymbolListing { get; set; }
 
     public bool CollectFundingRate { get; set; }
 

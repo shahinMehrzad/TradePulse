@@ -4,6 +4,7 @@ using Application.Interfaces;
 using Application.Queries.Candles;
 using Domain.Enums;
 using Domain.Exceptions;
+using Domain.Services;
 using Domain.ValueObjects;
 using Microsoft.AspNetCore.Http.HttpResults;
 
@@ -85,7 +86,15 @@ public static class CandleEndpoints
     {
         var parsedExchange = ParseEnum<ExchangeEnum>(nameof(exchange), exchange, errors);
         var parsedMarket = ParseEnum<MarketTypeEnum>(nameof(market), market, errors);
-        var parsedSymbol = ParseEnum<SymbolEnum>(nameof(symbol), symbol, errors);
+        // The symbol is named by its table-name part (btcusdt). Whether such a table exists is the reader's answer (404), not a parse error.
+        ExchangeSymbol? parsedSymbol = null;
+        if (errors.Count == 0)
+        {
+            if (TableNameRegistry.TryGetSymbolPart(parsedExchange!.Value, parsedMarket!.Value, symbol, out var part, out var reason))
+                parsedSymbol = new ExchangeSymbol(part);
+            else
+                errors[nameof(symbol)] = [$"'{symbol}' is not a valid symbol: {reason}."];
+        }
         // Timeframe members are named "_4H", "_1D", ... so the URL can say "4h".
         var parsedTimeframe = ParseEnum<TimeFrameEnum>(nameof(timeframe), "_" + timeframe, errors, display: timeframe);
 

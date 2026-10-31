@@ -1,5 +1,3 @@
-using Domain.Enums;
-
 namespace BackgroundWorker.Health;
 
 public class HealthConfigurations
@@ -14,7 +12,7 @@ public class HealthConfigurations
     public int ProbeIntervalSeconds { get; set; } = 30;
 
     /// <summary>A busy futures symbol used for the WebSocket liveness probe (its mark price ticks every few seconds).</summary>
-    public SymbolEnum ProbeSymbol { get; set; } = SymbolEnum.BTCUSDT;
+    public string ProbeSymbol { get; set; } = "BTCUSDT";
 
     /// <summary>Connected but no liquidation for this long is reported as degraded. Liquidations are bursty, so keep it generous.</summary>
     public int LiquidationMaxSilenceMinutes { get; set; } = 60;

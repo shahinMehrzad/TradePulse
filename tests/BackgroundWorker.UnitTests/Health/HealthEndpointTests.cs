@@ -31,7 +31,7 @@ public class HealthEndpointTests
         // The checks that depend on the chosen series need a provider; one that already knows a futures series stands for the database.
         var series = await CandleSeriesTestSupport.LoadedProviderAsync(
             TimeProvider.System,
-            TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+            TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
 
         var symbolData = await SymbolDataTestSupport.LoadedProviderAsync(TimeProvider.System, SymbolDataTestSupport.Binance());
 

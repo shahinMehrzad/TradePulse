@@ -13,7 +13,7 @@ public class EnumExtensionsTests
     [Fact]
     public void OtherEnumsAreJustLowercase()
     {
-        Assert.Equal("btcusdt", SymbolEnum.BTCUSDT.ToRouteName());
+        Assert.Equal("binance", ExchangeEnum.Binance.ToRouteName());
         Assert.Equal("futures", MarketTypeEnum.Futures.ToRouteName());
     }
 
@@ -26,10 +26,10 @@ public class EnumExtensionsTests
             Assert.Equal(timeFrame, parsed);
         }
 
-        foreach (var symbol in Enum.GetValues<SymbolEnum>())
+        foreach (var market in Enum.GetValues<MarketTypeEnum>())
         {
-            Assert.True(EnumExtensions.TryParseRouteName<SymbolEnum>(symbol.ToRouteName(), out var parsed));
-            Assert.Equal(symbol, parsed);
+            Assert.True(EnumExtensions.TryParseRouteName<MarketTypeEnum>(market.ToRouteName(), out var parsed));
+            Assert.Equal(market, parsed);
         }
     }
 

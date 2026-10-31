@@ -18,7 +18,7 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
 
     // Binance / Futures / BTCUSDT / 4h ... use values from the lookups; each test picks its own series because the database is shared.
     private static object Series(int symbolId, int timeFrameId, string? startDate = "2020-01-01T00:00:00", int exchangeId = 1, int marketId = 2) =>
-        new { exchangeId, marketId, symbolId, timeFrameId, startDate };
+        new { symbolListingId = ListingIds.Of(exchangeId, marketId, symbolId), timeFrameId, startDate };
 
     private async Task<HttpClient> AdminAsync()
     {
@@ -105,7 +105,7 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
     }
 
     private static object Edit(int id, int symbolId, int timeFrameId, string? startDate = "2021-06-01T00:00:00Z", int exchangeId = 1) =>
-        new { id, exchangeId, marketId = 2, symbolId, timeFrameId, startDate };
+        new { id, symbolListingId = ListingIds.Of(exchangeId, 2, symbolId), timeFrameId, startDate };
 
     [Fact]
     public async Task UpdatingWithoutATokenIsUnauthorized()
@@ -129,7 +129,7 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
         var returned = (await response.Content.ReadFromJsonAsync<Row>(Ct))!;
         var rows = await ListAsync(client);
         var saved = Assert.Single(rows, r => r.Id == id);
-        Assert.Equal(returned, saved);
+        Assert.Equal((saved.Id, saved.TimeFrameId, saved.StartDate), (returned.Id, returned.TimeFrameId, returned.StartDate));   // the answer is the stored row (with its listing nested)
         Assert.Equal((id, 1, 2, 6, 21600), (saved.Id, saved.ExchangeId, saved.MarketId, saved.SymbolId, saved.TimeFrameId));
         Assert.Equal(new DateTime(2021, 6, 1), saved.StartDate);   // not wiped, and the "Z" date was accepted
         Assert.Equal(rowsBefore, rows.Length);                     // an edit must never add a row
@@ -175,10 +175,10 @@ public class CandleWorkerConfigurationEndpointTests(ApiFixture api) : IClassFixt
     // ---- Open interest flag. Symbols 12 to 14 are used by these cases only, so they cannot collide with the series above.
 
     private static object WithFlag(int marketId, int symbolId, int timeFrameId, bool collectOpenInterest) =>
-        new { exchangeId = 1, marketId, symbolId, timeFrameId, startDate = "2020-01-01T00:00:00", collectOpenInterest };
+        new { symbolListingId = ListingIds.Of(1, marketId, symbolId), timeFrameId, startDate = "2020-01-01T00:00:00", collectOpenInterest };
 
     private static object EditWithFlag(int id, int marketId, int symbolId, int timeFrameId, bool collectOpenInterest) =>
-        new { id, exchangeId = 1, marketId, symbolId, timeFrameId, startDate = "2021-06-01T00:00:00Z", collectOpenInterest };
+        new { id, symbolListingId = ListingIds.Of(1, marketId, symbolId), timeFrameId, startDate = "2021-06-01T00:00:00Z", collectOpenInterest };
 
     private async Task<int> AddWithFlagAsync(HttpClient client, int symbolId, int timeFrameId, bool collectOpenInterest)
     {

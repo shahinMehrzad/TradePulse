@@ -27,7 +27,7 @@ public sealed class BinanceLongShortRatioWorker(
     protected override string HealthComponent => HealthComponents.LongShortRatioRequests;
 
     protected override string TableName(Domain.ValueObjects.CandleSeries series) =>
-        TableNameRegistry.GetLongShortRatioTableName(series.Exchange, series.Symbol, series.Timeframe);
+        TableNameRegistry.GetLongShortRatioTableName(series.Exchange, series.Symbol.Value, series.Timeframe);
 
     protected override DateTime TimeOf(LongShortRatio row) => row.Time;
 }
@@ -49,7 +49,7 @@ public sealed class BinanceTakerVolumeWorker(
     protected override string HealthComponent => HealthComponents.TakerVolumeRequests;
 
     protected override string TableName(Domain.ValueObjects.CandleSeries series) =>
-        TableNameRegistry.GetTakerVolumeTableName(series.Exchange, series.Symbol, series.Timeframe);
+        TableNameRegistry.GetTakerVolumeTableName(series.Exchange, series.Symbol.Value, series.Timeframe);
 
     protected override DateTime TimeOf(TakerVolume row) => row.Time;
 }

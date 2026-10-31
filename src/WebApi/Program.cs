@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using Application;
 using Application.Interfaces;
 using Infrastructure;
+using Infrastructure.Exchange.Binance;
 using Microsoft.AspNetCore.OData;
 using WebApi.Authentication;
 using WebApi.Controllers;
@@ -35,6 +36,7 @@ if (builder.Configuration.GetValue("CandleCache:Enabled", true))
 builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
+builder.Services.AddBinanceSymbolCatalog();
 builder.Services.AddCollectorHealthClient();
 
 // The audit log names the signed-in user; this replaces the collector's default ("system") that the line above registers.
