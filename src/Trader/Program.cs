@@ -7,6 +7,7 @@ using Npgsql;
 using Trader.Audit;
 using Trader.Binance;
 using Trader.Security;
+using Trader.Trading;
 using Trader.Vault;
 
 // The only program that holds the private keys of the exchange keys. It has no public port: the admin panel reaches it over the
@@ -23,12 +24,16 @@ builder.Services.AddOptions<VaultOptions>().BindConfiguration(VaultOptions.Secti
     .Validate(o => TryParseKey(o.MasterKey), "Vault:MasterKey must be 32 random bytes in base64 (e.g. `openssl rand -base64 32`).")
     .ValidateOnStart();
 builder.Services.Configure<BinanceOptions>(builder.Configuration.GetSection(BinanceOptions.SectionName));
+builder.Services.AddOptions<TradingOptions>().BindConfiguration(TradingOptions.SectionName)
+    .Validate(o => o.MaxOrderUsd > 0 && o.MaxDailyUsd >= o.MaxOrderUsd, "Trading:MaxDailyUsd must be at least Trading:MaxOrderUsd, and both above 0.")
+    .ValidateOnStart();
 
 var connectionString = builder.Configuration.GetConnectionString("Vault")
     ?? throw new InvalidOperationException("Connection string 'Vault' is not set (environment variable ConnectionStrings__Vault).");
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddSingleton<VaultCrypto>();
 builder.Services.AddSingleton<ExchangeKeyRepository>();
+builder.Services.AddSingleton<TradingRepository>();
 builder.Services.AddSingleton<AuditWriter>();
 builder.Services.AddSingleton<BinanceClient>();
 builder.Services.AddSingleton<KeyVerifier>();
@@ -43,11 +48,15 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("keys", context => RateLimitPartition.GetFixedWindowLimiter(
         context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimiting:KeysPerMinute", 10), Window = TimeSpan.FromMinutes(1) }));
+    options.AddPolicy("orders", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimiting:OrdersPerMinute", 10), Window = TimeSpan.FromMinutes(1) }));
 });
 
 var app = builder.Build();
 
 await ExchangeKeyRepository.EnsureSchemaAsync(app.Services.GetRequiredService<NpgsqlDataSource>(), CancellationToken.None);
+await TradingRepository.EnsureSchemaAsync(app.Services.GetRequiredService<NpgsqlDataSource>(), CancellationToken.None);
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -55,6 +64,7 @@ app.UseRateLimiter();
 
 app.MapGet("/health", () => Results.Ok("ok")).AllowAnonymous();
 app.MapExchangeKeys();
+app.MapTrading();
 
 app.Run();
 

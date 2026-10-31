@@ -31,6 +31,10 @@ public class ExchangeKeysModel(TraderApiClient trader, IOptions<TraderOptions> o
     {
         [Required(ErrorMessage = "Give the key a name."), StringLength(50)]
         public string Label { get; set; } = string.Empty;
+
+        /// <summary>Live (real money) or Demo (Binance's play-money environment). Fixed once the key is made.</summary>
+        [RegularExpression("Live|Demo", ErrorMessage = "Choose Live or Demo.")]
+        public string Environment { get; set; } = "Demo";
     }
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
@@ -47,7 +51,7 @@ public class ExchangeKeysModel(TraderApiClient trader, IOptions<TraderOptions> o
         if (!ModelState.IsValid)
             return await LoadAsync(cancellationToken) ?? Page();
 
-        return await FinishAsync(await trader.CreateAsync(Input.Label.Trim(), cancellationToken),
+        return await FinishAsync(await trader.CreateAsync(Input.Label.Trim(), Input.Environment, cancellationToken),
             "The key pair was made. Now paste the public key into Binance (step 1 below).", cancellationToken);
     }
 

@@ -31,6 +31,7 @@
                 <div class="card-header">
                     <h3 class="card-title">@key.Label</h3>
                     <div class="card-actions">
+                        <span class="badge @(key.IsDemo ? "bg-azure-lt" : "bg-orange-lt") me-1">@(key.IsDemo ? "DEMO" : "LIVE")</span>
                         @switch (key.Status)
                         {
                             case "Active":
@@ -57,8 +58,16 @@
                     @if (key.Status == "Active")
                     {
                         <p class="mb-2">
-                            Binance Futures, API key <code>@key.ApiKeyHint</code>. Checked @(key.VerifiedAt?.ToString("yyyy-MM-dd HH:mm") + " UTC"):
-                            it can read and trade futures, it cannot withdraw or transfer, and it only works from this server's address.
+                            @if (key.IsDemo)
+                            {
+                                <text>Binance Futures <strong>Demo</strong> (play money), API key <code>@key.ApiKeyHint</code>. Checked @(key.VerifiedAt?.ToString("yyyy-MM-dd HH:mm") + " UTC"):
+                                Binance answered to the signature. Demo has no permission check; the key holds no real money.</text>
+                            }
+                            else
+                            {
+                                <text>Binance Futures, API key <code>@key.ApiKeyHint</code>. Checked @(key.VerifiedAt?.ToString("yyyy-MM-dd HH:mm") + " UTC"):
+                                it can read and trade futures, it cannot withdraw or transfer, and it only works from this server's address.</text>
+                            }
                         </p>
                     }
                     else
@@ -115,6 +124,14 @@
                         <label asp-for="Input.Label" class="form-label">Name</label>
                         <input asp-for="Input.Label" class="form-control" placeholder="e.g. main account" />
                         <span asp-validation-for="Input.Label" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.Environment" class="form-label">Environment</label>
+                        <select asp-for="Input.Environment" class="form-select">
+                            <option value="Demo">Demo (play money, start here)</option>
+                            <option value="Live">Live (real money)</option>
+                        </select>
+                        <div class="form-hint">A Demo key and a live key are different keys at Binance. This cannot be changed later.</div>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Make a key pair</button>
                 </form>

@@ -73,7 +73,15 @@ public sealed class TraderFixture : WebApplicationFactory<Program>, IAsyncLifeti
         return new Caller(id, name, access, elevation);
     }
 
-    public Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, Caller? caller, object? body = null, bool elevated = true, string? elevation = null)
+    /// <summary>A client of the same Trader (same database, same fake Binance) started with other settings, e.g. <c>Trading:AllowLive</c>.</summary>
+    public HttpClient ClientWith(params (string Key, string Value)[] settings) =>
+        WithWebHostBuilder(builder =>
+        {
+            foreach (var (key, value) in settings)
+                builder.UseSetting(key, value);
+        }).CreateClient();
+
+    public Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, Caller? caller, object? body = null, bool elevated = true, string? elevation = null, HttpClient? client = null)
     {
         var request = new HttpRequestMessage(method, url) { Content = body is null ? null : JsonContent.Create(body) };
         if (caller is not null)
@@ -83,7 +91,7 @@ public sealed class TraderFixture : WebApplicationFactory<Program>, IAsyncLifeti
                 request.Headers.Add("X-Elevation", elevation ?? caller.Elevation);
         }
 
-        return CreateClient().SendAsync(request, TestContext.Current.CancellationToken);
+        return (client ?? CreateClient()).SendAsync(request, TestContext.Current.CancellationToken);
     }
 
     public T Service<T>() where T : notnull => Services.GetRequiredService<T>();

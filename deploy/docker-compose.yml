@@ -72,6 +72,13 @@ services:
       JwtConfigurations__Audience: TradePulseClient
       AdminConfigurations__Role: Administrator
       Vault__MasterKey: ${VAULT_MASTER_KEY:?set VAULT_MASTER_KEY in deploy/.env (openssl rand -base64 32), and keep a copy outside this server}
+      # What may be traded and how much (see docs/trading.md). Real money stays off until TRADING_ALLOW_LIVE=true.
+      Trading__AllowLive: ${TRADING_ALLOW_LIVE:-false}
+      Trading__Halted: ${TRADING_HALTED:-false}
+      Trading__MaxOrderUsd: ${TRADING_MAX_ORDER_USD:-100}
+      Trading__MaxDailyUsd: ${TRADING_MAX_DAILY_USD:-500}
+      Trading__AllowedSymbols__0: ${TRADING_SYMBOL_1:-BTCUSDT}
+      Trading__AllowedSymbols__1: ${TRADING_SYMBOL_2:-ETHUSDT}
     healthcheck:
       <<: *probe
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]

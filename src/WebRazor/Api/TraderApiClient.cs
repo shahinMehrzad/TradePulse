@@ -32,9 +32,47 @@ public sealed class TraderApiClient(HttpClient http)
         return await response.Content.ReadFromJsonAsync<List<ExchangeKeyInfo>>(cancellationToken);
     }
 
-    public async Task<ApiResult> CreateAsync(string label, CancellationToken cancellationToken)
+    public async Task<ApiResult> CreateAsync(string label, string environment, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsJsonAsync("keys", new { Label = label }, cancellationToken);
+        using var response = await http.PostAsJsonAsync("keys", new { Label = label, Environment = environment }, cancellationToken);
+        return await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
+    }
+
+    // ---- trading
+
+    /// <returns>The limits and the halt switch of the user, or null when the session is no longer accepted.</returns>
+    public async Task<TradingState?> GetTradingStateAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("trading/state", cancellationToken);
+        if (TradePulseApiClient.IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingState>(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TradingOrder>> GetOrdersAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("trading/orders", cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<TradingOrder>>(cancellationToken) ?? [];
+    }
+
+    public async Task<ApiResult> PlaceOrderAsync(Guid keyId, string symbol, string side, decimal quantity, bool reduceOnly, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("trading/orders", new { KeyId = keyId, Symbol = symbol, Side = side, Quantity = quantity, ReduceOnly = reduceOnly }, cancellationToken);
+        return await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
+    }
+
+    public async Task<ApiResult> HaltAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("trading/halt", content: null, cancellationToken);
+        return await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
+    }
+
+    public async Task<ApiResult> ResumeAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("trading/resume", content: null, cancellationToken);
         return await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
     }
 

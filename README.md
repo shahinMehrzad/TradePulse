@@ -62,6 +62,7 @@ A [Tabler](https://tabler.io)-based panel that only administrators can enter (th
 | [docs/api.md](docs/api.md) | The candle read API, the dashboard API, login and refresh tokens. |
 | [docs/admin-panel.md](docs/admin-panel.md) | The panel's pages, sessions and what it asks WebApi for. |
 | [docs/exchange-keys.md](docs/exchange-keys.md) | The key vault: how administrators keep their Binance Futures keys, and how they are protected. |
+| [docs/trading.md](docs/trading.md) | Manual market orders with Demo/Live keys, the server-side limits and the halt switch. |
 | [docs/candle-cache.md](docs/candle-cache.md) | `HybridCache` in front of the candle reads, with benchmark results. |
 | [docs/testing.md](docs/testing.md) | Unit, integration and contract tests, benchmarks, CI. |
 

@@ -54,6 +54,10 @@ useless from anywhere else.
 - Hardening worth doing before real money: give the vault its **own Postgres role** that may touch only the `vault` schema (and insert into
   `config.audit_log`), so the other programs' database users cannot read the encrypted keys either.
 
+## Demo or Live
+
+A key is made for **Demo** or **Live**, for good. Trading with the keys, the limits and the halt switch are in [trading.md](trading.md).
+
 ## Honest limits
 
 - **Not tried against the real Binance.** The signing and the checks are tested against a stand-in that verifies the signature with the public key the way

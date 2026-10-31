@@ -17,7 +17,7 @@ public static class KeyStatus
 
 public sealed record ExchangeKeyRow(
     Guid Id, Guid OwnerUserId, string Label, string Exchange, string Algorithm, string PublicKeyPem,
-    byte[] PrivateKeyEncrypted, string? ApiKey, string Status, string? Problems, DateTime? VerifiedAt, DateTime CreatedAt);
+    byte[] PrivateKeyEncrypted, string? ApiKey, string Status, string? Problems, DateTime? VerifiedAt, DateTime CreatedAt, string Environment);
 
 /// <summary>
 /// The table of the exchange keys (schema <c>vault</c>, made by this program). Every lookup that belongs to a user takes the owner,
@@ -30,7 +30,7 @@ public sealed class ExchangeKeyRepository(NpgsqlDataSource dataSource)
     private const string Columns = """
         id AS Id, owner_user_id AS OwnerUserId, label AS Label, exchange AS Exchange, algorithm AS Algorithm,
         public_key_pem AS PublicKeyPem, private_key_encrypted AS PrivateKeyEncrypted, api_key AS ApiKey, status AS Status,
-        problems AS Problems, verified_at AS VerifiedAt, created_at AS CreatedAt
+        problems AS Problems, verified_at AS VerifiedAt, created_at AS CreatedAt, environment AS Environment
         """;
 
     public static async Task EnsureSchemaAsync(NpgsqlDataSource dataSource, CancellationToken cancellationToken)
@@ -52,6 +52,7 @@ public sealed class ExchangeKeyRepository(NpgsqlDataSource dataSource)
                 verified_at           timestamp NULL,
                 created_at            timestamp NOT NULL
             );
+            ALTER TABLE vault.exchange_keys ADD COLUMN IF NOT EXISTS environment text NOT NULL DEFAULT 'Live';
             CREATE INDEX IF NOT EXISTS ix_exchange_keys_owner ON vault.exchange_keys (owner_user_id);
             """, cancellationToken: cancellationToken));
     }
@@ -85,9 +86,9 @@ public sealed class ExchangeKeyRepository(NpgsqlDataSource dataSource)
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await connection.ExecuteAsync(new CommandDefinition("""
             INSERT INTO vault.exchange_keys
-                (id, owner_user_id, label, exchange, algorithm, public_key_pem, private_key_encrypted, api_key, status, problems, verified_at, created_at)
+                (id, owner_user_id, label, exchange, algorithm, public_key_pem, private_key_encrypted, api_key, status, problems, verified_at, created_at, environment)
             VALUES
-                (@Id, @OwnerUserId, @Label, @Exchange, @Algorithm, @PublicKeyPem, @PrivateKeyEncrypted, @ApiKey, @Status, @Problems, @VerifiedAt, @CreatedAt)
+                (@Id, @OwnerUserId, @Label, @Exchange, @Algorithm, @PublicKeyPem, @PrivateKeyEncrypted, @ApiKey, @Status, @Problems, @VerifiedAt, @CreatedAt, @Environment)
             """, ForWrite(row), cancellationToken: cancellationToken));
     }
 
@@ -122,7 +123,7 @@ public sealed class ExchangeKeyRepository(NpgsqlDataSource dataSource)
 
     private static object ForWrite(ExchangeKeyRow row) => new
     {
-        row.Id, row.OwnerUserId, row.Label, row.Exchange, row.Algorithm, row.PublicKeyPem, row.PrivateKeyEncrypted, row.ApiKey, row.Status, row.Problems,
+        row.Id, row.OwnerUserId, row.Label, row.Exchange, row.Algorithm, row.PublicKeyPem, row.PrivateKeyEncrypted, row.ApiKey, row.Status, row.Problems, row.Environment,
         // Npgsql refuses Kind=Utc for a timestamp column.
         VerifiedAt = row.VerifiedAt is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Unspecified) : (DateTime?)null,
         CreatedAt = DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Unspecified)

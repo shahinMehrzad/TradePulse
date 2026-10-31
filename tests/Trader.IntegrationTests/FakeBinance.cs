@@ -20,6 +20,20 @@ public sealed class FakeBinance : HttpMessageHandler
 
     public List<string> Requests { get; } = [];
 
+    /// <summary>The host of every request, so a test can tell Demo (<c>demo-fapi</c>) from live.</summary>
+    public List<string> Hosts { get; } = [];
+
+    /// <summary>The mark price per symbol that <c>/fapi/v1/premiumIndex</c> (no key needed) answers with. Missing: Binance answers with an error.</summary>
+    public Dictionary<string, string> MarkPrices { get; } = [];
+
+    /// <summary>The signed query (without the signature) of every order that reached <c>/fapi/v1/order</c>.</summary>
+    public List<string> Orders { get; } = [];
+
+    /// <summary>What an order is answered with. Null: accepted, with the next order id.</summary>
+    public Func<HttpResponseMessage>? OrderAnswer { get; set; }
+
+    private long _nextOrderId = 1000;
+
     public const string GoodPermissions = """{"ipRestrict":true,"enableReading":true,"enableWithdrawals":false,"enableInternalTransfer":false,"permitsUniversalTransfer":false,"enableFutures":true,"enableMargin":false,"enableSpotAndMarginTrading":false}""";
 
     public void Register(string apiKey, string publicKeyPem)
@@ -34,7 +48,21 @@ public sealed class FakeBinance : HttpMessageHandler
     {
         var apiKey = request.Headers.TryGetValues("X-MBX-APIKEY", out var values) ? values.First() : "";
         lock (_lock)
+        {
             Requests.Add($"{request.RequestUri!.AbsolutePath} key=…{(apiKey.Length > 4 ? apiKey[^4..] : apiKey)}");
+            Hosts.Add(request.RequestUri.Host);
+        }
+
+        if (request.RequestUri!.AbsolutePath == "/fapi/v1/premiumIndex")
+        {
+            var symbol = HttpUtility.ParseQueryString(request.RequestUri.Query)["symbol"] ?? "";
+            string? price;
+            lock (_lock)
+                MarkPrices.TryGetValue(symbol, out price);
+            return Task.FromResult(price is null
+                ? Json(HttpStatusCode.BadRequest, """{"code":-1121,"msg":"Invalid symbol."}""")
+                : Json(HttpStatusCode.OK, $$"""{"symbol":"{{symbol}}","markPrice":"{{price}}"}"""));
+        }
 
         RSA? rsa;
         lock (_lock)
@@ -61,6 +89,15 @@ public sealed class FakeBinance : HttpMessageHandler
 
         if (!rsa.VerifyData(Encoding.ASCII.GetBytes(payload), signatureBytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
             return Task.FromResult(Json(HttpStatusCode.BadRequest, """{"code":-1022,"msg":"Signature for this request is not valid."}"""));
+
+        if (request.RequestUri.AbsolutePath == "/fapi/v1/order" && request.Method == HttpMethod.Post)
+        {
+            lock (_lock)
+            {
+                Orders.Add(payload);
+                return Task.FromResult(OrderAnswer?.Invoke() ?? Json(HttpStatusCode.OK, $$"""{"orderId":{{++_nextOrderId}},"status":"NEW"}"""));
+            }
+        }
 
         return Task.FromResult(request.RequestUri.AbsolutePath switch
         {

@@ -17,15 +17,16 @@ public sealed record VerificationResult(IReadOnlyList<string> Problems)
 /// </summary>
 public sealed class KeyVerifier(BinanceClient binance, IOptions<BinanceOptions> options)
 {
-    public async Task<VerificationResult> VerifyAsync(IRequestSigner signer, string apiKey, CancellationToken cancellationToken)
+    public async Task<VerificationResult> VerifyAsync(IRequestSigner signer, string apiKey, KeyEnvironment environment, CancellationToken cancellationToken)
     {
         var settings = options.Value;
 
-        var futures = await binance.GetSignedAsync(settings.FuturesBaseUrl, "/fapi/v2/balance", apiKey, signer, cancellationToken);
+        var futures = await binance.GetSignedAsync(settings.FuturesUrl(environment), "/fapi/v2/balance", apiKey, signer, cancellationToken);
         if (!futures.Ok)
             return new VerificationResult([Explain(futures, "Futures")]);
 
-        if (!settings.RequirePermissionCheck)
+        // Demo has no Wallet API and no real money: the permission check is for live keys only.
+        if (environment == KeyEnvironment.Demo || !settings.RequirePermissionCheck)
             return new VerificationResult([]);
 
         var permissions = await binance.GetSignedAsync(settings.SpotBaseUrl, "/sapi/v1/account/apiRestrictions", apiKey, signer, cancellationToken);

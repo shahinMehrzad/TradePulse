@@ -11,9 +11,10 @@ namespace Trader.Vault;
 /// <summary>What a user sees of a key. The private key is not in it, and cannot be: nothing in this program hands it out.</summary>
 public sealed record ExchangeKeyView(
     Guid Id, string Label, string Exchange, string Algorithm, string Status, string PublicKeyPem,
-    string? ApiKeyHint, IReadOnlyList<string> Problems, DateTime CreatedAt, DateTime? VerifiedAt);
+    string? ApiKeyHint, IReadOnlyList<string> Problems, DateTime CreatedAt, DateTime? VerifiedAt, string Environment);
 
-public sealed record CreateKeyRequest(string? Label);
+/// <param name="Environment"><c>Live</c> (the default) or <c>Demo</c>; fixed for the life of the key.</param>
+public sealed record CreateKeyRequest(string? Label, string? Environment = null);
 
 public sealed record ApiKeyRequest(string? ApiKey);
 
@@ -53,6 +54,10 @@ public static partial class ExchangeKeyEndpoints
         if (label.Length is 0 or > 50)
             return Results.Problem(title: "Invalid label", detail: "Give the key a name of 1 to 50 characters.", statusCode: StatusCodes.Status400BadRequest);
 
+        KeyEnvironment environment = KeyEnvironment.Live;
+        if (!string.IsNullOrWhiteSpace(request.Environment) && !Enum.TryParse(request.Environment.Trim(), ignoreCase: true, out environment) | !Enum.IsDefined(environment))
+            return Results.Problem(title: "Invalid environment", detail: "The environment is Live or Demo.", statusCode: StatusCodes.Status400BadRequest);
+
         var owner = OwnerOf(user);
         if (await repository.CountAsync(owner, cancellationToken) >= ExchangeKeyRepository.MaxKeysPerUser)
             return Results.Problem(title: "Too many keys", detail: $"At most {ExchangeKeyRepository.MaxKeysPerUser} keys. Delete one you do not use.", statusCode: StatusCodes.Status409Conflict);
@@ -64,14 +69,14 @@ public static partial class ExchangeKeyEndpoints
             await repository.AddAsync(new ExchangeKeyRow(
                 id, owner, label, Exchange, KeyAlgorithm.Rsa.ToString(), pair.PublicKeyPem,
                 crypto.Encrypt(pair.PrivateKeyPkcs8, id, owner), ApiKey: null, KeyStatus.PendingApiKey, Problems: null,
-                VerifiedAt: null, time.GetUtcNow().UtcDateTime), cancellationToken);
+                VerifiedAt: null, time.GetUtcNow().UtcDateTime, environment.ToString()), cancellationToken);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(pair.PrivateKeyPkcs8);
         }
 
-        await audit.RecordAsync(AuditAction.Added, NameOf(user), label, "made a key pair for Binance Futures (the private key stays in the vault)", cancellationToken);
+        await audit.RecordAsync(AuditAction.Added, NameOf(user), label, $"made a {environment} key pair for Binance Futures (the private key stays in the vault)", cancellationToken);
         return Results.Created($"/keys/{id}", View((await repository.FindAsync(owner, id, cancellationToken))!));
     }
 
@@ -116,7 +121,7 @@ public static partial class ExchangeKeyEndpoints
         try
         {
             using var signer = SignerFactory.Create(Enum.Parse<KeyAlgorithm>(row.Algorithm), privateKey);
-            result = await verifier.VerifyAsync(signer, row.ApiKey!, cancellationToken);
+            result = await verifier.VerifyAsync(signer, row.ApiKey!, Enum.Parse<KeyEnvironment>(row.Environment), cancellationToken);
         }
         finally
         {
@@ -147,5 +152,5 @@ public static partial class ExchangeKeyEndpoints
         row.Id, row.Label, row.Exchange, row.Algorithm, row.Status, row.PublicKeyPem,
         row.ApiKey is { Length: > 4 } key ? "…" + key[^4..] : null,
         row.Problems?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
-        row.CreatedAt, row.VerifiedAt);
+        row.CreatedAt, row.VerifiedAt, row.Environment);
 }
