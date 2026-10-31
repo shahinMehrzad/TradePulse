@@ -38,7 +38,7 @@ public class AuditLogEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     private static async Task<int> AddSeriesAsync(HttpClient client, int timeFrameId, bool openInterest = false, string startDate = "2020-01-01T00:00:00Z")
     {
         var response = await client.PostAsJsonAsync($"{ConfigUrl}/add-config",
-            new { exchangeId = 1, marketId = 2, symbolId = 1, timeFrameId, startDate, collectOpenInterest = openInterest }, Ct);
+            new { symbolListingId = 1, timeFrameId, startDate, collectOpenInterest = openInterest }, Ct);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<Created>(Ct))!.Id;
     }
@@ -67,7 +67,7 @@ public class AuditLogEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
 
         var id = await AddSeriesAsync(client, timeFrame, openInterest: false);
         (await client.PutAsJsonAsync($"{ConfigUrl}/update-config",
-            new { id, exchangeId = 1, marketId = 2, symbolId = 1, timeFrameId = timeFrame, startDate = "2021-06-01T00:00:00Z", collectOpenInterest = false }, Ct)).EnsureSuccessStatusCode();
+            new { id, symbolListingId = 1, timeFrameId = timeFrame, startDate = "2021-06-01T00:00:00Z", collectOpenInterest = false }, Ct)).EnsureSuccessStatusCode();
         (await client.DeleteAsync($"{ConfigUrl}/delete-config/{id}", Ct)).EnsureSuccessStatusCode();
 
         var entries = await EntriesOfAsync(client, "CandleSeries", id);
@@ -78,9 +78,9 @@ public class AuditLogEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
             Assert.Equal(userName, e.UserName);
             Assert.StartsWith("binance / futures / btcusdt / ", e.Summary);
         });
-        Assert.Equal("start date 2020-01-01, open interest off", entries[0].Details);
+        Assert.Equal("start date 2020-01-01, open interest off, market statistics off", entries[0].Details);
         Assert.Equal("start date 2020-01-01 -> 2021-06-01", entries[1].Details);
-        Assert.Equal("start date 2021-06-01, open interest off", entries[2].Details);   // what the removed row held
+        Assert.Equal("start date 2021-06-01, open interest off, market statistics off", entries[2].Details);   // what the removed row held
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class AuditLogEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         var id = await AddSeriesAsync(client, timeFrame);
 
         (await client.PutAsJsonAsync($"{ConfigUrl}/update-config",
-            new { id, exchangeId = 1, marketId = 2, symbolId = 1, timeFrameId = timeFrame, startDate = "2020-01-01T00:00:00Z", collectOpenInterest = false }, Ct)).EnsureSuccessStatusCode();
+            new { id, symbolListingId = 1, timeFrameId = timeFrame, startDate = "2020-01-01T00:00:00Z", collectOpenInterest = false }, Ct)).EnsureSuccessStatusCode();
 
         Assert.Equal(["Added"], (await EntriesOfAsync(client, "CandleSeries", id)).Select(e => e.Action));
     }
@@ -103,7 +103,7 @@ public class AuditLogEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         var before = (await client.GetFromJsonAsync<Page>($"{AuditUrl}?$top=1", Ct))!.Count;
 
         var response = await client.PostAsJsonAsync($"{ConfigUrl}/add-config",
-            new { exchangeId = 1, marketId = 2, symbolId = 1, timeFrameId = NextTimeFrame(), startDate = "2999-01-01T00:00:00Z" }, Ct);   // in the future
+            new { symbolListingId = 1, timeFrameId = NextTimeFrame(), startDate = "2999-01-01T00:00:00Z" }, Ct);   // in the future
         var missing = await client.DeleteAsync($"{ConfigUrl}/delete-config/987654", Ct);
 
         Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.NotFound), (response.StatusCode, missing.StatusCode));
@@ -117,11 +117,11 @@ public class AuditLogEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         var symbol = NextSymbol();
 
         var created = await client.PostAsJsonAsync($"{ConfigUrl}/add-symbol-data",
-            new { exchangeId = 1, marketId = 2, symbolId = symbol, collectFundingRate = false, collectLiquidation = true }, Ct);
+            new { symbolListingId = symbol, collectFundingRate = false, collectLiquidation = true }, Ct);
         created.EnsureSuccessStatusCode();
         var id = (await created.Content.ReadFromJsonAsync<Created>(Ct))!.Id;
         (await client.PutAsJsonAsync($"{ConfigUrl}/update-symbol-data",
-            new { id, exchangeId = 1, marketId = 2, symbolId = symbol, collectFundingRate = true, fundingStartDate = "2022-02-02T00:00:00Z", collectLiquidation = true }, Ct)).EnsureSuccessStatusCode();
+            new { id, symbolListingId = symbol, collectFundingRate = true, fundingStartDate = "2022-02-02T00:00:00Z", collectLiquidation = true }, Ct)).EnsureSuccessStatusCode();
         (await client.DeleteAsync($"{ConfigUrl}/delete-symbol-data/{id}", Ct)).EnsureSuccessStatusCode();
 
         var entries = await EntriesOfAsync(client, "SymbolData", id);

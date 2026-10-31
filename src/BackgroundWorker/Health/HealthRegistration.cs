@@ -74,6 +74,8 @@ public static class HealthRegistration
         // time (in the database), so these are always registered. A request component that has not made a request is healthy.
         checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.FundingRateRequests, HealthComponents.FundingRateRequests);
         checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.OpenInterestRequests, HealthComponents.OpenInterestRequests);
+        checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.LongShortRatioRequests, HealthComponents.LongShortRatioRequests);
+        checks.AddTypeActivatedCheck<RequestHealthCheck>(HealthComponents.TakerVolumeRequests, HealthComponents.TakerVolumeRequests);
 
         // Liquidations are bursty, so silence only degrades; the busy probe stream above is what proves the socket is alive.
         // The stream is only judged once some symbol asks for liquidations.

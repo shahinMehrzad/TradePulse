@@ -19,10 +19,12 @@ public sealed class BinanceLiveCandleStream(IBinanceSocketClient client) : ILive
             throw new ArgumentException($"This stream serves Binance only, not {subscription.Exchange}.", nameof(subscription));
 
         var symbols = subscription.Symbols.Select(s => s.ToString()).ToList();
+        // The stream names a symbol as the exchange does; look it up (any case) among the ones asked for, once, off the callback.
+        var known = subscription.Symbols.ToDictionary(s => s.Value, StringComparer.OrdinalIgnoreCase);
         var interval = (KlineInterval)subscription.Timeframe;
 
         // Socket callback: must stay cheap and must never block.
-        void OnMessage(DataEvent<IBinanceStreamKlineData> message) => OnKline(subscription, listener, message.Data);
+        void OnMessage(DataEvent<IBinanceStreamKlineData> message) => OnKline(subscription, known, listener, message.Data);
 
         var result = subscription.MarketType == MarketTypeEnum.Futures
             ? await client.UsdFuturesApi.ExchangeData.SubscribeToKlineUpdatesAsync(symbols, interval, OnMessage, ct: cancellationToken)
@@ -33,13 +35,13 @@ public sealed class BinanceLiveCandleStream(IBinanceSocketClient client) : ILive
             : ExchangeResult<IAsyncDisposable>.Fail(result.Error?.Message);
     }
 
-    private static void OnKline(LiveCandleSubscription subscription, ILiveCandleListener listener, IBinanceStreamKlineData message)
+    private static void OnKline(LiveCandleSubscription subscription, Dictionary<string, ExchangeSymbol> known, ILiveCandleListener listener, IBinanceStreamKlineData message)
     {
         // Every message, closed or not, proves the stream is alive.
         listener.OnMessage();
 
         var kline = message.Data;
-        if (!kline.Final || !Enum.TryParse<SymbolEnum>(message.Symbol, ignoreCase: true, out var symbol) || !Enum.IsDefined(symbol))
+        if (!kline.Final || !known.TryGetValue(message.Symbol, out var symbol))
             return;
 
         var candle = new Candle(

@@ -16,6 +16,8 @@ public static class HealthComponents
     public const string SymbolData = "symbol-data";
     public const string FundingRateRequests = "funding-rate-requests";
     public const string OpenInterestRequests = "open-interest-requests";
+    public const string LongShortRatioRequests = "long-short-ratio-requests";
+    public const string TakerVolumeRequests = "taker-volume-requests";
 }
 
 /// <summary>Immutable view of what has been observed about one component.</summary>

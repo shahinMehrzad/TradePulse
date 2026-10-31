@@ -53,6 +53,58 @@ public sealed class OpenInterestTable : ITimeSeriesTable<OpenInterest>
     }
 }
 
+public sealed class LongShortRatioTable : ITimeSeriesTable<LongShortRatio>
+{
+    public string TimeColumn => "snapshot_time";
+
+    public IReadOnlyList<string> Columns { get; } = ["snapshot_time", "long_short_ratio", "long_account", "short_account"];
+
+    public string CreateTableSql(string tableName) => $@"
+        CREATE TABLE IF NOT EXISTS {tableName} (
+            snapshot_time timestamp NOT NULL,
+            long_short_ratio NUMERIC(18, 8) NOT NULL,
+            long_account NUMERIC(18, 8) NOT NULL,
+            short_account NUMERIC(18, 8) NOT NULL,
+
+            CONSTRAINT pk_{tableName} PRIMARY KEY (snapshot_time)
+        );";
+
+    public async Task WriteRowAsync(NpgsqlBinaryImporter writer, LongShortRatio row, CancellationToken cancellationToken)
+    {
+        await writer.StartRowAsync(cancellationToken);
+        await writer.WriteAsync(Timestamps.ToTimestamp(row.Time), NpgsqlDbType.Timestamp, cancellationToken);
+        await writer.WriteAsync(row.Ratio, NpgsqlDbType.Numeric, cancellationToken);
+        await writer.WriteAsync(row.LongAccount, NpgsqlDbType.Numeric, cancellationToken);
+        await writer.WriteAsync(row.ShortAccount, NpgsqlDbType.Numeric, cancellationToken);
+    }
+}
+
+public sealed class TakerVolumeTable : ITimeSeriesTable<TakerVolume>
+{
+    public string TimeColumn => "snapshot_time";
+
+    public IReadOnlyList<string> Columns { get; } = ["snapshot_time", "buy_sell_ratio", "buy_volume", "sell_volume"];
+
+    public string CreateTableSql(string tableName) => $@"
+        CREATE TABLE IF NOT EXISTS {tableName} (
+            snapshot_time timestamp NOT NULL,
+            buy_sell_ratio NUMERIC(18, 8) NOT NULL,
+            buy_volume NUMERIC(28, 8) NOT NULL,
+            sell_volume NUMERIC(28, 8) NOT NULL,
+
+            CONSTRAINT pk_{tableName} PRIMARY KEY (snapshot_time)
+        );";
+
+    public async Task WriteRowAsync(NpgsqlBinaryImporter writer, TakerVolume row, CancellationToken cancellationToken)
+    {
+        await writer.StartRowAsync(cancellationToken);
+        await writer.WriteAsync(Timestamps.ToTimestamp(row.Time), NpgsqlDbType.Timestamp, cancellationToken);
+        await writer.WriteAsync(row.BuySellRatio, NpgsqlDbType.Numeric, cancellationToken);
+        await writer.WriteAsync(row.BuyVolume, NpgsqlDbType.Numeric, cancellationToken);
+        await writer.WriteAsync(row.SellVolume, NpgsqlDbType.Numeric, cancellationToken);
+    }
+}
+
 public sealed class LiquidationTable : ITimeSeriesTable<Liquidation>
 {
     public string TimeColumn => "event_time";

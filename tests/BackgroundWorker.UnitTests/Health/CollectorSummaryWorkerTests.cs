@@ -56,7 +56,7 @@ public class CollectorSummaryWorkerTests
             var rig = new Rig();
             var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(rig.Repository).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
             var series = withSeries
-                ? await CandleSeriesTestSupport.LoadedProviderAsync(rig.Time, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H))
+                ? await CandleSeriesTestSupport.LoadedProviderAsync(rig.Time, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H))
                 : CandleSeriesTestSupport.NewProvider(new FakeCandleSeriesSource(), rig.Time);
 
             rig.Worker = new CollectorSummaryWorker(
@@ -122,8 +122,8 @@ public class CollectorSummaryWorkerTests
 
         var (level, first) = rig.Log.Entries[0];
         Assert.Equal(LogLevel.Information, level);
-        Assert.StartsWith("Last 10 min: stored 12 candles, 1 funding rates, 4 open interest, 37 liquidations.", first);
-        Assert.StartsWith("Last 10 min: stored 0 candles, 0 funding rates, 0 open interest, 0 liquidations.", rig.Log.Entries[1].Message);
+        Assert.StartsWith("Last 10 min: stored 12 candles, 1 funding rates, 4 open interest, 0 market statistics, 37 liquidations.", first);
+        Assert.StartsWith("Last 10 min: stored 0 candles, 0 funding rates, 0 open interest, 0 market statistics, 0 liquidations.", rig.Log.Entries[1].Message);
     }
 
     [Fact]

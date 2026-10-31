@@ -1,4 +1,5 @@
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Application.Exchange;
 
@@ -22,5 +23,5 @@ public interface IExchangeProbe
     /// proves the WebSocket path. A failure is a result, not an exception. Disposing the returned handle unsubscribes.
     /// </summary>
     Task<ExchangeResult<IAsyncDisposable>> SubscribeToProbeStreamAsync(
-        ExchangeEnum exchange, SymbolEnum symbol, IProbeStreamListener listener, CancellationToken cancellationToken);
+        ExchangeEnum exchange, ExchangeSymbol symbol, IProbeStreamListener listener, CancellationToken cancellationToken);
 }

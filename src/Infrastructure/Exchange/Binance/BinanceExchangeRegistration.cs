@@ -1,3 +1,4 @@
+using Domain.Entities;
 using Application.Exchange;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Configuration;
@@ -20,11 +21,25 @@ public static class BinanceExchangeRegistration
         services.AddSingleton<ICandleGateway, BinanceCandleGateway>();
         services.AddSingleton<IFundingRateGateway, BinanceFundingRateGateway>();
         services.AddSingleton<IOpenInterestGateway, BinanceOpenInterestGateway>();
+        services.AddSingleton<IPeriodStatisticGateway<LongShortRatio>, BinanceLongShortRatioGateway>();
+        services.AddSingleton<IPeriodStatisticGateway<TakerVolume>, BinanceTakerVolumeGateway>();
 
         services.AddSingleton<ILiveCandleStream, BinanceLiveCandleStream>();
         services.AddSingleton<ILiquidationStream, BinanceLiquidationStream>();
 
         services.AddSingleton<IExchangeProbe, BinanceExchangeProbe>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Only what the admin API needs from Binance: asking which symbols it lists. No request budget (it is one rare call per
+    /// symbol the admin adds) and no gateways; the collector does not use this.
+    /// </summary>
+    public static IServiceCollection AddBinanceSymbolCatalog(this IServiceCollection services)
+    {
+        services.AddBinance();
+        services.AddSingleton<IExchangeSymbolCatalog, BinanceSymbolCatalog>();
 
         return services;
     }

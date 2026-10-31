@@ -39,6 +39,8 @@ public static class MarketDataSupport
                 [MarketDataTypeEnum.Candle] = new(EveryTimeFrame),
                 [MarketDataTypeEnum.FundingRate] = new((FrozenSet<TimeFrameEnum>?)null),
                 [MarketDataTypeEnum.OpenInterest] = new(OpenInterestTimeFrames),
+                [MarketDataTypeEnum.LongShortRatio] = new(OpenInterestTimeFrames),
+                [MarketDataTypeEnum.TakerVolume] = new(OpenInterestTimeFrames),
                 [MarketDataTypeEnum.Liquidation] = new((FrozenSet<TimeFrameEnum>?)null),
             }.ToFrozenDictionary(),
         }.ToFrozenDictionary();

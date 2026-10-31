@@ -100,7 +100,7 @@ public class LiveCandleWorkerTests
         }
     }
 
-    private static CandleSeriesPlan Futures(SymbolEnum symbol, TimeFrameEnum timeFrame) => TestPlans.Binance(MarketTypeEnum.Futures, symbol, timeFrame);
+    private static CandleSeriesPlan Futures(SeededSymbol symbol, TimeFrameEnum timeFrame) => TestPlans.Binance(MarketTypeEnum.Futures, symbol, timeFrame);
 
     private static Candle Candle(DateTime open) => new(open, 1m, 2m, 0.5m, 1.5m, 10m, open.AddHours(1).AddMilliseconds(-1), 15m, 3, 5m, 7m);
 
@@ -120,21 +120,21 @@ public class LiveCandleWorkerTests
     public async Task ItSubscribesOncePerMarketAndTimeFrameCoveringAllItsSymbols()
     {
         await using var rig = await Rig.StartAsync(true,
-            Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._1H), Futures(SymbolEnum.ETHUSDT, TimeFrameEnum._1H),
-            Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._4H));
+            Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._1H), Futures(SeededSymbol.ETHUSDT, TimeFrameEnum._1H),
+            Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._4H));
 
         await WaitUntilAsync(() => rig.Stream.Subscriptions.Count == 2, "two subscriptions");
 
         var oneHour = Assert.Single(rig.Stream.Subscriptions, s => s.Timeframe == TimeFrameEnum._1H);
         Assert.Equal((ExchangeEnum.Binance, MarketTypeEnum.Futures), (oneHour.Exchange, oneHour.MarketType));
-        Assert.Equal([SymbolEnum.BTCUSDT, SymbolEnum.ETHUSDT], oneHour.Symbols.Order());
-        Assert.Equal([SymbolEnum.BTCUSDT], Assert.Single(rig.Stream.Subscriptions, s => s.Timeframe == TimeFrameEnum._4H).Symbols);
+        Assert.Equal<ExchangeSymbol>([SeededSymbol.BTCUSDT.Sym(), SeededSymbol.ETHUSDT.Sym()], oneHour.Symbols.OrderBy(s => s.Value, StringComparer.Ordinal));
+        Assert.Equal<ExchangeSymbol>([SeededSymbol.BTCUSDT.Sym()], Assert.Single(rig.Stream.Subscriptions, s => s.Timeframe == TimeFrameEnum._4H).Symbols);
     }
 
     [Fact]
     public async Task ASubscribedStreamIsReportedConnectedAndEveryMessageIsReportedAlive()
     {
-        await using var rig = await Rig.StartAsync(true, Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        await using var rig = await Rig.StartAsync(true, Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "subscription");
 
         Assert.True(rig.Health.Get(HealthComponents.CandleStreamFutures).Connected);
@@ -148,12 +148,12 @@ public class LiveCandleWorkerTests
     [Fact]
     public async Task AClosedCandleIsStoredInItsTableOnceThatTableIsReady()
     {
-        await using var rig = await Rig.StartAsync(true, Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        await using var rig = await Rig.StartAsync(true, Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "subscription");
         rig.Coordinator.MarkReady(FuturesBtc1h);
         var candle = Candle(Open);
 
-        rig.Stream.Listeners[0].OnClosedCandle(new Domain.ValueObjects.CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H), candle);
+        rig.Stream.Listeners[0].OnClosedCandle(new Domain.ValueObjects.CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H), candle);
 
         await WaitUntilAsync(() => rig.Repository.Inserts.Count == 1, "the candle being stored");
         var (table, rows) = rig.Repository.Inserts[0];
@@ -166,10 +166,10 @@ public class LiveCandleWorkerTests
     public async Task ALiveCandleIsHeldBackWhileItsTableHasNotFinishedTheFirstRestSync()
     {
         // A live candle in a table that is not caught up would become max(open_time) and hide the history before it.
-        await using var rig = await Rig.StartAsync(true, Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        await using var rig = await Rig.StartAsync(true, Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "subscription");
 
-        rig.Stream.Listeners[0].OnClosedCandle(new Domain.ValueObjects.CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H), Candle(Open));
+        rig.Stream.Listeners[0].OnClosedCandle(new Domain.ValueObjects.CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H), Candle(Open));
         await Task.Delay(400, Ct);   // far longer than the writer's batching window
 
         Assert.Empty(rig.Repository.Inserts);
@@ -179,11 +179,11 @@ public class LiveCandleWorkerTests
     [Fact]
     public async Task ACandleOfASymbolNobodyAskedForIsIgnored()
     {
-        await using var rig = await Rig.StartAsync(true, Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        await using var rig = await Rig.StartAsync(true, Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "subscription");
         rig.Coordinator.MarkReady(FuturesBtc1h);
 
-        rig.Stream.Listeners[0].OnClosedCandle(new Domain.ValueObjects.CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H), Candle(Open));
+        rig.Stream.Listeners[0].OnClosedCandle(new Domain.ValueObjects.CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.ETHUSDT.Sym(), TimeFrameEnum._1H), Candle(Open));
         await Task.Delay(400, Ct);
 
         Assert.Empty(rig.Repository.Inserts);
@@ -192,7 +192,7 @@ public class LiveCandleWorkerTests
     [Fact]
     public async Task ALostConnectionIsReportedAndARestoredOneAsksTheRestLoopsToCatchUp()
     {
-        await using var rig = await Rig.StartAsync(true, Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        await using var rig = await Rig.StartAsync(true, Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         await WaitUntilAsync(() => rig.Stream.Listeners.Count == 1, "subscription");
         var resyncRequests = rig.Coordinator.Register();
 
@@ -209,7 +209,7 @@ public class LiveCandleWorkerTests
     [Fact]
     public async Task StoppingTheWorkerUnsubscribesEveryStream()
     {
-        var rig = await Rig.StartAsync(true, Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._1H), Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._4H));
+        var rig = await Rig.StartAsync(true, Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._1H), Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._4H));
         await WaitUntilAsync(() => rig.Stream.Subscriptions.Count == 2, "subscriptions");
 
         await rig.DisposeAsync();
@@ -220,7 +220,7 @@ public class LiveCandleWorkerTests
     [Fact]
     public async Task WithLiveCandlesSwitchedOffItNeverSubscribes()
     {
-        await using var rig = await Rig.StartAsync(false, Futures(SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        await using var rig = await Rig.StartAsync(false, Futures(SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         await Task.Delay(200, Ct);
 
         Assert.Empty(rig.Stream.Subscriptions);

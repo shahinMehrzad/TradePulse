@@ -32,7 +32,7 @@ public class BinanceCandleGatewayTests
     {
         // Fetching it from Binance would store the wrong prices under a right-looking table name. No client is needed to say no.
         var gateway = new BinanceCandleGateway(client: null!, rateLimiters: null!);
-        var series = new CandleSeries((ExchangeEnum)99, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        var series = new CandleSeries((ExchangeEnum)99, MarketTypeEnum.Futures, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             gateway.GetCandlesAsync(series, DateTime.UtcNow.AddDays(-1), to: null, TestContext.Current.CancellationToken));

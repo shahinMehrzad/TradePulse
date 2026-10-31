@@ -13,7 +13,7 @@ internal sealed class FakeCandleWorkerConfigurationRepository : ICandleWorkerCon
     public Task<CandleWorkerConfiguration?> GetConfigurationById(int id, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
-    public Task<CandleWorkerConfiguration?> GetConfiguration(int exchangeId, int marketId, int symbolId, int timeFrameId, CancellationToken cancellationToken) =>
+    public Task<CandleWorkerConfiguration?> GetConfiguration(int symbolListingId, int timeFrameId, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
     public Task<int> AddNewCandleWorkerConfiguration(CandleWorkerConfiguration configuration, CancellationToken cancellationToken) =>

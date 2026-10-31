@@ -1,5 +1,6 @@
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Application.Exchange;
 
@@ -11,5 +12,5 @@ public interface IFundingRateGateway
     /// the full history. <see cref="ExchangePage{T}.HasMore"/> says whether to ask again from after the last one.
     /// </summary>
     Task<ExchangeResult<ExchangePage<FundingRate>>> GetFundingRatesAsync(
-        ExchangeEnum exchange, SymbolEnum symbol, DateTime from, CancellationToken cancellationToken);
+        ExchangeEnum exchange, ExchangeSymbol symbol, DateTime from, CancellationToken cancellationToken);
 }

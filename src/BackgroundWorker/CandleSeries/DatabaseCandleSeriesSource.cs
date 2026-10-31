@@ -19,7 +19,7 @@ public sealed class DatabaseCandleSeriesSource(IServiceScopeFactory scopeFactory
             new GetCandleWorkerConfigurationsQuery(), cancellationToken);
 
         return CandleSeriesMapper.ToSeries(rows, (row, reason) =>
-            logger.LogWarning("Skipping candle series #{Id} (exchange {Exchange}, market {Market}, symbol {Symbol}, time frame {TimeFrame}): {Reason}",
-                row.Id, row.ExchangeId, row.MarketId, row.SymbolId, row.TimeFrameId, reason));
+            logger.LogWarning("Skipping candle series #{Id} (symbol listing {Listing}, time frame {TimeFrame}): {Reason}",
+                row.Id, row.SymbolListingId, row.TimeFrameId, reason));
     }
 }

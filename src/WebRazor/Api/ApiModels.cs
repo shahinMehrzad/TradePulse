@@ -33,7 +33,7 @@ public record Lookups(
 }
 
 /// <summary>One candle series the collector should fetch, as the API stores it (ids, not names).</summary>
-public record CandleWorkerSeries(int Id, int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest);
+public record CandleWorkerSeries(int Id, int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest, bool CollectMarketStatistics);
 
 /// <summary>A series whose first stored candle is on a later day than its start date (both UTC): the symbol was listed later.</summary>
 public record LateStart(int Id, DateTime StartDate, DateTime FirstCandle);
@@ -63,7 +63,34 @@ public record AuditPage(IReadOnlyList<AuditEntry> Items, int PageNumber, int Pag
 }
 
 /// <summary>What the panel sends to add or change a series. <c>StartDate</c> is a UTC date.</summary>
-public record SeriesRequest(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest);
+public record SeriesRequest(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest, bool CollectMarketStatistics);
+
+/// <summary>
+/// A symbol on an exchange market, as the API lists them: the panel's three choices (exchange, market, symbol) name one of these.
+/// <c>ExchangeSymbol</c> is the name that exchange uses for it (BTCUSDT).
+/// </summary>
+public record SymbolListingItem(int Id, int ExchangeId, string Exchange, int MarketId, string Market, int SymbolId, string Symbol, string ExchangeSymbol);
+
+/// <summary>Where a symbol is listed: one exchange market, under the name that exchange uses for it.</summary>
+public record SymbolMarket(int ListingId, string Exchange, string Market, string ExchangeSymbol);
+
+/// <summary>One symbol with every market it is listed on; <c>SeriesCount</c> and <c>SettingsCount</c> say what uses each listing.</summary>
+public record SymbolDetail(int Id, string Name, string? Description, IReadOnlyList<SymbolDetailMarket> Markets);
+
+public record SymbolDetailMarket(
+    int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount)
+{
+    public bool InUse => SeriesCount + SettingsCount > 0;
+}
+
+/// <summary>One symbol of the Symbols page, with the markets it is listed on.</summary>
+public record SymbolRow(int Id, string Name, string? Description, IReadOnlyList<SymbolMarket> Markets);
+
+/// <summary>One page of the symbol list, with the totals the API reports for the (filtered) list.</summary>
+public record SymbolsPage(IReadOnlyList<SymbolRow> Items, int PageNumber, int PageSize, int TotalItems, int TotalPages)
+{
+    public bool HasNext => PageNumber < TotalPages;
+}
 
 /// <summary>Outcome of a write. <see cref="SessionRejected"/> means the API no longer accepts the signed-in session.</summary>
 public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false);

@@ -62,7 +62,7 @@ public class BinanceLiveCandleWorker(
         using var running = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var writer = WriteBatchesAsync(running.Token);
         var subscriptions = PlanRunner.RunGroupedAsync(seriesProvider,
-            plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false, StartDate = default }).ToList(),
+            plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false, CollectMarketStatistics = false, StartDate = default }).ToList(),
             plan => (plan.Series.MarketType, plan.Series.Timeframe),
             StreamAsync, logger, "candle series", running.Token);
 
@@ -108,7 +108,7 @@ public class BinanceLiveCandleWorker(
         }
     }
 
-    private sealed record CandleStream(MarketTypeEnum Market, TimeFrameEnum Timeframe, Dictionary<SymbolEnum, string> TablesBySymbol)
+    private sealed record CandleStream(MarketTypeEnum Market, TimeFrameEnum Timeframe, Dictionary<ExchangeSymbol, string> TablesBySymbol)
     {
         public string Component => Market == MarketTypeEnum.Futures ? HealthComponents.CandleStreamFutures : HealthComponents.CandleStreamSpot;
     }

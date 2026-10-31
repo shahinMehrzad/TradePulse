@@ -12,7 +12,7 @@ namespace Application;
 
 public static class DependencyInjection
 {    
-    public static readonly string[] ApiOnlyNamespaces = ["Application.Commands.Auth", "Application.Queries.Collector"];        
+    public static readonly string[] ApiOnlyNamespaces = ["Application.Commands.Auth", "Application.Queries.Collector", "Application.Commands.Symbols", "Application.Queries.Symbols"];        
 
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {

@@ -29,8 +29,8 @@ public class HealthRegistrationTests
         // The series are chosen at run time (in the database); a provider that already knows one futures and one spot series stands for that.
         services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(
             TimeProvider.System,
-            TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H),
-            TestPlans.Binance(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H)));
+            TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H),
+            TestPlans.Binance(MarketTypeEnum.Spot, SeededSymbol.BTCUSDT, TimeFrameEnum._1H)));
 
         services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
             TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: true)));
@@ -63,7 +63,7 @@ public class HealthRegistrationTests
             {
                 "binance-candle-stream-futures", "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket",
                 "binance-liquidation-stream", "binance-spot-rest", "candle-freshness", "candle-gaps", "candle-requests", "candle-series", "database",
-                "funding-rate-requests", "open-interest-requests", "symbol-data",
+                "funding-rate-requests", "long-short-ratio-requests", "open-interest-requests", "symbol-data", "taker-volume-requests",
             },
             report.Entries.Keys.Order());
     }
@@ -74,7 +74,7 @@ public class HealthRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(
-            TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H)));
+            TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H)));
         services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
             TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: false)));
         services.AddWorkerHealth(Config(new()));

@@ -20,7 +20,7 @@ public class CandleGapReportingTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static readonly string Table = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H).Series.TableName;
+    private static readonly string Table = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H).Series.TableName;
 
     private static CandleGap Gap(int fromHour, int toHour) =>
         new(new DateTime(2021, 8, 13, fromHour, 0, 0, DateTimeKind.Utc), new DateTime(2021, 8, 13, toHour, 0, 0, DateTimeKind.Utc));
@@ -65,7 +65,7 @@ public class CandleGapReportingTests
     {
         var openGaps = new OpenGaps();
         var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(table).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
-        var provider = await CandleSeriesTestSupport.LoadedProviderAsync(TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        var provider = await CandleSeriesTestSupport.LoadedProviderAsync(TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         using var worker = new BinanceCandleWorker(
             scopes, NullLogger<BinanceCandleWorker>.Instance, provider, gateway, new CandleSyncCoordinator(),
             new WorkerHealthState(TimeProvider.System), openGaps, new GapRepairSchedule(TimeProvider.System), new AlertQueue(), new CollectionStats());

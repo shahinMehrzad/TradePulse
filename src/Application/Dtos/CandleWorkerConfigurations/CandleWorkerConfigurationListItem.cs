@@ -4,6 +4,10 @@ namespace Application.Dtos.CandleWorkerConfigurations;
 public sealed class CandleWorkerConfigurationListItem
 {
     public int Id { get; set; }
+    public int SymbolListingId { get; set; }
+
+    /// <summary>The name the exchange uses for the symbol, e.g. <c>BTCUSDT</c>.</summary>
+    public string ExchangeSymbol { get; set; } = "";
     public int ExchangeId { get; set; }
     public string Exchange { get; set; } = "";
     public int MarketId { get; set; }
@@ -18,6 +22,7 @@ public sealed class CandleWorkerConfigurationListItem
     /// <summary>UTC.</summary>
     public DateTime StartDate { get; set; }
     public bool CollectOpenInterest { get; set; }
+    public bool CollectMarketStatistics { get; set; }
 
     /// <summary>UTC.</summary>
     public DateTime CreateDate { get; set; }

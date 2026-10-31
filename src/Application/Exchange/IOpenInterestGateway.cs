@@ -1,5 +1,6 @@
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Application.Exchange;
 
@@ -18,5 +19,5 @@ public interface IOpenInterestGateway
     /// mistake of the caller and throws. <see cref="ExchangePage{T}.HasMore"/> says whether to ask again from after the last one.
     /// </summary>
     Task<ExchangeResult<ExchangePage<OpenInterest>>> GetOpenInterestAsync(
-        ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeFrame, DateTime from, CancellationToken cancellationToken);
+        ExchangeEnum exchange, ExchangeSymbol symbol, TimeFrameEnum timeFrame, DateTime from, CancellationToken cancellationToken);
 }

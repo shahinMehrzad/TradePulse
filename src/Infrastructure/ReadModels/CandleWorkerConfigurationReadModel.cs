@@ -10,18 +10,21 @@ public sealed class CandleWorkerConfigurationReadModel(ConfigDbContext context) 
         context.CandleWorkerConfigurations.AsNoTracking().Select(c => new CandleWorkerConfigurationListItem
         {
             Id = c.Id,
-            ExchangeId = c.ExchangeId,
-            Exchange = c.Exchange!.Name,
-            MarketId = c.MarketId,
-            Market = c.Market!.Name,
-            SymbolId = c.SymbolId,
-            Symbol = c.Symbol!.Name,
-            SymbolDescription = c.Symbol.Description,
+            SymbolListingId = c.SymbolListingId,
+            ExchangeSymbol = c.SymbolListing!.ExchangeSymbol,
+            ExchangeId = c.SymbolListing.ExchangeId,
+            Exchange = c.SymbolListing.Exchange!.Name,
+            MarketId = c.SymbolListing.MarketId,
+            Market = c.SymbolListing.Market!.Name,
+            SymbolId = c.SymbolListing.SymbolId,
+            Symbol = c.SymbolListing.Symbol!.Name,
+            SymbolDescription = c.SymbolListing.Symbol.Description,
             TimeFrameId = c.TimeFrameId,
             TimeFrame = c.TimeFrame!.Name,
             IntervalSeconds = c.TimeFrame.IntervalToSeconds,
             StartDate = c.StartDate,
             CollectOpenInterest = c.CollectOpenInterest,
+            CollectMarketStatistics = c.CollectMarketStatistics,
             CreateDate = c.CreateDate,
         });
 }

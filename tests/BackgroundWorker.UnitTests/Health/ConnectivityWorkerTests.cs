@@ -2,6 +2,7 @@ using Application.Exchange;
 using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -16,7 +17,7 @@ public class ConnectivityWorkerTests
     {
         public List<MarketTypeEnum> Pings { get; } = [];
         public Func<MarketTypeEnum, ExchangeResult<TimeSpan>> PingAnswer { get; set; } = _ => ExchangeResult<TimeSpan>.Ok(TimeSpan.FromMilliseconds(12));
-        public List<SymbolEnum> StreamSymbols { get; } = [];
+        public List<ExchangeSymbol> StreamSymbols { get; } = [];
         public List<IProbeStreamListener> Listeners { get; } = [];
         public int Disposed;
 
@@ -28,7 +29,7 @@ public class ConnectivityWorkerTests
         }
 
         public Task<ExchangeResult<IAsyncDisposable>> SubscribeToProbeStreamAsync(
-            ExchangeEnum exchange, SymbolEnum symbol, IProbeStreamListener listener, CancellationToken cancellationToken)
+            ExchangeEnum exchange, ExchangeSymbol symbol, IProbeStreamListener listener, CancellationToken cancellationToken)
         {
             StreamSymbols.Add(symbol);
             Listeners.Add(listener);
@@ -52,18 +53,18 @@ public class ConnectivityWorkerTests
         public BinanceConnectivityWorker Worker { get; private set; } = null!;
 
         public static async Task<Rig> StartAsync(
-            MarketTypeEnum[] markets, SymbolEnum probeSymbol = SymbolEnum.BTCUSDT, Func<MarketTypeEnum, ExchangeResult<TimeSpan>>? pingAnswer = null)
+            MarketTypeEnum[] markets, SeededSymbol probeSymbol = SeededSymbol.BTCUSDT, Func<MarketTypeEnum, ExchangeResult<TimeSpan>>? pingAnswer = null)
         {
             var rig = new Rig();
             if (pingAnswer is not null)
                 rig.Probe.PingAnswer = pingAnswer;
 
             var provider = await CandleSeriesTestSupport.LoadedProviderAsync(
-                TimeProvider.System, markets.Select(m => TestPlans.Binance(m, SymbolEnum.BTCUSDT, TimeFrameEnum._1H)).ToArray());
+                TimeProvider.System, markets.Select(m => TestPlans.Binance(m, SeededSymbol.BTCUSDT, TimeFrameEnum._1H)).ToArray());
 
             rig.Worker = new BinanceConnectivityWorker(
                 NullLogger<BinanceConnectivityWorker>.Instance, rig.Health, rig.Probe,
-                Options.Create(new HealthConfigurations { ProbeSymbol = probeSymbol }), provider);
+                Options.Create(new HealthConfigurations { ProbeSymbol = probeSymbol.ToString() }), provider);
 
             await rig.Worker.StartAsync(Ct);
             return rig;
@@ -133,11 +134,11 @@ public class ConnectivityWorkerTests
     [Fact]
     public async Task TheProbeStreamIsTheConfiguredSymbolAndItsMessagesAndReconnectsAreReported()
     {
-        await using var rig = await Rig.StartAsync([MarketTypeEnum.Futures], SymbolEnum.ETHUSDT);
+        await using var rig = await Rig.StartAsync([MarketTypeEnum.Futures], SeededSymbol.ETHUSDT);
         await WaitUntilAsync(() => rig.Probe.Listeners.Count == 1, "the subscription");
         var listener = rig.Probe.Listeners[0];
 
-        Assert.Equal([SymbolEnum.ETHUSDT], rig.Probe.StreamSymbols);
+        Assert.Equal<ExchangeSymbol>([SeededSymbol.ETHUSDT.Sym()], rig.Probe.StreamSymbols);
         Assert.True(rig.Health.Get(HealthComponents.FuturesWebSocket).Connected);
 
         listener.OnMessage();

@@ -32,9 +32,9 @@ public class LookupsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         var found = await GetAsync<Lookup>("/api/lookups/symbols?keyword=BtC");
         var none = await GetAsync<Lookup>("/api/lookups/symbols?keyword=nothing-like-this");
 
-        Assert.Contains(all, x => x.Name == "BTCUSDT");
+        Assert.Contains(all, x => x.Name == "BTC/USDT");
         Assert.Equal(all.OrderBy(x => x.Name).Select(x => x.Name), all.Select(x => x.Name));
-        Assert.Equal(["BTCUSDT"], found.Select(x => x.Name));
+        Assert.Equal(["BTC/USDT"], found.Select(x => x.Name));
         Assert.Empty(none);
     }
 

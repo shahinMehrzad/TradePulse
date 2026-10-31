@@ -33,7 +33,7 @@ public class BinanceOpenInterestWorker(
         PlanRunner.RunGroupedAsync(seriesProvider,
             plans => OpenInterestPlans.SelectForBinance(plans, (s, reason) =>
                 logger.LogWarning("Open interest is not collected for {Symbol} {Interval}: {Reason}", s.Series.Symbol, s.Series.Timeframe, reason))
-                .Select(p => p with { StartDate = default }).ToList(),
+                .Select(p => p with { StartDate = default, CollectMarketStatistics = false }).ToList(),
             plan => plan.Series.Timeframe,
             CollectAsync, logger, "open interest series", stoppingToken);
 
@@ -54,7 +54,7 @@ public class BinanceOpenInterestWorker(
     {
         foreach (var plan in series)
         {
-            var tableName = TableNameRegistry.GetOpenInterestTableName(plan.Series.Exchange, plan.Series.Symbol, plan.Series.Timeframe);
+            var tableName = TableNameRegistry.GetOpenInterestTableName(plan.Series.Exchange, plan.Series.Symbol.Value, plan.Series.Timeframe);
 
             await TableCreation.EnsureWithRetryAsync(async token =>
             {
@@ -78,7 +78,7 @@ public class BinanceOpenInterestWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Open interest sync failed for {Symbol} {Interval}", plan.Series.Symbol, plan.Series.Timeframe);
+                logger.LogError(ex, "Open interest sync failed for {Symbol} {Interval}", plan.Series.Symbol.Value, plan.Series.Timeframe);
             }
         }
     }
@@ -89,7 +89,7 @@ public class BinanceOpenInterestWorker(
 
         using var scope = scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IMarketDataRepository<OpenInterest>>();
-        var tableName = TableNameRegistry.GetOpenInterestTableName(series.Exchange, series.Symbol, series.Timeframe);
+        var tableName = TableNameRegistry.GetOpenInterestTableName(series.Exchange, series.Symbol.Value, series.Timeframe);
 
         var oldestAvailable = DateTime.UtcNow - gateway.MaxHistory;
         var latest = await repository.GetLatestTimeAsync(tableName, ct);

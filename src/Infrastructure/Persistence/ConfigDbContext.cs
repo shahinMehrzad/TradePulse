@@ -10,9 +10,19 @@ public class ConfigDbContext : DbContext
     {
     }
 
+    // What the first migrations seeded; the ids are the values the symbol enum had before symbols moved to the database, which existing rows still use.
+    private static readonly (int Id, string Name, string ExchangeSymbol)[] FirstSymbols =
+    [
+        (1, "BTC/USDT", "BTCUSDT"), (2, "XAU/USDT", "XAUUSDT"), (3, "ETH/USDT", "ETHUSDT"), (4, "SOL/USDT", "SOLUSDT"),
+        (5, "XRP/USDT", "XRPUSDT"), (6, "BNB/USDT", "BNBUSDT"), (7, "SUI/USDT", "SUIUSDT"), (8, "ADA/USDT", "ADAUSDT"),
+        (9, "DOGE/USDT", "DOGEUSDT"), (10, "LINK/USDT", "LINKUSDT"), (11, "LTC/USDT", "LTCUSDT"), (12, "AVAX/USDT", "AVAXUSDT"),
+        (13, "DOT/USDT", "DOTUSDT"), (14, "TRX/USDT", "TRXUSDT"),
+    ];
+
     public DbSet<ExchangeLookup> Exchanges => Set<ExchangeLookup>();
     public DbSet<MarketLookup> Markets => Set<MarketLookup>();
     public DbSet<SymbolLookup> Symbols => Set<SymbolLookup>();
+    public DbSet<SymbolListing> SymbolListings => Set<SymbolListing>();
     public DbSet<TimeFrameLookup> TimeFrames => Set<TimeFrameLookup>();
     public DbSet<CandleWorkerConfiguration> CandleWorkerConfigurations => Set<CandleWorkerConfiguration>();
     public DbSet<SymbolDataConfiguration> SymbolDataConfigurations => Set<SymbolDataConfiguration>();
@@ -40,11 +50,33 @@ public class ConfigDbContext : DbContext
             e.HasData(Enum.GetValues<MarketTypeEnum>().Select(v => new MarketLookup { Id = (int)v, Name = v.ToString() }));
         });
 
+        // Symbols are data now: the first fourteen keep the ids they had when they were an enum, new ones get their id from the database.
         builder.Entity<SymbolLookup>(e =>
         {
             e.ToTable("symbols", "config");
-            e.Property(x => x.Id).ValueGeneratedNever();
-            e.HasData(Enum.GetValues<SymbolEnum>().Select(v => new SymbolLookup { Id = (int)v, Name = v.ToString() }));
+            e.HasIndex(x => x.Name).IsUnique();
+            e.HasData(FirstSymbols.Select(x => new SymbolLookup { Id = x.Id, Name = x.Name }));
+        });
+
+        builder.Entity<SymbolListing>(e =>
+        {
+            e.ToTable("exchange_symbols", "config");
+
+            // A listing with configurations (or data) must never silently disappear with its lookup row.
+            e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
+
+            // A symbol is listed once per exchange market, and the exchange's own name is unique there (the table name derives from it).
+            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId }).IsUnique();
+            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.ExchangeSymbol }).IsUnique();
+
+            // The fourteen symbols the collector always had: Binance Futures, named as Binance names them.
+            e.HasData(FirstSymbols.Select(x => new SymbolListing
+            {
+                Id = x.Id, ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures,
+                SymbolId = x.Id, ExchangeSymbol = x.ExchangeSymbol
+            }));
         });
 
         builder.Entity<TimeFrameLookup>(e =>
@@ -63,15 +95,14 @@ public class ConfigDbContext : DbContext
             e.Property(x => x.CreateDate).HasColumnType("timestamp").HasDefaultValueSql("now() at time zone 'utc'");
 
             e.Property(x => x.CollectOpenInterest).HasDefaultValue(false);
+            e.Property(x => x.CollectMarketStatistics).HasDefaultValue(false);
 
             // A lookup row must never silently take its configurations with it.
-            e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.TimeFrame).WithMany().HasForeignKey(x => x.TimeFrameId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.SymbolListing).WithMany().HasForeignKey(x => x.SymbolListingId).OnDelete(DeleteBehavior.Restrict);
 
             // One row per series, like the worker's own duplicate rule.
-            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId, x.TimeFrameId }).IsUnique();
+            e.HasIndex(x => new { x.SymbolListingId, x.TimeFrameId }).IsUnique();
         });
 
         builder.Entity<SymbolDataConfiguration>(e =>
@@ -85,13 +116,11 @@ public class ConfigDbContext : DbContext
             e.Property(x => x.CollectFundingRate).HasDefaultValue(false);
             e.Property(x => x.CollectLiquidation).HasDefaultValue(false);
 
-            // A lookup row must never silently take its configurations with it.
-            e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
+            // A listing with a setting must never silently disappear.
+            e.HasOne(x => x.SymbolListing).WithMany().HasForeignKey(x => x.SymbolListingId).OnDelete(DeleteBehavior.Restrict);
 
             // One row per symbol of an exchange market.
-            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId }).IsUnique();
+            e.HasIndex(x => x.SymbolListingId).IsUnique();
         });
 
         // Who changed which setting. Rows are only ever added; no foreign keys, because a removed setting must keep its history.

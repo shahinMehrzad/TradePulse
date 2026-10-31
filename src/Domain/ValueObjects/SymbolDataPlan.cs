@@ -1,5 +1,6 @@
 using Domain.Entities;
 using Domain.Enums;
+using Domain.Services;
 
 namespace Domain.ValueObjects;
 
@@ -9,27 +10,30 @@ namespace Domain.ValueObjects;
 /// </summary>
 /// <param name="FundingStartDate">UTC. Where the funding rate history starts; null when the funding rate is not wanted.</param>
 public readonly record struct SymbolDataPlan(
-    ExchangeEnum Exchange, MarketTypeEnum MarketType, SymbolEnum Symbol,
+    ExchangeEnum Exchange, MarketTypeEnum MarketType, ExchangeSymbol Symbol,
     bool CollectFundingRate, DateTime? FundingStartDate, bool CollectLiquidation)
 {
     /// <summary>
-    /// Turns a stored configuration row (ids are the enum values) into a plan. False, with the reason, when an id is not a
-    /// member of its enum. Whether an exchange is actually supported is the collector's business, not checked here.
+    /// Turns a stored configuration row (its <see cref="SymbolDataConfiguration.SymbolListing"/> loaded) into a plan. False, with
+    /// the reason, when the symbol is not listed, an id is not a member of its enum or the symbol's name cannot be part of a
+    /// table name. Whether an exchange is actually supported is the collector's business, not checked here.
     /// </summary>
     public static bool TryCreate(SymbolDataConfiguration row, out SymbolDataPlan plan, out string reason)
     {
         plan = default;
 
-        if (!Enum.IsDefined((ExchangeEnum)row.ExchangeId))
+        if (row.SymbolListing is not { } listing)
+            reason = "the symbol is not listed on this exchange market";
+        else if (!Enum.IsDefined((ExchangeEnum)listing.ExchangeId))
             reason = "unknown exchange";
-        else if (!Enum.IsDefined((MarketTypeEnum)row.MarketId))
+        else if (!Enum.IsDefined((MarketTypeEnum)listing.MarketId))
             reason = "unknown market";
-        else if (!Enum.IsDefined((SymbolEnum)row.SymbolId))
-            reason = "unknown symbol";
+        else if (!TableNameRegistry.TryGetSymbolPart((ExchangeEnum)listing.ExchangeId, (MarketTypeEnum)listing.MarketId, listing.ExchangeSymbol, out _, out var symbolReason))
+            reason = $"unusable symbol name: {symbolReason}";
         else
         {
             plan = new SymbolDataPlan(
-                (ExchangeEnum)row.ExchangeId, (MarketTypeEnum)row.MarketId, (SymbolEnum)row.SymbolId,
+                (ExchangeEnum)listing.ExchangeId, (MarketTypeEnum)listing.MarketId, new ExchangeSymbol(listing.ExchangeSymbol),
                 row.CollectFundingRate,
                 // Stored as timestamp without a zone, always UTC.
                 row.FundingStartDate is { } start ? DateTime.SpecifyKind(start, DateTimeKind.Utc) : null,

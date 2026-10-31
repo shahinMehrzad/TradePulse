@@ -2,6 +2,7 @@ using Application.Exchange;
 using Binance.Net.Interfaces.Clients;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Infrastructure.Exchange.Binance;
 
@@ -15,7 +16,7 @@ public sealed class BinanceOpenInterestGateway(IBinanceRestClient client, Binanc
     public TimeSpan MaxHistory { get; } = TimeSpan.FromDays(29);
 
     public async Task<ExchangeResult<ExchangePage<OpenInterest>>> GetOpenInterestAsync(
-        ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeFrame, DateTime from, CancellationToken cancellationToken)
+        ExchangeEnum exchange, ExchangeSymbol symbol, TimeFrameEnum timeFrame, DateTime from, CancellationToken cancellationToken)
     {
         if (exchange != ExchangeEnum.Binance)
             throw new ArgumentException($"This gateway serves Binance only, not {exchange}.", nameof(exchange));
@@ -26,8 +27,10 @@ public sealed class BinanceOpenInterestGateway(IBinanceRestClient client, Binanc
 
         await rateLimiters.For(MarketTypeEnum.Futures).AcquireAsync(1, cancellationToken);
 
+        // Binance returns the NEWEST rows when only a start is given, so ask for a window of one page from the start.
+        var to = from.AddSeconds((double)(int)timeFrame * MaxLimit);
         var result = await client.UsdFuturesApi.ExchangeData.GetOpenInterestHistoryAsync(
-            symbol.ToString(), period, limit: MaxLimit, startTime: from, ct: cancellationToken);
+            symbol.ToString(), period, limit: MaxLimit, startTime: from, endTime: to, ct: cancellationToken);
 
         if (!result.Success)
             return ExchangeResult<ExchangePage<OpenInterest>>.Fail(result.Error?.Message);
@@ -38,6 +41,6 @@ public sealed class BinanceOpenInterestGateway(IBinanceRestClient client, Binanc
             .Select(r => new OpenInterest(r.Timestamp!.Value, r.SumOpenInterest, r.SumOpenInterestValue))
             .ToList();
 
-        return ExchangeResult<ExchangePage<OpenInterest>>.Ok(new ExchangePage<OpenInterest>(rows, HasMore: data.Count >= MaxLimit));
+        return ExchangeResult<ExchangePage<OpenInterest>>.Ok(new ExchangePage<OpenInterest>(rows, HasMore: to < DateTime.UtcNow));
     }
 }

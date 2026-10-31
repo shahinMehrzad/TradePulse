@@ -4,6 +4,7 @@ using Binance.Net.Objects.Models.Futures.Socket;
 using CryptoExchange.Net.Objects.Sockets;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 // An alias, because inside this namespace "Binance" means our own namespace, not the library's.
 using BinanceOrderSide = Binance.Net.Enums.OrderSide;
@@ -14,15 +15,17 @@ namespace Infrastructure.Exchange.Binance;
 public sealed class BinanceLiquidationStream(IBinanceSocketClient client, ILogger<BinanceLiquidationStream> logger) : ILiquidationStream
 {
     public async Task<ExchangeResult<IAsyncDisposable>> SubscribeAsync(
-        ExchangeEnum exchange, IReadOnlyList<SymbolEnum> symbols, ILiquidationListener listener, CancellationToken cancellationToken)
+        ExchangeEnum exchange, IReadOnlyList<ExchangeSymbol> symbols, ILiquidationListener listener, CancellationToken cancellationToken)
     {
         if (exchange != ExchangeEnum.Binance)
             throw new ArgumentException($"This stream serves Binance only, not {exchange}.", nameof(exchange));
 
         var names = symbols.Select(s => s.ToString()).ToList();
+        // The stream names a symbol as the exchange does; look it up (any case) among the ones asked for, once, off the callback.
+        var known = symbols.Distinct().ToDictionary(s => s.Value, StringComparer.OrdinalIgnoreCase);
 
         // Socket callback: must stay cheap and must never block.
-        void OnMessage(DataEvent<BinanceFuturesStreamLiquidation> message) => OnLiquidation(listener, message.Data);
+        void OnMessage(DataEvent<BinanceFuturesStreamLiquidation> message) => OnLiquidation(known, listener, message.Data);
 
         var result = await client.UsdFuturesApi.ExchangeData.SubscribeToLiquidationUpdatesAsync(names, OnMessage, cancellationToken);
 
@@ -31,9 +34,9 @@ public sealed class BinanceLiquidationStream(IBinanceSocketClient client, ILogge
             : ExchangeResult<IAsyncDisposable>.Fail(result.Error?.Message);
     }
 
-    private void OnLiquidation(ILiquidationListener listener, BinanceFuturesStreamLiquidation order)
+    private void OnLiquidation(Dictionary<string, ExchangeSymbol> known, ILiquidationListener listener, BinanceFuturesStreamLiquidation order)
     {
-        if (!Enum.TryParse<SymbolEnum>(order.Symbol, out var symbol) || !Enum.IsDefined(symbol))
+        if (!known.TryGetValue(order.Symbol, out var symbol))
         {
             logger.LogWarning("Ignoring liquidation for unknown symbol {Symbol}", order.Symbol);
             return;

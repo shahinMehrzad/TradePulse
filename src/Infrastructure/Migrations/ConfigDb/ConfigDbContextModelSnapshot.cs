@@ -77,6 +77,11 @@ namespace Infrastructure.Migrations.ConfigDb
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("CollectMarketStatistics")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("CollectOpenInterest")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -87,16 +92,10 @@ namespace Infrastructure.Migrations.ConfigDb
                         .HasColumnType("timestamp")
                         .HasDefaultValueSql("now() at time zone 'utc'");
 
-                    b.Property<int>("ExchangeId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("MarketId")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp");
 
-                    b.Property<int>("SymbolId")
+                    b.Property<int>("SymbolListingId")
                         .HasColumnType("integer");
 
                     b.Property<int>("TimeFrameId")
@@ -104,13 +103,9 @@ namespace Infrastructure.Migrations.ConfigDb
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MarketId");
-
-                    b.HasIndex("SymbolId");
-
                     b.HasIndex("TimeFrameId");
 
-                    b.HasIndex("ExchangeId", "MarketId", "SymbolId", "TimeFrameId")
+                    b.HasIndex("SymbolListingId", "TimeFrameId")
                         .IsUnique();
 
                     b.ToTable("candle_worker_configurations", "config");
@@ -186,11 +181,34 @@ namespace Infrastructure.Migrations.ConfigDb
                         .HasColumnType("timestamp")
                         .HasDefaultValueSql("now() at time zone 'utc'");
 
+                    b.Property<DateTime?>("FundingStartDate")
+                        .HasColumnType("timestamp");
+
+                    b.Property<int>("SymbolListingId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SymbolListingId")
+                        .IsUnique();
+
+                    b.ToTable("symbol_data_configurations", "config");
+                });
+
+            modelBuilder.Entity("Domain.Entities.SymbolListing", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
                     b.Property<int>("ExchangeId")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime?>("FundingStartDate")
-                        .HasColumnType("timestamp");
+                    b.Property<string>("ExchangeSymbol")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("MarketId")
                         .HasColumnType("integer");
@@ -204,16 +222,136 @@ namespace Infrastructure.Migrations.ConfigDb
 
                     b.HasIndex("SymbolId");
 
+                    b.HasIndex("ExchangeId", "MarketId", "ExchangeSymbol")
+                        .IsUnique();
+
                     b.HasIndex("ExchangeId", "MarketId", "SymbolId")
                         .IsUnique();
 
-                    b.ToTable("symbol_data_configurations", "config");
+                    b.ToTable("exchange_symbols", "config");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "BTCUSDT",
+                            MarketId = 2,
+                            SymbolId = 1
+                        },
+                        new
+                        {
+                            Id = 2,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "XAUUSDT",
+                            MarketId = 2,
+                            SymbolId = 2
+                        },
+                        new
+                        {
+                            Id = 3,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "ETHUSDT",
+                            MarketId = 2,
+                            SymbolId = 3
+                        },
+                        new
+                        {
+                            Id = 4,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "SOLUSDT",
+                            MarketId = 2,
+                            SymbolId = 4
+                        },
+                        new
+                        {
+                            Id = 5,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "XRPUSDT",
+                            MarketId = 2,
+                            SymbolId = 5
+                        },
+                        new
+                        {
+                            Id = 6,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "BNBUSDT",
+                            MarketId = 2,
+                            SymbolId = 6
+                        },
+                        new
+                        {
+                            Id = 7,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "SUIUSDT",
+                            MarketId = 2,
+                            SymbolId = 7
+                        },
+                        new
+                        {
+                            Id = 8,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "ADAUSDT",
+                            MarketId = 2,
+                            SymbolId = 8
+                        },
+                        new
+                        {
+                            Id = 9,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "DOGEUSDT",
+                            MarketId = 2,
+                            SymbolId = 9
+                        },
+                        new
+                        {
+                            Id = 10,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "LINKUSDT",
+                            MarketId = 2,
+                            SymbolId = 10
+                        },
+                        new
+                        {
+                            Id = 11,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "LTCUSDT",
+                            MarketId = 2,
+                            SymbolId = 11
+                        },
+                        new
+                        {
+                            Id = 12,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "AVAXUSDT",
+                            MarketId = 2,
+                            SymbolId = 12
+                        },
+                        new
+                        {
+                            Id = 13,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "DOTUSDT",
+                            MarketId = 2,
+                            SymbolId = 13
+                        },
+                        new
+                        {
+                            Id = 14,
+                            ExchangeId = 1,
+                            ExchangeSymbol = "TRXUSDT",
+                            MarketId = 2,
+                            SymbolId = 14
+                        });
                 });
 
             modelBuilder.Entity("Domain.Entities.SymbolLookup", b =>
                 {
                     b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Description")
                         .HasColumnType("text");
@@ -224,78 +362,81 @@ namespace Infrastructure.Migrations.ConfigDb
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Name")
+                        .IsUnique();
+
                     b.ToTable("symbols", "config");
 
                     b.HasData(
                         new
                         {
                             Id = 1,
-                            Name = "BTCUSDT"
+                            Name = "BTC/USDT"
                         },
                         new
                         {
                             Id = 2,
-                            Name = "XAUUSDT"
+                            Name = "XAU/USDT"
                         },
                         new
                         {
                             Id = 3,
-                            Name = "ETHUSDT"
+                            Name = "ETH/USDT"
                         },
                         new
                         {
                             Id = 4,
-                            Name = "SOLUSDT"
+                            Name = "SOL/USDT"
                         },
                         new
                         {
                             Id = 5,
-                            Name = "XRPUSDT"
+                            Name = "XRP/USDT"
                         },
                         new
                         {
                             Id = 6,
-                            Name = "BNBUSDT"
+                            Name = "BNB/USDT"
                         },
                         new
                         {
                             Id = 7,
-                            Name = "SUIUSDT"
+                            Name = "SUI/USDT"
                         },
                         new
                         {
                             Id = 8,
-                            Name = "ADAUSDT"
+                            Name = "ADA/USDT"
                         },
                         new
                         {
                             Id = 9,
-                            Name = "DOGEUSDT"
+                            Name = "DOGE/USDT"
                         },
                         new
                         {
                             Id = 10,
-                            Name = "LINKUSDT"
+                            Name = "LINK/USDT"
                         },
                         new
                         {
                             Id = 11,
-                            Name = "LTCUSDT"
+                            Name = "LTC/USDT"
                         },
                         new
                         {
                             Id = 12,
-                            Name = "AVAXUSDT"
+                            Name = "AVAX/USDT"
                         },
                         new
                         {
                             Id = 13,
-                            Name = "DOTUSDT"
+                            Name = "DOT/USDT"
                         },
                         new
                         {
                             Id = 14,
-                            Name = "TRXUSDT"
+                            Name = "TRX/USDT"
                         });
                 });
 
@@ -398,21 +539,9 @@ namespace Infrastructure.Migrations.ConfigDb
 
             modelBuilder.Entity("Domain.Entities.CandleWorkerConfiguration", b =>
                 {
-                    b.HasOne("Domain.Entities.ExchangeLookup", "Exchange")
+                    b.HasOne("Domain.Entities.SymbolListing", "SymbolListing")
                         .WithMany()
-                        .HasForeignKey("ExchangeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.MarketLookup", "Market")
-                        .WithMany()
-                        .HasForeignKey("MarketId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.SymbolLookup", "Symbol")
-                        .WithMany()
-                        .HasForeignKey("SymbolId")
+                        .HasForeignKey("SymbolListingId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -422,16 +551,23 @@ namespace Infrastructure.Migrations.ConfigDb
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Exchange");
-
-                    b.Navigation("Market");
-
-                    b.Navigation("Symbol");
+                    b.Navigation("SymbolListing");
 
                     b.Navigation("TimeFrame");
                 });
 
             modelBuilder.Entity("Domain.Entities.SymbolDataConfiguration", b =>
+                {
+                    b.HasOne("Domain.Entities.SymbolListing", "SymbolListing")
+                        .WithMany()
+                        .HasForeignKey("SymbolListingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("SymbolListing");
+                });
+
+            modelBuilder.Entity("Domain.Entities.SymbolListing", b =>
                 {
                     b.HasOne("Domain.Entities.ExchangeLookup", "Exchange")
                         .WithMany()
