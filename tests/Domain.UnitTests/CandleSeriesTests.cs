@@ -40,7 +40,6 @@ public class CandleSeriesTests
     [Theory]
     [InlineData(99,(int)MarketTypeEnum.Futures, (int)SymbolEnum.BTCUSDT, (int)TimeFrameEnum._1H, "unknown exchange")]
     [InlineData((int)ExchangeEnum.Binance, 99, (int)SymbolEnum.BTCUSDT, (int)TimeFrameEnum._1H, "unknown market")]
-    [InlineData((int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, 999, (int)TimeFrameEnum._1H, "unknown symbol")]
     [InlineData((int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, (int)SymbolEnum.BTCUSDT, 12345, "unknown time frame")]
     public void AnIdThatIsNoEnumMemberIsRefusedWithAReason(int exchange, int market, int symbol, int timeFrame, string expected)
     {
@@ -48,13 +47,44 @@ public class CandleSeriesTests
         Assert.Equal(expected, reason);
     }
 
+    [Fact]
+    public void ASymbolThatIsNotListedOnTheMarketIsRefusedWithAReason()
+    {
+        var row = Row(exchange: (int)ExchangeEnum.Binance);
+        row.SymbolListing = null;
+
+        Assert.False(CandleSeriesPlan.TryCreate(row, out _, out var reason));
+        Assert.Equal("the symbol is not listed on this exchange market", reason);
+    }
+
+    [Theory]
+    [InlineData("BTC USDT")]
+    [InlineData("BTCUSDT; DROP TABLE x")]
+    [InlineData("---")]
+    public void ANameThatCannotBePartOfATableNameIsRefusedWithAReason(string exchangeSymbol)
+    {
+        Assert.False(CandleSeriesPlan.TryCreate(Row(exchange: (int)ExchangeEnum.Binance, exchangeSymbol: exchangeSymbol), out _, out var reason));
+        Assert.StartsWith("unusable symbol name", reason);
+    }
+
+    [Fact]
+    public void TheSymbolIsTheNameTheExchangeUsesNotTheNameOfTheLookupRow()
+    {
+        var row = Row(exchange: (int)ExchangeEnum.Binance, exchangeSymbol: "1000PEPEUSDT");
+
+        Assert.True(CandleSeriesPlan.TryCreate(row, out var plan, out _));
+        Assert.Equal(("1000PEPEUSDT", "binance_futures_1000pepeusdt_1h"), (plan.Series.Symbol.Value, plan.Series.TableName));
+    }
+
     private static CandleWorkerConfiguration Row(
-        int exchange, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SymbolEnum.BTCUSDT, int timeFrame = (int)TimeFrameEnum._1H) => new()
+        int exchange, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SymbolEnum.BTCUSDT, int timeFrame = (int)TimeFrameEnum._1H,
+        string exchangeSymbol = "BTCUSDT") => new()
     {
         ExchangeId = exchange,
         MarketId = market,
         SymbolId = symbol,
         TimeFrameId = timeFrame,
+        SymbolListing = new SymbolListing { ExchangeId = exchange, MarketId = market, SymbolId = symbol, ExchangeSymbol = exchangeSymbol },
         StartDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified),
     };
 }

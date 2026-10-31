@@ -62,6 +62,12 @@ public class DatabaseCandleSeriesSourceTests(PostgresFixture postgres)
         MarketId = (int)market,
         SymbolId = (int)symbol,
         TimeFrameId = (int)timeFrame,
+        // The migration lists every symbol on Binance Futures (listing id = the old enum value); any other market needs its own listing.
+        SymbolListingId = market == MarketTypeEnum.Futures ? (int)symbol : null,
+        SymbolListing = market == MarketTypeEnum.Futures ? null : new SymbolListing
+        {
+            ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = (int)symbol, ExchangeSymbol = symbol.ToString()
+        },
         StartDate = start,
     };
 

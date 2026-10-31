@@ -15,6 +15,11 @@ public class CandleSeriesMapperTests
         MarketId = market,
         SymbolId = symbol,
         TimeFrameId = timeFrame,
+        SymbolListing = new SymbolListing
+        {
+            ExchangeId = exchange, MarketId = market, SymbolId = symbol,
+            ExchangeSymbol = Enum.IsDefined((SymbolEnum)symbol) ? ((SymbolEnum)symbol).ToString() : "NOSUCHUSDT"
+        },
         StartDate = start ?? new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified),
     };
 
@@ -38,7 +43,6 @@ public class CandleSeriesMapperTests
     [Theory]
     [InlineData(99, 2, 3, 3600, "unknown exchange")]
     [InlineData(1, 99, 3, 3600, "unknown market")]
-    [InlineData(1, 2, 999, 3600, "unknown symbol")]
     [InlineData(1, 2, 3, 12345, "unknown time frame")]
     public void ARowItCannotNameIsSkippedAndReportedNotFatal(int exchange, int market, int symbol, int timeFrame, string reasonStart)
     {
@@ -52,6 +56,19 @@ public class CandleSeriesMapperTests
         var (id, reason) = Assert.Single(skipped);
         Assert.Equal(2, id);
         Assert.StartsWith(reasonStart, reason);
+    }
+
+    [Fact]
+    public void ARowWhoseSymbolIsNotListedIsSkippedAndReportedNotFatal()
+    {
+        var unlisted = Row(id: 2);
+        unlisted.SymbolListing = null;
+        var skipped = new List<(int Id, string Reason)>();
+
+        var series = CandleSeriesMapper.ToSeries([Row(id: 1), unlisted], (row, reason) => skipped.Add((row.Id, reason)));
+
+        Assert.Single(series);
+        Assert.Equal([(2, "the symbol is not listed on this exchange market")], skipped);
     }
 
     [Fact]

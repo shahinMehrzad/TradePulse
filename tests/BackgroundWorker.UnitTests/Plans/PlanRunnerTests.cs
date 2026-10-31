@@ -66,7 +66,7 @@ public class PlanRunnerTests : IAsyncLifetime
             select ?? (plans => plans.Where(p => p.Series.MarketType == MarketTypeEnum.Futures).ToList()),
             run ?? (async (items, ct) =>
             {
-                Record($"start {string.Join("+", items.Select(i => i.Series.Symbol).Order())}");
+                Record($"start {string.Join("+", items.Select(i => i.Series.Symbol.Value).Order(StringComparer.Ordinal))}");
                 try
                 {
                     await Task.Delay(Timeout.Infinite, ct);
@@ -209,7 +209,7 @@ public class PlanRunnerTests : IAsyncLifetime
             plan => plan.Series.Timeframe,
             run ?? (async (key, items, ct) =>
             {
-                Record($"start {key} {string.Join("+", items.Select(i => i.Series.Symbol).Order())}");
+                Record($"start {key} {string.Join("+", items.Select(i => i.Series.Symbol.Value).Order(StringComparer.Ordinal))}");
                 try
                 {
                     await Task.Delay(Timeout.Infinite, ct);

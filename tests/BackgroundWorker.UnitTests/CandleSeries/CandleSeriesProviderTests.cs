@@ -169,7 +169,7 @@ public class CandleSeriesProviderTests
         _source.Series.Add(Eth4h);
         await AdvanceUntilAsync(CandleSeriesProvider.RefreshInterval, () => provider.Version == 2);
 
-        Assert.Equal([Btc4h, Eth4h], provider.Current.Order(Comparer<CandleSeriesPlan>.Create((a, b) => a.Series.Symbol.CompareTo(b.Series.Symbol))));
+        Assert.Equal([Btc4h, Eth4h], provider.Current.Order(Comparer<CandleSeriesPlan>.Create((a, b) => string.CompareOrdinal(a.Series.Symbol.Value, b.Series.Symbol.Value))));
         Assert.Equal(PlanStatus.Loaded, provider.Status);
         Assert.Equal(_time.GetUtcNow().UtcDateTime, provider.LoadedAt);   // grace periods count from the change
     }

@@ -14,6 +14,8 @@ namespace Infrastructure.Repositories
             // StartDate is UTC (the caller normalises it). timestamp columns hold no zone and Npgsql rejects Kind=Utc for them.
             configuration.StartDate = DateTime.SpecifyKind(configuration.StartDate, DateTimeKind.Unspecified);
 
+            configuration.SymbolListing = await SymbolListings.FindOrAddAsync(
+                context, configuration.ExchangeId, configuration.MarketId, configuration.SymbolId, "Unknown exchange, market, symbol or time frame.", cancellationToken);
             context.CandleWorkerConfigurations.Add(configuration);
             await SaveAsync(cancellationToken);
 
@@ -44,6 +46,8 @@ namespace Infrastructure.Repositories
             config.MarketId = configuration.MarketId;
             config.SymbolId = configuration.SymbolId;
             config.TimeFrameId = configuration.TimeFrameId;
+            config.SymbolListing = await SymbolListings.FindOrAddAsync(
+                context, configuration.ExchangeId, configuration.MarketId, configuration.SymbolId, "Unknown exchange, market, symbol or time frame.", cancellationToken);
             config.StartDate = DateTime.SpecifyKind(configuration.StartDate, DateTimeKind.Unspecified);
             config.CollectOpenInterest = configuration.CollectOpenInterest;
             config.CollectMarketStatistics = configuration.CollectMarketStatistics;
@@ -71,7 +75,7 @@ namespace Infrastructure.Repositories
         }
 
         public async Task<IReadOnlyList<CandleWorkerConfiguration>> GetConfigurationList(CancellationToken cancellationToken)
-            => await context.CandleWorkerConfigurations.OrderBy(c => c.Symbol!.Name)
+            => await context.CandleWorkerConfigurations.Include(c => c.SymbolListing).OrderBy(c => c.Symbol!.Name)
                 .ThenBy(c => c.Id).AsNoTracking().ToListAsync(cancellationToken);
 
     }

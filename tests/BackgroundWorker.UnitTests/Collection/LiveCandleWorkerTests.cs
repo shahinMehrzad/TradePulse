@@ -127,8 +127,8 @@ public class LiveCandleWorkerTests
 
         var oneHour = Assert.Single(rig.Stream.Subscriptions, s => s.Timeframe == TimeFrameEnum._1H);
         Assert.Equal((ExchangeEnum.Binance, MarketTypeEnum.Futures), (oneHour.Exchange, oneHour.MarketType));
-        Assert.Equal([SymbolEnum.BTCUSDT, SymbolEnum.ETHUSDT], oneHour.Symbols.Order());
-        Assert.Equal([SymbolEnum.BTCUSDT], Assert.Single(rig.Stream.Subscriptions, s => s.Timeframe == TimeFrameEnum._4H).Symbols);
+        Assert.Equal<ExchangeSymbol>([SymbolEnum.BTCUSDT, SymbolEnum.ETHUSDT], oneHour.Symbols.OrderBy(s => s.Value, StringComparer.Ordinal));
+        Assert.Equal<ExchangeSymbol>([SymbolEnum.BTCUSDT], Assert.Single(rig.Stream.Subscriptions, s => s.Timeframe == TimeFrameEnum._4H).Symbols);
     }
 
     [Fact]

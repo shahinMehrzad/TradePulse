@@ -262,6 +262,26 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task ASeriesPointsAtTheListingOfItsSymbolAndAMarketNeverUsedBeforeGetsOne()
+    {
+        await using var context = await MigratedContextAsync();
+        var repository = new CandleWorkerConfigurationRepository(context);
+        var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var spot = NewSeries(start);
+        spot.MarketId = (int)MarketTypeEnum.Spot;
+
+        await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);
+        await repository.AddNewCandleWorkerConfiguration(spot, Ct);
+
+        var byMarket = (await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct))
+            .ToDictionary(c => c.MarketId, c => (c.SymbolListing!.Id, c.SymbolListing.ExchangeSymbol));
+        // Futures reuses the seeded listing (id = the old enum value); Spot gets a new one named as Binance names it.
+        Assert.Equal(((int)SymbolEnum.BTCUSDT, "BTCUSDT"), byMarket[(int)MarketTypeEnum.Futures]);
+        Assert.Equal((15, "BTCUSDT"), byMarket[(int)MarketTypeEnum.Spot]);
+        Assert.Equal(15, await context.SymbolListings.CountAsync(Ct));
+    }
+
+    [Fact]
     public async Task AddingTheSameSeriesTwiceIsAConflictEvenWhenNoOneCheckedFirst()
     {
         await using var context = await MigratedContextAsync();

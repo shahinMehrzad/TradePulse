@@ -2,6 +2,7 @@ using Application.Exchange;
 using Binance.Net.Interfaces.Clients;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Infrastructure.Exchange.Binance;
 
@@ -12,7 +13,7 @@ public sealed class BinanceFundingRateGateway(IBinanceRestClient client, Binance
     internal const int MaxLimit = 1000;
 
     public async Task<ExchangeResult<ExchangePage<FundingRate>>> GetFundingRatesAsync(
-        ExchangeEnum exchange, SymbolEnum symbol, DateTime from, CancellationToken cancellationToken)
+        ExchangeEnum exchange, ExchangeSymbol symbol, DateTime from, CancellationToken cancellationToken)
     {
         if (exchange != ExchangeEnum.Binance)
             throw new ArgumentException($"This gateway serves Binance only, not {exchange}.", nameof(exchange));

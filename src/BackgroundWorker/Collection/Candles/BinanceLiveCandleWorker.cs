@@ -108,7 +108,7 @@ public class BinanceLiveCandleWorker(
         }
     }
 
-    private sealed record CandleStream(MarketTypeEnum Market, TimeFrameEnum Timeframe, Dictionary<SymbolEnum, string> TablesBySymbol)
+    private sealed record CandleStream(MarketTypeEnum Market, TimeFrameEnum Timeframe, Dictionary<ExchangeSymbol, string> TablesBySymbol)
     {
         public string Component => Market == MarketTypeEnum.Futures ? HealthComponents.CandleStreamFutures : HealthComponents.CandleStreamSpot;
     }

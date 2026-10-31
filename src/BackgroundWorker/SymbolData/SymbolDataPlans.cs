@@ -5,7 +5,7 @@ using Domain.ValueObjects;
 namespace BackgroundWorker.SymbolData;
 
 /// <summary>A symbol whose funding rate is collected, and the date its history starts from (UTC).</summary>
-public readonly record struct FundingRateTarget(SymbolEnum Symbol, DateTime StartDate);
+public readonly record struct FundingRateTarget(ExchangeSymbol Symbol, DateTime StartDate);
 
 /// <summary>
 /// Which of the admin's choices the Binance funding rate and liquidation workers can really serve. A choice the market cannot
@@ -31,9 +31,9 @@ public static class SymbolDataPlans
         return targets.DistinctBy(t => t.Symbol).ToList();
     }
 
-    public static IReadOnlyList<SymbolEnum> LiquidationsForBinance(IEnumerable<SymbolDataPlan> plans, Action<SymbolDataPlan, string>? onRefused = null)
+    public static IReadOnlyList<ExchangeSymbol> LiquidationsForBinance(IEnumerable<SymbolDataPlan> plans, Action<SymbolDataPlan, string>? onRefused = null)
     {
-        var symbols = new List<SymbolEnum>();
+        var symbols = new List<ExchangeSymbol>();
 
         foreach (var plan in plans.ForExchange(ExchangeEnum.Binance).Where(p => p.CollectLiquidation))
         {

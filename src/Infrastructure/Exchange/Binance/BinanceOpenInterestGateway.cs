@@ -2,6 +2,7 @@ using Application.Exchange;
 using Binance.Net.Interfaces.Clients;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Infrastructure.Exchange.Binance;
 
@@ -15,7 +16,7 @@ public sealed class BinanceOpenInterestGateway(IBinanceRestClient client, Binanc
     public TimeSpan MaxHistory { get; } = TimeSpan.FromDays(29);
 
     public async Task<ExchangeResult<ExchangePage<OpenInterest>>> GetOpenInterestAsync(
-        ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeFrame, DateTime from, CancellationToken cancellationToken)
+        ExchangeEnum exchange, ExchangeSymbol symbol, TimeFrameEnum timeFrame, DateTime from, CancellationToken cancellationToken)
     {
         if (exchange != ExchangeEnum.Binance)
             throw new ArgumentException($"This gateway serves Binance only, not {exchange}.", nameof(exchange));

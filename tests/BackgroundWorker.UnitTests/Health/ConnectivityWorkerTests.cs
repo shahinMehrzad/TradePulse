@@ -2,6 +2,7 @@ using Application.Exchange;
 using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -16,7 +17,7 @@ public class ConnectivityWorkerTests
     {
         public List<MarketTypeEnum> Pings { get; } = [];
         public Func<MarketTypeEnum, ExchangeResult<TimeSpan>> PingAnswer { get; set; } = _ => ExchangeResult<TimeSpan>.Ok(TimeSpan.FromMilliseconds(12));
-        public List<SymbolEnum> StreamSymbols { get; } = [];
+        public List<ExchangeSymbol> StreamSymbols { get; } = [];
         public List<IProbeStreamListener> Listeners { get; } = [];
         public int Disposed;
 
@@ -28,7 +29,7 @@ public class ConnectivityWorkerTests
         }
 
         public Task<ExchangeResult<IAsyncDisposable>> SubscribeToProbeStreamAsync(
-            ExchangeEnum exchange, SymbolEnum symbol, IProbeStreamListener listener, CancellationToken cancellationToken)
+            ExchangeEnum exchange, ExchangeSymbol symbol, IProbeStreamListener listener, CancellationToken cancellationToken)
         {
             StreamSymbols.Add(symbol);
             Listeners.Add(listener);
@@ -63,7 +64,7 @@ public class ConnectivityWorkerTests
 
             rig.Worker = new BinanceConnectivityWorker(
                 NullLogger<BinanceConnectivityWorker>.Instance, rig.Health, rig.Probe,
-                Options.Create(new HealthConfigurations { ProbeSymbol = probeSymbol }), provider);
+                Options.Create(new HealthConfigurations { ProbeSymbol = probeSymbol.ToString() }), provider);
 
             await rig.Worker.StartAsync(Ct);
             return rig;
@@ -137,7 +138,7 @@ public class ConnectivityWorkerTests
         await WaitUntilAsync(() => rig.Probe.Listeners.Count == 1, "the subscription");
         var listener = rig.Probe.Listeners[0];
 
-        Assert.Equal([SymbolEnum.ETHUSDT], rig.Probe.StreamSymbols);
+        Assert.Equal<ExchangeSymbol>([SymbolEnum.ETHUSDT], rig.Probe.StreamSymbols);
         Assert.True(rig.Health.Get(HealthComponents.FuturesWebSocket).Connected);
 
         listener.OnMessage();

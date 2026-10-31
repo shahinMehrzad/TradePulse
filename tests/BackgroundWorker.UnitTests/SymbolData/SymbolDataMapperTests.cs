@@ -14,6 +14,11 @@ public class SymbolDataMapperTests
         ExchangeId = exchange,
         MarketId = market,
         SymbolId = symbol,
+        SymbolListing = new SymbolListing
+        {
+            ExchangeId = exchange, MarketId = market, SymbolId = symbol,
+            ExchangeSymbol = Enum.IsDefined((SymbolEnum)symbol) ? ((SymbolEnum)symbol).ToString() : "NOSUCHUSDT"
+        },
         CollectFundingRate = funding,
         FundingStartDate = funding ? new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified) : null,
         CollectLiquidation = liquidation,
@@ -40,7 +45,6 @@ public class SymbolDataMapperTests
     [Theory]
     [InlineData(99, 2, 3, "unknown exchange")]
     [InlineData(1, 99, 3, "unknown market")]
-    [InlineData(1, 2, 999, "unknown symbol")]
     public void ARowItCannotNameIsSkippedAndReportedNotFatal(int exchange, int market, int symbol, string reason)
     {
         var skipped = new List<(int Id, string Reason)>();
@@ -49,6 +53,19 @@ public class SymbolDataMapperTests
 
         Assert.Single(plans);
         Assert.Equal([(2, reason)], skipped);
+    }
+
+    [Fact]
+    public void ARowWhoseSymbolIsNotListedIsSkippedAndReportedNotFatal()
+    {
+        var unlisted = Row(id: 2);
+        unlisted.SymbolListing = null;
+        var skipped = new List<(int Id, string Reason)>();
+
+        var plans = SymbolDataMapper.ToPlans([unlisted, Row(id: 1)], (row, why) => skipped.Add((row.Id, why)));
+
+        Assert.Single(plans);
+        Assert.Equal([(2, "the symbol is not listed on this exchange market")], skipped);
     }
 
     [Fact]

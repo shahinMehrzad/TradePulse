@@ -87,7 +87,7 @@ public class BinanceGatewayGuardTests
     {
         public void OnMessage() { }
         public void OnClosedCandle(CandleSeries series, Candle candle) { }
-        public void OnLiquidation(SymbolEnum symbol, Liquidation liquidation) { }
+        public void OnLiquidation(ExchangeSymbol symbol, Liquidation liquidation) { }
         public void OnConnectionLost() { }
         public void OnConnectionRestored(TimeSpan offlineFor) { }
     }

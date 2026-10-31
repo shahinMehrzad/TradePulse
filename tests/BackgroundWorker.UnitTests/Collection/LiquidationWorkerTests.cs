@@ -22,12 +22,12 @@ public class LiquidationWorkerTests
 
     private sealed class FakeLiquidationStream : ILiquidationStream
     {
-        public List<IReadOnlyList<SymbolEnum>> Subscriptions { get; } = [];
+        public List<IReadOnlyList<ExchangeSymbol>> Subscriptions { get; } = [];
         public List<ILiquidationListener> Listeners { get; } = [];
         public int Disposed;
 
         public Task<ExchangeResult<IAsyncDisposable>> SubscribeAsync(
-            ExchangeEnum exchange, IReadOnlyList<SymbolEnum> symbols, ILiquidationListener listener, CancellationToken cancellationToken)
+            ExchangeEnum exchange, IReadOnlyList<ExchangeSymbol> symbols, ILiquidationListener listener, CancellationToken cancellationToken)
         {
             Subscriptions.Add(symbols);
             Listeners.Add(listener);
@@ -121,7 +121,7 @@ public class LiquidationWorkerTests
 
         await WaitUntilAsync(() => rig.Stream.Subscriptions.Count == 1, "the subscription");
 
-        Assert.Equal([SymbolEnum.BTCUSDT, SymbolEnum.BNBUSDT], rig.Stream.Subscriptions[0].Order(Comparer<SymbolEnum>.Create((a, b) => ((int)a).CompareTo((int)b))));
+        Assert.Equal<ExchangeSymbol>([SymbolEnum.BTCUSDT, SymbolEnum.BNBUSDT], rig.Stream.Subscriptions[0].OrderBy(s => s.Value, StringComparer.Ordinal).Reverse());
         Assert.Equal(["binance_futures_btcusdt_liquidation", "binance_futures_bnbusdt_liquidation"], rig.Repository.Created.Order(StringComparer.Ordinal).Reverse());
         Assert.True(rig.Health.Get(HealthComponents.LiquidationStream).Connected);
     }
@@ -155,7 +155,7 @@ public class LiquidationWorkerTests
         await WaitUntilAsync(() => rig.Stream.Subscriptions.Count == 2, "the second subscription");
 
         Assert.Equal(1, rig.Stream.Disposed);
-        Assert.Equal([SymbolEnum.BTCUSDT, SymbolEnum.ETHUSDT], rig.Stream.Subscriptions[1].Order());
+        Assert.Equal<ExchangeSymbol>([SymbolEnum.BTCUSDT, SymbolEnum.ETHUSDT], rig.Stream.Subscriptions[1].OrderBy(s => s.Value, StringComparer.Ordinal));
         Assert.Contains("binance_futures_ethusdt_liquidation", rig.Repository.Created);
 
         // A symbol that only wants its funding rate is no concern of this worker.

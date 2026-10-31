@@ -10,7 +10,7 @@ namespace Infrastructure.Repositories;
 public class SymbolDataConfigurationRepository(ConfigDbContext context) : ISymbolDataConfigurationRepository
 {
     public async Task<IReadOnlyList<SymbolDataConfiguration>> GetAll(CancellationToken cancellationToken)
-        => await context.SymbolDataConfigurations.AsNoTracking()
+        => await context.SymbolDataConfigurations.AsNoTracking().Include(c => c.SymbolListing)
             .OrderBy(c => c.Symbol!.Name).ThenBy(c => c.Id)
             .ToListAsync(cancellationToken);
 
@@ -21,6 +21,8 @@ public class SymbolDataConfigurationRepository(ConfigDbContext context) : ISymbo
     {
         configuration.FundingStartDate = ToTimestamp(configuration.FundingStartDate);
 
+        configuration.SymbolListing = await SymbolListings.FindOrAddAsync(
+            context, configuration.ExchangeId, configuration.MarketId, configuration.SymbolId, "Unknown exchange, market or symbol.", cancellationToken);
         context.SymbolDataConfigurations.Add(configuration);
         await SaveAsync(cancellationToken);
 
@@ -35,6 +37,8 @@ public class SymbolDataConfigurationRepository(ConfigDbContext context) : ISymbo
         config.ExchangeId = configuration.ExchangeId;
         config.MarketId = configuration.MarketId;
         config.SymbolId = configuration.SymbolId;
+        config.SymbolListing = await SymbolListings.FindOrAddAsync(
+            context, configuration.ExchangeId, configuration.MarketId, configuration.SymbolId, "Unknown exchange, market or symbol.", cancellationToken);
         config.CollectFundingRate = configuration.CollectFundingRate;
         config.FundingStartDate = ToTimestamp(configuration.FundingStartDate);
         config.CollectLiquidation = configuration.CollectLiquidation;

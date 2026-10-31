@@ -2,6 +2,7 @@ using Application;
 using BackgroundWorker.SymbolData;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Infrastructure;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -61,6 +62,7 @@ public class DatabaseSymbolDataSourceTests(PostgresFixture postgres)
         ExchangeId = (int)ExchangeEnum.Binance,
         MarketId = (int)MarketTypeEnum.Futures,
         SymbolId = (int)symbol,
+        SymbolListingId = (int)symbol,   // the migration lists every symbol on Binance Futures with the old enum value as its id
         CollectFundingRate = funding,
         FundingStartDate = fundingStart,
         CollectLiquidation = liquidation,
@@ -77,10 +79,10 @@ public class DatabaseSymbolDataSourceTests(PostgresFixture postgres)
 
         var plans = await services.GetRequiredService<ISymbolDataSource>().LoadAsync(Ct);
 
-        Assert.Equal(
+        Assert.Equal<(ExchangeSymbol, bool, DateTime?, bool)>(
             [(SymbolEnum.BTCUSDT, true, (DateTime?)new DateTime(2020, 1, 1), true),
              (SymbolEnum.ETHUSDT, false, null, true)],
-            plans.OrderBy(p => p.Symbol).Select(p => (p.Symbol, p.CollectFundingRate, p.FundingStartDate, p.CollectLiquidation)));
+            plans.OrderBy(p => p.Symbol.Value, StringComparer.Ordinal).Select(p => (p.Symbol, p.CollectFundingRate, p.FundingStartDate, p.CollectLiquidation)));
         Assert.All(plans.Where(p => p.FundingStartDate is not null), p => Assert.Equal(DateTimeKind.Utc, p.FundingStartDate!.Value.Kind));
     }
 
