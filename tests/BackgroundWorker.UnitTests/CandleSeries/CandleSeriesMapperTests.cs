@@ -11,9 +11,6 @@ public class CandleSeriesMapperTests
         int symbol = (int)SymbolEnum.BTCUSDT, int timeFrame = (int)TimeFrameEnum._4H, DateTime? start = null) => new()
     {
         Id = id,
-        ExchangeId = exchange,
-        MarketId = market,
-        SymbolId = symbol,
         TimeFrameId = timeFrame,
         SymbolListing = new SymbolListing
         {

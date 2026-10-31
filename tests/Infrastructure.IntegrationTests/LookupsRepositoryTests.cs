@@ -200,9 +200,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         await using var context = await MigratedContextAsync();
         CandleWorkerConfiguration Series() => new()
         {
-            ExchangeId = (int)ExchangeEnum.Binance,
-            MarketId = (int)MarketTypeEnum.Futures,
-            SymbolId = (int)SymbolEnum.BTCUSDT,
+            SymbolListingId = (int)SymbolEnum.BTCUSDT,   // the migration lists every symbol on Binance Futures with the old enum value as its id
             TimeFrameId = (int)TimeFrameEnum._4H,
             StartDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified)
         };
@@ -215,14 +213,12 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task ALookupRowInUseCannotBeDeletedFromTheDatabase()
+    public async Task AListingInUseCannotBeDeletedFromTheDatabase()
     {
         await using var context = await MigratedContextAsync();
         context.CandleWorkerConfigurations.Add(new CandleWorkerConfiguration
         {
-            ExchangeId = (int)ExchangeEnum.Binance,
-            MarketId = (int)MarketTypeEnum.Spot,
-            SymbolId = (int)SymbolEnum.ETHUSDT,
+            SymbolListingId = (int)SymbolEnum.ETHUSDT,
             TimeFrameId = (int)TimeFrameEnum._1H,
             StartDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified)
         });
@@ -230,17 +226,28 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
 
         // Straight to SQL: through the change tracker EF would refuse before the database is even asked.
         var failure = await Assert.ThrowsAnyAsync<Exception>(
+            () => context.SymbolListings.Where(x => x.ExchangeSymbol == "ETHUSDT").ExecuteDeleteAsync(Ct));
+
+        var postgres = failure as PostgresException ?? failure.InnerException as PostgresException;
+        Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, postgres?.SqlState);
+    }
+
+    [Fact]
+    public async Task ASymbolListedSomewhereCannotBeDeletedFromTheDatabase()
+    {
+        await using var context = await MigratedContextAsync();
+
+        var failure = await Assert.ThrowsAnyAsync<Exception>(
             () => context.Symbols.Where(x => x.Name == "ETH/USDT").ExecuteDeleteAsync(Ct));
 
         var postgres = failure as PostgresException ?? failure.InnerException as PostgresException;
         Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, postgres?.SqlState);
     }
 
-    private static CandleWorkerConfiguration NewSeries(DateTime startDate, int symbolId = (int)SymbolEnum.BTCUSDT, int exchangeId = (int)ExchangeEnum.Binance) => new()
+    // The seeded listings (Binance Futures) have the old enum value as their id.
+    private static CandleWorkerConfiguration NewSeries(DateTime startDate, int listingId = (int)SymbolEnum.BTCUSDT) => new()
     {
-        ExchangeId = exchangeId,
-        MarketId = (int)MarketTypeEnum.Futures,
-        SymbolId = symbolId,
+        SymbolListingId = listingId,
         TimeFrameId = (int)TimeFrameEnum._4H,
         StartDate = startDate
     };
@@ -262,23 +269,17 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task ASeriesPointsAtTheListingOfItsSymbolAndAMarketNeverUsedBeforeGetsOne()
+    public async Task AStoredSeriesCarriesTheListingItPointsAt()
     {
         await using var context = await MigratedContextAsync();
         var repository = new CandleWorkerConfigurationRepository(context);
         var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var spot = NewSeries(start);
-        spot.MarketId = (int)MarketTypeEnum.Spot;
 
-        await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);
-        await repository.AddNewCandleWorkerConfiguration(spot, Ct);
+        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SymbolEnum.ETHUSDT), Ct);
 
-        var byMarket = (await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct))
-            .ToDictionary(c => c.MarketId, c => (c.SymbolListing!.Id, c.SymbolListing.ExchangeSymbol));
-        // Futures reuses the seeded listing (id = the old enum value); Spot gets a new one named as Binance names it.
-        Assert.Equal(((int)SymbolEnum.BTCUSDT, "BTCUSDT"), byMarket[(int)MarketTypeEnum.Futures]);
-        Assert.Equal((15, "BTCUSDT"), byMarket[(int)MarketTypeEnum.Spot]);
-        Assert.Equal(15, await context.SymbolListings.CountAsync(Ct));
+        var stored = Assert.Single(await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct));
+        Assert.Equal(((int)SymbolEnum.ETHUSDT, "ETHUSDT", (int)MarketTypeEnum.Futures),
+            (stored.SymbolListingId, stored.SymbolListing!.ExchangeSymbol, stored.SymbolListing.MarketId));
     }
 
     [Fact]
@@ -296,13 +297,13 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task AddingASeriesWithAnUnknownIdIsAValidationErrorNotASilentZero()
+    public async Task AddingASeriesWithAnUnknownListingIsAValidationErrorNotASilentZero()
     {
         await using var context = await MigratedContextAsync();
         var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         await Assert.ThrowsAsync<ConfigurationValidationException>(
-            () => new CandleWorkerConfigurationRepository(context).AddNewCandleWorkerConfiguration(NewSeries(start, exchangeId: 99), Ct));
+            () => new CandleWorkerConfigurationRepository(context).AddNewCandleWorkerConfiguration(NewSeries(start, listingId: 9999), Ct));
         Assert.Empty(await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct));
     }
 
@@ -314,14 +315,14 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var id = await repository.AddNewCandleWorkerConfiguration(NewSeries(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)), Ct);
         var created = (await repository.GetConfigurationList(Ct)).Single().CreateDate;
 
-        var change = NewSeries(new DateTime(2021, 6, 1, 0, 0, 0, DateTimeKind.Utc), symbolId: (int)SymbolEnum.ETHUSDT);
+        var change = NewSeries(new DateTime(2021, 6, 1, 0, 0, 0, DateTimeKind.Utc), listingId: (int)SymbolEnum.ETHUSDT);
         change.Id = id;
 
         var updated = await repository.UpdateCandleWorkerConfiguration(change, Ct);
 
-        Assert.Equal((id, (int)SymbolEnum.ETHUSDT, new DateTime(2021, 6, 1)), (updated.Id, updated.SymbolId, updated.StartDate));
+        Assert.Equal((id, (int)SymbolEnum.ETHUSDT, "ETHUSDT", new DateTime(2021, 6, 1)), (updated.Id, updated.SymbolListingId, updated.SymbolListing!.ExchangeSymbol, updated.StartDate));
         var stored = (await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct)).Single();
-        Assert.Equal((id, (int)SymbolEnum.ETHUSDT, new DateTime(2021, 6, 1), created), (stored.Id, stored.SymbolId, stored.StartDate, stored.CreateDate));
+        Assert.Equal((id, (int)SymbolEnum.ETHUSDT, new DateTime(2021, 6, 1), created), (stored.Id, stored.SymbolListingId, stored.StartDate, stored.CreateDate));
     }
 
     [Fact]
@@ -342,7 +343,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var repository = new CandleWorkerConfigurationRepository(context);
         var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var doomed = await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);
-        var survivor = await repository.AddNewCandleWorkerConfiguration(NewSeries(start, symbolId: (int)SymbolEnum.ETHUSDT), Ct);
+        var survivor = await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SymbolEnum.ETHUSDT), Ct);
 
         await repository.RemoveCandleWorkerConfiguration(doomed, Ct);
 
@@ -371,7 +372,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
             series.TimeFrameId = (int)timeFrame;
             await repository.AddNewCandleWorkerConfiguration(series, Ct);
         }
-        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, symbolId: (int)SymbolEnum.ETHUSDT), Ct);
+        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SymbolEnum.ETHUSDT), Ct);
 
         // The worker reads this one: every series, however many there are.
         Assert.Equal(13, (await repository.GetConfigurationList(Ct)).Count());

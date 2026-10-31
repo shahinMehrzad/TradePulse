@@ -96,14 +96,11 @@ public class ConfigDbContext : DbContext
             e.Property(x => x.CollectMarketStatistics).HasDefaultValue(false);
 
             // A lookup row must never silently take its configurations with it.
-            e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.TimeFrame).WithMany().HasForeignKey(x => x.TimeFrameId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.SymbolListing).WithMany().HasForeignKey(x => x.SymbolListingId).OnDelete(DeleteBehavior.Restrict);
 
             // One row per series, like the worker's own duplicate rule.
-            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId, x.TimeFrameId }).IsUnique();
+            e.HasIndex(x => new { x.SymbolListingId, x.TimeFrameId }).IsUnique();
         });
 
         builder.Entity<SymbolDataConfiguration>(e =>
@@ -117,14 +114,11 @@ public class ConfigDbContext : DbContext
             e.Property(x => x.CollectFundingRate).HasDefaultValue(false);
             e.Property(x => x.CollectLiquidation).HasDefaultValue(false);
 
-            // A lookup row must never silently take its configurations with it.
-            e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
+            // A listing with a setting must never silently disappear.
             e.HasOne(x => x.SymbolListing).WithMany().HasForeignKey(x => x.SymbolListingId).OnDelete(DeleteBehavior.Restrict);
 
             // One row per symbol of an exchange market.
-            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId }).IsUnique();
+            e.HasIndex(x => x.SymbolListingId).IsUnique();
         });
 
         // Who changed which setting. Rows are only ever added; no foreign keys, because a removed setting must keep its history.

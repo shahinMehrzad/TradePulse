@@ -35,9 +35,7 @@ public sealed class AlignCandleSeriesStartsCommandHandler(
             var updated = await repository.UpdateCandleWorkerConfiguration(new CandleWorkerConfiguration
             {
                 Id = before.Id,
-                ExchangeId = before.ExchangeId,
-                MarketId = before.MarketId,
-                SymbolId = before.SymbolId,
+                SymbolListingId = before.SymbolListingId,
                 TimeFrameId = before.TimeFrameId,
                 StartDate = target.FirstCandle,
                 CollectOpenInterest = before.CollectOpenInterest,

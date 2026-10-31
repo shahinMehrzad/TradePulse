@@ -44,7 +44,7 @@ public class LateStartEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     private async Task<int> SeriesAsync(HttpClient client, SymbolEnum symbol, string startDate, DateTime? firstCandle)
     {
         var response = await client.PostAsJsonAsync($"{Root}/add-config",
-            new { exchangeId = 1, marketId = 2, symbolId = (int)symbol, timeFrameId = FourHours, startDate }, Ct);
+            new { symbolListingId = (int)symbol, timeFrameId = FourHours, startDate }, Ct);
         response.EnsureSuccessStatusCode();
         var id = (await response.Content.ReadFromJsonAsync<Created>(Ct))!.Id;
 

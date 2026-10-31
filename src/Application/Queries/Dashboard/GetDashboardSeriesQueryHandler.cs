@@ -18,17 +18,20 @@ public sealed class GetDashboardSeriesQueryHandler(ICandleWorkerConfigurationRep
     {
         var rows = await configurations.GetConfigurationList(cancellationToken);
 
+        // The dashboard still routes by the old symbol names, so a symbol that is not one of them has no card until it gets a route of its own.
         var cards = rows
-            .Where(c => Enum.IsDefined((ExchangeEnum)c.ExchangeId) && Enum.IsDefined((MarketTypeEnum)c.MarketId)
-                        && Enum.IsDefined((SymbolEnum)c.SymbolId) && Enum.IsDefined((TimeFrameEnum)c.TimeFrameId))
-            .Where(c => request.Market is not { } market || c.MarketId == (int)market)
-            .GroupBy(c => (c.ExchangeId, c.MarketId, c.SymbolId))
-            .OrderBy(g => g.Key.MarketId).ThenBy(g => ((SymbolEnum)g.Key.SymbolId).ToString(), StringComparer.Ordinal)
+            .Select(c => (Row: c, Listing: c.SymbolListing))
+            .Where(x => x.Listing is not null && Enum.IsDefined((ExchangeEnum)x.Listing.ExchangeId) && Enum.IsDefined((MarketTypeEnum)x.Listing.MarketId)
+                        && Enum.TryParse<SymbolEnum>(x.Listing.ExchangeSymbol, out var symbol) && Enum.IsDefined(symbol)
+                        && Enum.IsDefined((TimeFrameEnum)x.Row.TimeFrameId))
+            .Where(x => request.Market is not { } market || x.Listing!.MarketId == (int)market)
+            .GroupBy(x => (x.Listing!.ExchangeId, x.Listing.MarketId, x.Listing.ExchangeSymbol))
+            .OrderBy(g => g.Key.MarketId).ThenBy(g => g.Key.ExchangeSymbol, StringComparer.Ordinal)
             .Select(g => (
                 Exchange: (ExchangeEnum)g.Key.ExchangeId,
                 Market: (MarketTypeEnum)g.Key.MarketId,
-                Symbol: (SymbolEnum)g.Key.SymbolId,
-                TimeFrames: g.Select(c => (TimeFrameEnum)c.TimeFrameId).Distinct().Order().ToArray()))
+                Symbol: Enum.Parse<SymbolEnum>(g.Key.ExchangeSymbol),
+                TimeFrames: g.Select(x => (TimeFrameEnum)x.Row.TimeFrameId).Distinct().Order().ToArray()))
             .ToArray();
 
         var now = timeProvider.GetUtcNow().UtcDateTime;

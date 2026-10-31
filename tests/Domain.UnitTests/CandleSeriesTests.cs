@@ -80,9 +80,6 @@ public class CandleSeriesTests
         int exchange, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SymbolEnum.BTCUSDT, int timeFrame = (int)TimeFrameEnum._1H,
         string exchangeSymbol = "BTCUSDT") => new()
     {
-        ExchangeId = exchange,
-        MarketId = market,
-        SymbolId = symbol,
         TimeFrameId = timeFrame,
         SymbolListing = new SymbolListing { ExchangeId = exchange, MarketId = market, SymbolId = symbol, ExchangeSymbol = exchangeSymbol },
         StartDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified),

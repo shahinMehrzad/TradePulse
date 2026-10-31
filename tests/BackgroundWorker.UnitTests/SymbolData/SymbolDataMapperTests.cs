@@ -11,9 +11,6 @@ public class SymbolDataMapperTests
         bool funding = true, bool liquidation = true) => new()
     {
         Id = id,
-        ExchangeId = exchange,
-        MarketId = market,
-        SymbolId = symbol,
         SymbolListing = new SymbolListing
         {
             ExchangeId = exchange, MarketId = market, SymbolId = symbol,

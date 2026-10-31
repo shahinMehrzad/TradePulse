@@ -52,7 +52,7 @@ public class CandleWorkerConfigurationODataTests(ApiFixture api) : IClassFixture
 
     private static async Task AddAsync(HttpClient client, int symbolId, int marketId, int timeFrameId) =>
         (await client.PostAsJsonAsync("/api/admin/configurations/add-config",
-            new { exchangeId = 1, marketId, symbolId, timeFrameId, startDate = "2020-01-01T00:00:00Z" }, Ct)).EnsureSuccessStatusCode();
+            new { symbolListingId = ListingIds.Of(1, marketId, symbolId), timeFrameId, startDate = "2020-01-01T00:00:00Z" }, Ct)).EnsureSuccessStatusCode();
 
     private static async Task<Page> GetPageAsync(HttpClient client, string query)
     {

@@ -59,9 +59,6 @@ public class DatabaseSymbolDataSourceTests(PostgresFixture postgres)
 
     private static SymbolDataConfiguration Row(SymbolEnum symbol, bool funding, bool liquidation, DateTime? fundingStart = null) => new()
     {
-        ExchangeId = (int)ExchangeEnum.Binance,
-        MarketId = (int)MarketTypeEnum.Futures,
-        SymbolId = (int)symbol,
         SymbolListingId = (int)symbol,   // the migration lists every symbol on Binance Futures with the old enum value as its id
         CollectFundingRate = funding,
         FundingStartDate = fundingStart,

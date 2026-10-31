@@ -33,7 +33,7 @@ public class DashboardEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     private static async Task EnsureSeriesAsync(HttpClient client, int symbolId, int timeFrameId)
     {
         var response = await client.PostAsJsonAsync(
-            AddUrl, new { exchangeId = 1, marketId = 2, symbolId, timeFrameId, startDate = "2020-01-01T00:00:00Z" }, Ct);
+            AddUrl, new { symbolListingId = symbolId, timeFrameId, startDate = "2020-01-01T00:00:00Z" }, Ct);
 
         Assert.True(response.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict, $"adding the series returned {(int)response.StatusCode}");
     }
@@ -100,7 +100,7 @@ public class DashboardEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     {
         var response = await client.PostAsJsonAsync("/api/admin/configurations/add-symbol-data", new
         {
-            exchangeId = 1, marketId = 2, symbolId = 1, collectFundingRate = true, fundingStartDate = "2020-01-01T00:00:00Z", collectLiquidation = true
+            symbolListingId = 1, collectFundingRate = true, fundingStartDate = "2020-01-01T00:00:00Z", collectLiquidation = true
         }, Ct);
 
         Assert.True(response.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict, $"adding the symbol data returned {(int)response.StatusCode}");
@@ -175,7 +175,7 @@ public class DashboardEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         await EnsureSeriesAsync(client, symbolId: 3, timeFrameId: 3600); // ETHUSDT 1h
         var response = await client.PostAsJsonAsync("/api/admin/configurations/add-symbol-data", new
         {
-            exchangeId = 1, marketId = 2, symbolId = 3, collectFundingRate = true, fundingStartDate = "2020-01-01T00:00:00Z", collectLiquidation = false
+            symbolListingId = 3, collectFundingRate = true, fundingStartDate = "2020-01-01T00:00:00Z", collectLiquidation = false
         }, Ct);
         Assert.True(response.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict);
 

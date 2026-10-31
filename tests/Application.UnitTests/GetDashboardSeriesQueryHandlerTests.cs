@@ -23,7 +23,8 @@ public class GetDashboardSeriesQueryHandlerTests
     private void Configure(MarketTypeEnum market, SymbolEnum symbol, TimeFrameEnum timeFrame) =>
         _configurations.Configurations.Add(new CandleWorkerConfiguration
         {
-            ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = (int)symbol, TimeFrameId = (int)timeFrame
+            SymbolListing = new SymbolListing { ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = (int)symbol, ExchangeSymbol = symbol.ToString() },
+            TimeFrameId = (int)timeFrame
         });
 
     /// <summary>Hourly candles ending with the one that opened at <paramref name="lastOpen"/>; close = 100 + index, so the change is easy to predict.</summary>

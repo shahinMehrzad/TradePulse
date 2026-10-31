@@ -21,8 +21,7 @@ public sealed class GetDashboardSeriesDetailQueryHandler(ICandleWorkerConfigurat
     public async Task<DashboardSeriesDetail> HandleAsync(GetDashboardSeriesDetailQuery request, CancellationToken cancellationToken)
     {
         var rows = (await configurations.GetConfigurationList(cancellationToken))
-            .Where(c => c.ExchangeId == (int)request.Exchange && c.MarketId == (int)request.Market && c.SymbolId == (int)request.Symbol
-                        && Enum.IsDefined((TimeFrameEnum)c.TimeFrameId))
+            .Where(c => IsListing(c.SymbolListing, request) && Enum.IsDefined((TimeFrameEnum)c.TimeFrameId))
             .ToList();
         var timeFrames = rows.Select(c => (TimeFrameEnum)c.TimeFrameId).Distinct().Order().ToArray();
         if (timeFrames.Length == 0)
@@ -49,7 +48,7 @@ public sealed class GetDashboardSeriesDetailQueryHandler(ICandleWorkerConfigurat
         GetDashboardSeriesDetailQuery request, CandleWorkerConfiguration chosenRow, TimeFrameEnum chosen, DateTime now, CancellationToken cancellationToken)
     {
         var settings = (await symbolData.GetAll(cancellationToken))
-            .FirstOrDefault(s => s.ExchangeId == (int)request.Exchange && s.MarketId == (int)request.Market && s.SymbolId == (int)request.Symbol);
+            .FirstOrDefault(s => IsListing(s.SymbolListing, request));
 
         var related = new List<DashboardRelatedData>(3);
 
@@ -68,6 +67,11 @@ public sealed class GetDashboardSeriesDetailQueryHandler(ICandleWorkerConfigurat
 
         return related;
     }
+
+    // The dashboard still routes by the old symbol names, which are the exchange's names of those symbols.
+    private static bool IsListing(SymbolListing? listing, GetDashboardSeriesDetailQuery request) =>
+        listing is not null && listing.ExchangeId == (int)request.Exchange && listing.MarketId == (int)request.Market
+        && string.Equals(listing.ExchangeSymbol, request.Symbol.ToString(), StringComparison.Ordinal);
 
     private static async Task<DashboardRelatedData> ReadAsync<T>(
         MarketDataTypeEnum dataType, string tableName, IMarketDataRepository<T> repository, DateTime now, TimeSpan? lateAfter, CancellationToken cancellationToken)

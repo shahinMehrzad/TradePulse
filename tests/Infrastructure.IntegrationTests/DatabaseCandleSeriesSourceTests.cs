@@ -58,12 +58,9 @@ public class DatabaseCandleSeriesSourceTests(PostgresFixture postgres)
 
     private static CandleWorkerConfiguration Row(MarketTypeEnum market, SymbolEnum symbol, TimeFrameEnum timeFrame, DateTime start) => new()
     {
-        ExchangeId = (int)ExchangeEnum.Binance,
-        MarketId = (int)market,
-        SymbolId = (int)symbol,
         TimeFrameId = (int)timeFrame,
         // The migration lists every symbol on Binance Futures (listing id = the old enum value); any other market needs its own listing.
-        SymbolListingId = market == MarketTypeEnum.Futures ? (int)symbol : null,
+        SymbolListingId = market == MarketTypeEnum.Futures ? (int)symbol : 0,
         SymbolListing = market == MarketTypeEnum.Futures ? null : new SymbolListing
         {
             ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = (int)symbol, ExchangeSymbol = symbol.ToString()

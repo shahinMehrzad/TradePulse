@@ -65,6 +65,9 @@ public record AuditPage(IReadOnlyList<AuditEntry> Items, int PageNumber, int Pag
 /// <summary>What the panel sends to add or change a series. <c>StartDate</c> is a UTC date.</summary>
 public record SeriesRequest(int ExchangeId, int MarketId, int SymbolId, int TimeFrameId, DateTime StartDate, bool CollectOpenInterest, bool CollectMarketStatistics);
 
+/// <summary>A symbol on an exchange market, as the API lists them: the panel's three choices (exchange, market, symbol) name one of these.</summary>
+public record SymbolListingItem(int Id, int ExchangeId, int MarketId, int SymbolId);
+
 /// <summary>Outcome of a write. <see cref="SessionRejected"/> means the API no longer accepts the signed-in session.</summary>
 public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false);
 

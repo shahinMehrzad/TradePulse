@@ -206,17 +206,46 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }
 
+    /// <summary>
+    /// The API names a symbol on an exchange market by one id (its listing); the form still asks for the three choices, so the
+    /// listing they name is looked up here. A combination nobody listed is a failure the admin can read.
+    /// </summary>
+    private async Task<(int ListingId, ApiResult? Failure)> ResolveListingAsync(int exchangeId, int marketId, int symbolId, CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("api/admin/symbols/listings", cancellationToken);
+        if (IsRejected(response))
+            return (0, new ApiResult(false, [], SessionRejected: true));
+
+        response.EnsureSuccessStatusCode();
+        var listings = await response.Content.ReadFromJsonAsync<List<SymbolListingItem>>(cancellationToken) ?? [];
+
+        return listings.FirstOrDefault(l => l.ExchangeId == exchangeId && l.MarketId == marketId && l.SymbolId == symbolId) is { } listing
+            ? (listing.Id, null)
+            : (0, new ApiResult(false, ["That symbol is not listed on this exchange market."], false));
+    }
+
     public async Task<ApiResult> AddSeriesAsync(SeriesRequest request, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsJsonAsync($"{SeriesRoot}/add-config", request, cancellationToken);
+        var (listingId, failure) = await ResolveListingAsync(request.ExchangeId, request.MarketId, request.SymbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
+        using var response = await http.PostAsJsonAsync(
+            $"{SeriesRoot}/add-config",
+            new { symbolListingId = listingId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest, request.CollectMarketStatistics },
+            cancellationToken);
         return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }
 
     public async Task<ApiResult> UpdateSeriesAsync(int id, SeriesRequest request, CancellationToken cancellationToken)
     {
+        var (listingId, failure) = await ResolveListingAsync(request.ExchangeId, request.MarketId, request.SymbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
         using var response = await http.PutAsJsonAsync(
             $"{SeriesRoot}/update-config",
-            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest, request.CollectMarketStatistics },
+            new { id, symbolListingId = listingId, request.TimeFrameId, request.StartDate, request.CollectOpenInterest, request.CollectMarketStatistics },
             cancellationToken);
         return await ToResultAsync(response, NotFoundSeries, cancellationToken);
     }
@@ -240,15 +269,26 @@ public sealed class TradePulseApiClient(HttpClient http)
 
     public async Task<ApiResult> AddSymbolDataAsync(SymbolDataRequest request, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsJsonAsync($"{SeriesRoot}/add-symbol-data", request, cancellationToken);
+        var (listingId, failure) = await ResolveListingAsync(request.ExchangeId, request.MarketId, request.SymbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
+        using var response = await http.PostAsJsonAsync(
+            $"{SeriesRoot}/add-symbol-data",
+            new { symbolListingId = listingId, request.CollectFundingRate, request.FundingStartDate, request.CollectLiquidation },
+            cancellationToken);
         return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
     }
 
     public async Task<ApiResult> UpdateSymbolDataAsync(int id, SymbolDataRequest request, CancellationToken cancellationToken)
     {
+        var (listingId, failure) = await ResolveListingAsync(request.ExchangeId, request.MarketId, request.SymbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
         using var response = await http.PutAsJsonAsync(
             $"{SeriesRoot}/update-symbol-data",
-            new { id, request.ExchangeId, request.MarketId, request.SymbolId, request.CollectFundingRate, request.FundingStartDate, request.CollectLiquidation },
+            new { id, symbolListingId = listingId, request.CollectFundingRate, request.FundingStartDate, request.CollectLiquidation },
             cancellationToken);
         return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
     }

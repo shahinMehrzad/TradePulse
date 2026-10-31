@@ -137,6 +137,7 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         var btc = Assert.Single(listings, l => l.Symbol == "BTC/USDT" && l.MarketId == Futures);
         Assert.Equal(("Binance", "BTCUSDT"), (btc.Exchange, btc.ExchangeSymbol));
         Assert.True(listings.Count(l => l.MarketId == Futures) >= 14);
+        Assert.True(listings.Count(l => l.MarketId == Spot) >= 14);   // the fixture lists them on Spot too
     }
 
     [Fact]
@@ -160,7 +161,7 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         api.ExchangeCatalog.Down = true;
         try
         {
-            var response = await PostListingAsync(client, symbol, "SOLUSDT", market: Spot);
+            var response = await PostListingAsync(client, symbol, "SOLDOWNUSDT", market: Spot);
 
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
             Assert.DoesNotContain(await ListingsAsync(client), l => l.SymbolId == symbol);
@@ -188,14 +189,15 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task ASymbolIsListedOncePerMarketAndNamesThatShareTableNamesAreRefused()
     {
         var client = await AdminAsync();
-        var eth = await AddSymbolAsync(client, "ETHSPOT/USDT");
-        var other = await AddSymbolAsync(client, "ETHDASH/USDT");
-        api.ExchangeCatalog.Trading.Add("ETH-USDT");
-        Assert.Equal(HttpStatusCode.Created, (await PostListingAsync(client, eth, "ETHUSDT", market: Spot)).StatusCode);
+        var eth = await AddSymbolAsync(client, "QQQ/USDT");
+        var other = await AddSymbolAsync(client, "QQQDASH/USDT");
+        api.ExchangeCatalog.Trading.Add("QQQUSDT");
+        api.ExchangeCatalog.Trading.Add("QQQ-USDT");
+        Assert.Equal(HttpStatusCode.Created, (await PostListingAsync(client, eth, "QQQUSDT", market: Spot)).StatusCode);
 
         // The same name again, in another case; the same table names behind another spelling; the same symbol under another name.
-        Assert.Equal(HttpStatusCode.Conflict, (await PostListingAsync(client, other, "ethusdt", market: Spot)).StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await PostListingAsync(client, other, "ETH-USDT", market: Spot)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostListingAsync(client, other, "qqqusdt", market: Spot)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostListingAsync(client, other, "QQQ-USDT", market: Spot)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await PostListingAsync(client, eth, "1000PEPEUSDT", market: Spot)).StatusCode);
         // Another market has its own tables, so the same table-name part is fine there.
         api.ExchangeCatalog.Trading.Add("ZZZUSDT");
@@ -226,7 +228,7 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         var client = await AdminAsync();
         var btcFutures = Assert.Single(await ListingsAsync(client), l => l.Symbol == "BTC/USDT" && l.MarketId == Futures);
         var config = await client.PostAsJsonAsync("/api/admin/configurations/add-config",
-            new { exchangeId = Binance, marketId = Futures, symbolId = btcFutures.SymbolId, timeFrameId = 14400, startDate = "2020-01-01T00:00:00Z" }, Ct);
+            new { symbolListingId = btcFutures.Id, timeFrameId = 14400, startDate = "2020-01-01T00:00:00Z" }, Ct);
         config.EnsureSuccessStatusCode();
 
         var inUse = await client.DeleteAsync($"{ListingsUrl}/{btcFutures.Id}", Ct);

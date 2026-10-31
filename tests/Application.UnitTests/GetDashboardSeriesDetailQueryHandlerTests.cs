@@ -30,14 +30,18 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     private void Configure(MarketTypeEnum market, SymbolEnum symbol, TimeFrameEnum timeFrame, bool openInterest = false) =>
         _configurations.Configurations.Add(new CandleWorkerConfiguration
         {
-            ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = (int)symbol, TimeFrameId = (int)timeFrame,
+            SymbolListing = new SymbolListing { ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = (int)symbol, ExchangeSymbol = symbol.ToString() },
+            TimeFrameId = (int)timeFrame,
             CollectOpenInterest = openInterest
         });
 
     private void ConfigureSymbolData(bool funding, bool liquidation) =>
         _symbolData.Configurations.Add(new SymbolDataConfiguration
         {
-            ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures, SymbolId = (int)SymbolEnum.BTCUSDT,
+            SymbolListing = new SymbolListing
+            {
+                ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures, SymbolId = (int)SymbolEnum.BTCUSDT, ExchangeSymbol = nameof(SymbolEnum.BTCUSDT)
+            },
             CollectFundingRate = funding, CollectLiquidation = liquidation
         });
 

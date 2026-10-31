@@ -10,9 +10,6 @@ public class SymbolDataPlanTests
         int exchange = (int)ExchangeEnum.Binance, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SymbolEnum.BTCUSDT,
         string exchangeSymbol = "BTCUSDT") => new()
     {
-        ExchangeId = exchange,
-        MarketId = market,
-        SymbolId = symbol,
         SymbolListing = new SymbolListing { ExchangeId = exchange, MarketId = market, SymbolId = symbol, ExchangeSymbol = exchangeSymbol },
         CollectFundingRate = true,
         FundingStartDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified),

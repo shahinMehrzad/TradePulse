@@ -8,13 +8,13 @@ using Application.Services;
 
 namespace Application.Commands.AdminConfigurations;
 
-public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerConfigurationRepository workerConfigurationRepository, AuditTrail audit)
+public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerConfigurationRepository workerConfigurationRepository, ISymbolCatalogRepository catalog, AuditTrail audit)
     : ICommandHandler<BaseCandleWorkerConfigurationDto, int>
 {
     public async Task<int> HandleAsync(BaseCandleWorkerConfigurationDto request, CancellationToken cancellationToken)
     {
-        if (request.ExchangeId == default || request.MarketId == default || request.SymbolId == default || request.TimeFrameId == default)
-            throw new ConfigurationValidationException("Exchange, market, symbol and time frame are required.");
+        if (request.SymbolListingId == default || request.TimeFrameId == default)
+            throw new ConfigurationValidationException("Symbol listing and time frame are required.");
 
         // A date that was left out binds to DateTime.MinValue.
         if (request.StartDate == default)
@@ -24,23 +24,24 @@ public sealed class AddNewCandleWorkerConfigurationCommandHandler(ICandleWorkerC
         if (startDate >= DateTime.UtcNow)
             throw new ConfigurationValidationException("StartDate must be in the past.");
                
+        var listing = await catalog.GetListing(request.SymbolListingId, cancellationToken)
+            ?? throw new ConfigurationValidationException("Unknown symbol listing.");
+
         if (request.CollectOpenInterest)
-            OpenInterestValidation.EnsureSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
+            OpenInterestValidation.EnsureSupported(listing.ExchangeId, listing.MarketId, request.TimeFrameId);
 
         if (request.CollectMarketStatistics)
-            OpenInterestValidation.EnsureMarketStatisticsSupported(request.ExchangeId, request.MarketId, request.TimeFrameId);
+            OpenInterestValidation.EnsureMarketStatisticsSupported(listing.ExchangeId, listing.MarketId, request.TimeFrameId);
 
-        var existingConfiguration =await workerConfigurationRepository.GetConfiguration(request.ExchangeId, request.MarketId, request.SymbolId, request.TimeFrameId, cancellationToken);
+        var existingConfiguration = await workerConfigurationRepository.GetConfiguration(request.SymbolListingId, request.TimeFrameId, cancellationToken);
         if (existingConfiguration is not null)
             throw new ConfigurationConflictException("Configuration already exists.");
 
         var configuration = new CandleWorkerConfiguration
         {
-            ExchangeId = request.ExchangeId,
-            MarketId = request.MarketId,
+            SymbolListingId = request.SymbolListingId,
             StartDate = startDate,
             TimeFrameId = request.TimeFrameId,
-            SymbolId = request.SymbolId,
             CollectOpenInterest = request.CollectOpenInterest,
             CollectMarketStatistics = request.CollectMarketStatistics
         };

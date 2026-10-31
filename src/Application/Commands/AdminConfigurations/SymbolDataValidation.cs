@@ -13,18 +13,18 @@ internal static class SymbolDataValidation
     /// The row the request asks for, or a <see cref="ConfigurationValidationException"/> saying why it cannot be: ids missing,
     /// nothing chosen, data the exchange market does not have, or a funding rate without a usable start date.
     /// </summary>
-    public static SymbolDataConfiguration ToValidConfiguration(SymbolDataConfigurationDto request)
+    public static SymbolDataConfiguration ToValidConfiguration(SymbolDataConfigurationDto request, SymbolListing listing)
     {
-        if (request.ExchangeId == default || request.MarketId == default || request.SymbolId == default)
-            throw new ConfigurationValidationException("Exchange, market and symbol are required.");
+        if (request.SymbolListingId == default)
+            throw new ConfigurationValidationException("Symbol listing is required.");
 
         if (!request.CollectFundingRate && !request.CollectLiquidation)
             throw new ConfigurationValidationException("Choose funding rate, liquidation or both. To collect neither, delete the configuration.");
 
         if (request.CollectFundingRate)
-            EnsureSupported(request, MarketDataTypeEnum.FundingRate, "Funding rate");
+            EnsureSupported(listing, MarketDataTypeEnum.FundingRate, "Funding rate");
         if (request.CollectLiquidation)
-            EnsureSupported(request, MarketDataTypeEnum.Liquidation, "Liquidation");
+            EnsureSupported(listing, MarketDataTypeEnum.Liquidation, "Liquidation");
 
         DateTime? fundingStartDate = null;
         if (request.CollectFundingRate)
@@ -40,18 +40,16 @@ internal static class SymbolDataValidation
 
         return new SymbolDataConfiguration
         {
-            ExchangeId = request.ExchangeId,
-            MarketId = request.MarketId,
-            SymbolId = request.SymbolId,
+            SymbolListingId = request.SymbolListingId,
             CollectFundingRate = request.CollectFundingRate,
             FundingStartDate = fundingStartDate,
             CollectLiquidation = request.CollectLiquidation,
         };
     }
 
-    private static void EnsureSupported(SymbolDataConfigurationDto request, MarketDataTypeEnum dataType, string label)
+    private static void EnsureSupported(SymbolListing listing, MarketDataTypeEnum dataType, string label)
     {
-        if (!MarketDataSupport.TryValidate((ExchangeEnum)request.ExchangeId, (MarketTypeEnum)request.MarketId, dataType, timeFrame: null, out var reason))
+        if (!MarketDataSupport.TryValidate((ExchangeEnum)listing.ExchangeId, (MarketTypeEnum)listing.MarketId, dataType, timeFrame: null, out var reason))
             throw new ConfigurationValidationException($"{label} cannot be collected: {reason}.");
     }
 }

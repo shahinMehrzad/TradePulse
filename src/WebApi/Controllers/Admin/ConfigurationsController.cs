@@ -68,8 +68,8 @@ namespace WebApi.Controllers.Admin
                 
         [HttpGet("symbol-data")]
         public async Task<IActionResult> GetSymbolDataConfigurations(CancellationToken cancellationToken)
-            => Ok(await dispatcher.SendAsync<GetSymbolDataConfigurationsQuery, IReadOnlyList<SymbolDataConfiguration>>
-                (new GetSymbolDataConfigurationsQuery(), cancellationToken));
+            => Ok((await dispatcher.SendAsync<GetSymbolDataConfigurationsQuery, IReadOnlyList<SymbolDataConfiguration>>
+                (new GetSymbolDataConfigurationsQuery(), cancellationToken)).Select(SymbolDataConfigurationListItem.From));
 
         [HttpPost("add-symbol-data")]
         public async Task<IActionResult> AddSymbolDataConfiguration(SymbolDataConfigurationDto payload, CancellationToken cancellationToken)
@@ -80,7 +80,7 @@ namespace WebApi.Controllers.Admin
 
         [HttpPut("update-symbol-data")]
         public async Task<IActionResult> UpdateSymbolDataConfiguration(UpdateSymbolDataConfigurationDto payload, CancellationToken cancellationToken)
-            => Ok(await dispatcher.SendAsync<UpdateSymbolDataConfigurationDto, SymbolDataConfiguration>(payload, cancellationToken));
+            => Ok(SymbolDataConfigurationListItem.From(await dispatcher.SendAsync<UpdateSymbolDataConfigurationDto, SymbolDataConfiguration>(payload, cancellationToken)));
 
         [HttpDelete("delete-symbol-data/{id:int}")]
         public async Task<IActionResult> DeleteSymbolDataConfiguration(int id, CancellationToken cancellationToken)

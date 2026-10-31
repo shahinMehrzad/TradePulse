@@ -92,19 +92,10 @@ namespace Infrastructure.Migrations.ConfigDb
                         .HasColumnType("timestamp")
                         .HasDefaultValueSql("now() at time zone 'utc'");
 
-                    b.Property<int>("ExchangeId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("MarketId")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp");
 
-                    b.Property<int>("SymbolId")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("SymbolListingId")
+                    b.Property<int>("SymbolListingId")
                         .HasColumnType("integer");
 
                     b.Property<int>("TimeFrameId")
@@ -112,15 +103,9 @@ namespace Infrastructure.Migrations.ConfigDb
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MarketId");
-
-                    b.HasIndex("SymbolId");
-
-                    b.HasIndex("SymbolListingId");
-
                     b.HasIndex("TimeFrameId");
 
-                    b.HasIndex("ExchangeId", "MarketId", "SymbolId", "TimeFrameId")
+                    b.HasIndex("SymbolListingId", "TimeFrameId")
                         .IsUnique();
 
                     b.ToTable("candle_worker_configurations", "config");
@@ -196,30 +181,15 @@ namespace Infrastructure.Migrations.ConfigDb
                         .HasColumnType("timestamp")
                         .HasDefaultValueSql("now() at time zone 'utc'");
 
-                    b.Property<int>("ExchangeId")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime?>("FundingStartDate")
                         .HasColumnType("timestamp");
 
-                    b.Property<int>("MarketId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SymbolId")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("SymbolListingId")
+                    b.Property<int>("SymbolListingId")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MarketId");
-
-                    b.HasIndex("SymbolId");
-
-                    b.HasIndex("SymbolListingId");
-
-                    b.HasIndex("ExchangeId", "MarketId", "SymbolId")
+                    b.HasIndex("SymbolListingId")
                         .IsUnique();
 
                     b.ToTable("symbol_data_configurations", "config");
@@ -569,40 +539,17 @@ namespace Infrastructure.Migrations.ConfigDb
 
             modelBuilder.Entity("Domain.Entities.CandleWorkerConfiguration", b =>
                 {
-                    b.HasOne("Domain.Entities.ExchangeLookup", "Exchange")
-                        .WithMany()
-                        .HasForeignKey("ExchangeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.MarketLookup", "Market")
-                        .WithMany()
-                        .HasForeignKey("MarketId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.SymbolLookup", "Symbol")
-                        .WithMany()
-                        .HasForeignKey("SymbolId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Domain.Entities.SymbolListing", "SymbolListing")
                         .WithMany()
                         .HasForeignKey("SymbolListingId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("Domain.Entities.TimeFrameLookup", "TimeFrame")
                         .WithMany()
                         .HasForeignKey("TimeFrameId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Exchange");
-
-                    b.Navigation("Market");
-
-                    b.Navigation("Symbol");
 
                     b.Navigation("SymbolListing");
 
@@ -611,34 +558,11 @@ namespace Infrastructure.Migrations.ConfigDb
 
             modelBuilder.Entity("Domain.Entities.SymbolDataConfiguration", b =>
                 {
-                    b.HasOne("Domain.Entities.ExchangeLookup", "Exchange")
-                        .WithMany()
-                        .HasForeignKey("ExchangeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.MarketLookup", "Market")
-                        .WithMany()
-                        .HasForeignKey("MarketId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.SymbolLookup", "Symbol")
-                        .WithMany()
-                        .HasForeignKey("SymbolId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Domain.Entities.SymbolListing", "SymbolListing")
                         .WithMany()
                         .HasForeignKey("SymbolListingId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Exchange");
-
-                    b.Navigation("Market");
-
-                    b.Navigation("Symbol");
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("SymbolListing");
                 });
