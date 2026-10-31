@@ -79,7 +79,7 @@ public class SymbolCatalogRepository(ConfigDbContext context) : ISymbolCatalogRe
     public async Task<int> AddListing(SymbolListing listing, CancellationToken cancellationToken)
     {
         context.SymbolListings.Add(listing);
-        await SaveAsync(deleting: false, "That symbol is already listed on this exchange market, or the exchange name is taken.", "Unknown exchange, market or symbol.", cancellationToken);
+        await SaveAsync(deleting: false, "That symbol is already listed on this exchange market, or the name is taken or gives the same table names as another one.", "Unknown exchange, market or symbol.", cancellationToken);
         return listing.Id;
     }
 

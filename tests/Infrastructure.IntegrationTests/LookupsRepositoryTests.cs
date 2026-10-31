@@ -105,6 +105,31 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task TwoNamesThatGiveTheSameTableNamesCannotBothBeListedOnOneMarket()
+    {
+        // BTC-USDT and BTCUSDT are different names but the same tables (binance_spot_btcusdt_4h): the database refuses the second,
+        // even when no code compared them first (two requests at once).
+        await using var context = await MigratedContextAsync();
+        var repository = new SymbolCatalogRepository(context);
+        SymbolListing Listing(int symbolId, MarketTypeEnum market, string name) => new()
+        {
+            ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = symbolId, ExchangeSymbol = name
+        };
+        await repository.AddListing(Listing((int)SeededSymbol.BTCUSDT, MarketTypeEnum.Spot, "BTC-USDT"), Ct);
+
+        await Assert.ThrowsAsync<ConfigurationConflictException>(
+            () => repository.AddListing(Listing((int)SeededSymbol.XAUUSDT, MarketTypeEnum.Spot, "BTCUSDT"), Ct));
+        context.ChangeTracker.Clear();
+        await Assert.ThrowsAsync<ConfigurationConflictException>(
+            () => repository.AddListing(Listing((int)SeededSymbol.XAUUSDT, MarketTypeEnum.Spot, "btc_usdt"), Ct));
+        context.ChangeTracker.Clear();
+
+        // Another market has its own tables (Futures already lists BTCUSDT for the first symbol, so use another name there).
+        await repository.AddListing(Listing((int)SeededSymbol.XAUUSDT, MarketTypeEnum.Spot, "XAU-USDT"), Ct);
+        await repository.AddListing(Listing((int)SeededSymbol.SOLUSDT, MarketTypeEnum.Spot, "SOLUSDT"), Ct);
+    }
+
+    [Fact]
     public async Task TheMigrationsMatchTheModel()
     {
         // Fails when an enum member (or any model change) was added without a new migration.

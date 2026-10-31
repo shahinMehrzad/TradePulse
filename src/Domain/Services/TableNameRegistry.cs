@@ -74,7 +74,8 @@ namespace Domain.Services
         /// Whether an exchange's name for a symbol can be part of a table name on that exchange market, and the part it becomes
         /// (<c>1000PEPEUSDT</c> gives <c>1000pepeusdt</c>). Separators (<c>- _ . /</c>) are dropped, any other character refuses
         /// the name. Two names of the same exchange market can still give the same part (<c>BTC-USDT</c> and <c>BTCUSDT</c>);
-        /// whoever adds a symbol has to compare the parts, the database cannot.
+        /// adding a symbol compares the parts first, for a readable answer, and a unique index in the config database
+        /// (<c>IX_exchange_symbols_table_name_part</c>) is the guard when two requests race.
         /// </summary>
         public static bool TryGetSymbolPart(ExchangeEnum exchange, MarketTypeEnum marketType, string? exchangeSymbol, out string part, out string reason)
         {
