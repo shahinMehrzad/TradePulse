@@ -7,7 +7,7 @@ using Domain.Repositories;
 
 namespace Application.Commands.AdminConfigurations;
 
-public sealed class UpdateSymbolDataConfigurationCommandHandler(ISymbolDataConfigurationRepository repository, AuditTrail audit)
+public sealed class UpdateSymbolDataConfigurationCommandHandler(ISymbolDataConfigurationRepository repository, ISymbolCatalogRepository catalog, AuditTrail audit)
     : ICommandHandler<UpdateSymbolDataConfigurationDto, SymbolDataConfiguration>
 {
     public async Task<SymbolDataConfiguration> HandleAsync(UpdateSymbolDataConfigurationDto request, CancellationToken cancellationToken)
@@ -15,7 +15,12 @@ public sealed class UpdateSymbolDataConfigurationCommandHandler(ISymbolDataConfi
         if (request.Id == default)
             throw new ConfigurationValidationException("Id is required.");
 
-        var configuration = SymbolDataValidation.ToValidConfiguration(request);
+        if (request.SymbolListingId == default)
+            throw new ConfigurationValidationException("Symbol listing is required.");
+
+        var listing = await catalog.GetListing(request.SymbolListingId, cancellationToken)
+            ?? throw new ConfigurationValidationException("Unknown symbol listing.");
+        var configuration = SymbolDataValidation.ToValidConfiguration(request, listing);
         configuration.Id = request.Id;
 
         // A row that does not exist is reported by the update itself.

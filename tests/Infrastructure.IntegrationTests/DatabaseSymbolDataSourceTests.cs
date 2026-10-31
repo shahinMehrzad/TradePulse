@@ -2,6 +2,7 @@ using Application;
 using BackgroundWorker.SymbolData;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Infrastructure;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -56,11 +57,9 @@ public class DatabaseSymbolDataSourceTests(PostgresFixture postgres)
         return services.BuildServiceProvider(validateScopes: true);
     }
 
-    private static SymbolDataConfiguration Row(SymbolEnum symbol, bool funding, bool liquidation, DateTime? fundingStart = null) => new()
+    private static SymbolDataConfiguration Row(SeededSymbol symbol, bool funding, bool liquidation, DateTime? fundingStart = null) => new()
     {
-        ExchangeId = (int)ExchangeEnum.Binance,
-        MarketId = (int)MarketTypeEnum.Futures,
-        SymbolId = (int)symbol,
+        SymbolListingId = (int)symbol,   // the migration lists every symbol on Binance Futures with the old enum value as its id
         CollectFundingRate = funding,
         FundingStartDate = fundingStart,
         CollectLiquidation = liquidation,
@@ -71,16 +70,16 @@ public class DatabaseSymbolDataSourceTests(PostgresFixture postgres)
     {
         var connectionString = await NewDatabaseAsync();
         await MigrateAsync(connectionString,
-            Row(SymbolEnum.BTCUSDT, funding: true, liquidation: true, fundingStart: new DateTime(2020, 1, 1)),
-            Row(SymbolEnum.ETHUSDT, funding: false, liquidation: true));
+            Row(SeededSymbol.BTCUSDT, funding: true, liquidation: true, fundingStart: new DateTime(2020, 1, 1)),
+            Row(SeededSymbol.ETHUSDT, funding: false, liquidation: true));
         await using var services = WorkerServices(connectionString);
 
         var plans = await services.GetRequiredService<ISymbolDataSource>().LoadAsync(Ct);
 
-        Assert.Equal(
-            [(SymbolEnum.BTCUSDT, true, (DateTime?)new DateTime(2020, 1, 1), true),
-             (SymbolEnum.ETHUSDT, false, null, true)],
-            plans.OrderBy(p => p.Symbol).Select(p => (p.Symbol, p.CollectFundingRate, p.FundingStartDate, p.CollectLiquidation)));
+        Assert.Equal<(ExchangeSymbol, bool, DateTime?, bool)>(
+            [(SeededSymbol.BTCUSDT.Sym(), true, (DateTime?)new DateTime(2020, 1, 1), true),
+             (SeededSymbol.ETHUSDT.Sym(), false, null, true)],
+            plans.OrderBy(p => p.Symbol.Value, StringComparer.Ordinal).Select(p => (p.Symbol, p.CollectFundingRate, p.FundingStartDate, p.CollectLiquidation)));
         Assert.All(plans.Where(p => p.FundingStartDate is not null), p => Assert.Equal(DateTimeKind.Utc, p.FundingStartDate!.Value.Kind));
     }
 

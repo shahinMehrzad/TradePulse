@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IMarketDataRepository<TakerVolume>>(_ => new TimeSeriesRepository<TakerVolume>(connectionString, new TakerVolumeTable()));
         services.AddScoped<IMarketDataRepository<Liquidation>>(_ => new TimeSeriesRepository<Liquidation>(connectionString, new LiquidationTable()));
         services.AddScoped<ILookupsRepository, LookupsRepository>();
+        services.AddScoped<ISymbolCatalogRepository, SymbolCatalogRepository>();
         services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();
         services.AddScoped<ISymbolDataConfigurationRepository, SymbolDataConfigurationRepository>();
         services.AddScoped<IReadModel<CandleWorkerConfigurationListItem>, CandleWorkerConfigurationReadModel>();

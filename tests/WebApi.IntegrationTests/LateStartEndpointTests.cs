@@ -40,16 +40,16 @@ public class LateStartEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     }
 
     /// <summary>A futures 4h series asked for from <paramref name="startDate"/>, with candles from <paramref name="firstCandle"/> (none when null).</summary>
-    private async Task<int> SeriesAsync(HttpClient client, SymbolEnum symbol, string startDate, DateTime? firstCandle)
+    private async Task<int> SeriesAsync(HttpClient client, SeededSymbol symbol, string startDate, DateTime? firstCandle)
     {
         var response = await client.PostAsJsonAsync($"{Root}/add-config",
-            new { exchangeId = 1, marketId = 2, symbolId = (int)symbol, timeFrameId = FourHours, startDate }, Ct);
+            new { symbolListingId = (int)symbol, timeFrameId = FourHours, startDate }, Ct);
         response.EnsureSuccessStatusCode();
         var id = (await response.Content.ReadFromJsonAsync<Created>(Ct))!.Id;
 
         if (firstCandle is { } first)
         {
-            var table = new Domain.ValueObjects.CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, symbol, TimeFrameEnum._4H).TableName;
+            var table = new Domain.ValueObjects.CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, symbol.Sym(), TimeFrameEnum._4H).TableName;
             var repository = new CandleRepository(api.ConnectionString);
             await repository.EnsureTableExistsAsync(table, Ct);
             await repository.BulkInsert(table,
@@ -76,7 +76,7 @@ public class LateStartEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task ASeriesWhoseDataStartsOnALaterDayIsListedAndNothingChangesUntilTheAdminAsks()
     {
         var client = await AdminAsync();
-        var id = await SeriesAsync(client, SymbolEnum.SOLUSDT, "2020-01-01T00:00:00Z", Utc(2023, 5, 3, 16));
+        var id = await SeriesAsync(client, SeededSymbol.SOLUSDT, "2020-01-01T00:00:00Z", Utc(2023, 5, 3, 16));
 
         var late = Assert.Single(await LateStartsAsync(client), l => l.Id == id);
 
@@ -89,7 +89,7 @@ public class LateStartEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task AligningMovesTheStartDateToTheExactFirstCandleLogsItAndTheSeriesIsNoLongerListed()
     {
         var client = await AdminAsync();
-        var id = await SeriesAsync(client, SymbolEnum.XRPUSDT, "2020-01-01T00:00:00Z", Utc(2023, 5, 3, 16));
+        var id = await SeriesAsync(client, SeededSymbol.XRPUSDT, "2020-01-01T00:00:00Z", Utc(2023, 5, 3, 16));
 
         var response = await client.PostAsync($"{Root}/candle-worker/{id}/align-start", null, Ct);
         response.EnsureSuccessStatusCode();
@@ -108,7 +108,7 @@ public class LateStartEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task AFirstCandleLaterOnTheSameDayIsAListingInTheMiddleOfThatDayNotALateStart()
     {
         var client = await AdminAsync();
-        var id = await SeriesAsync(client, SymbolEnum.BNBUSDT, "2023-05-03T00:00:00Z", Utc(2023, 5, 3, 16));
+        var id = await SeriesAsync(client, SeededSymbol.BNBUSDT, "2023-05-03T00:00:00Z", Utc(2023, 5, 3, 16));
 
         Assert.DoesNotContain(await LateStartsAsync(client), l => l.Id == id);
     }
@@ -117,7 +117,7 @@ public class LateStartEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task ASeriesWithoutAnyCandlesYetIsNotListed()
     {
         var client = await AdminAsync();
-        var id = await SeriesAsync(client, SymbolEnum.SUIUSDT, "2020-01-01T00:00:00Z", firstCandle: null);   // not even a table
+        var id = await SeriesAsync(client, SeededSymbol.SUIUSDT, "2020-01-01T00:00:00Z", firstCandle: null);   // not even a table
 
         Assert.DoesNotContain(await LateStartsAsync(client), l => l.Id == id);
     }
@@ -126,7 +126,7 @@ public class LateStartEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task AligningASeriesThatIsNotLateIsRefusedAndAnUnknownOneIsNotFound()
     {
         var client = await AdminAsync();
-        var onTime = await SeriesAsync(client, SymbolEnum.ADAUSDT, "2023-05-03T00:00:00Z", Utc(2023, 5, 3, 0));
+        var onTime = await SeriesAsync(client, SeededSymbol.ADAUSDT, "2023-05-03T00:00:00Z", Utc(2023, 5, 3, 0));
 
         var notLate = await client.PostAsync($"{Root}/candle-worker/{onTime}/align-start", null, Ct);
         var unknown = await client.PostAsync($"{Root}/candle-worker/987654/align-start", null, Ct);
@@ -138,9 +138,9 @@ public class LateStartEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task AligningAllChangesEveryLateSeriesAndLeavesTheOthersAlone()
     {
         var client = await AdminAsync();
-        var late1 = await SeriesAsync(client, SymbolEnum.DOGEUSDT, "2020-01-01T00:00:00Z", Utc(2021, 3, 1, 8));
-        var late2 = await SeriesAsync(client, SymbolEnum.LINKUSDT, "2020-01-01T00:00:00Z", Utc(2022, 7, 9, 12));
-        var onTime = await SeriesAsync(client, SymbolEnum.LTCUSDT, "2024-01-01T00:00:00Z", Utc(2024, 1, 1, 0));
+        var late1 = await SeriesAsync(client, SeededSymbol.DOGEUSDT, "2020-01-01T00:00:00Z", Utc(2021, 3, 1, 8));
+        var late2 = await SeriesAsync(client, SeededSymbol.LINKUSDT, "2020-01-01T00:00:00Z", Utc(2022, 7, 9, 12));
+        var onTime = await SeriesAsync(client, SeededSymbol.LTCUSDT, "2024-01-01T00:00:00Z", Utc(2024, 1, 1, 0));
 
         var response = await client.PostAsync($"{Root}/candle-worker/align-starts", null, Ct);
         response.EnsureSuccessStatusCode();

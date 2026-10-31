@@ -1,6 +1,7 @@
 using Application.Exchange;
 using BackgroundWorker.CandleSeries;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,6 +25,7 @@ public class BinanceConnectivityWorker(
     IOptions<HealthConfigurations> healthOptions,
     CandleSeriesProvider seriesProvider) : BackgroundService
 {
+    private const string DefaultProbeSymbol = "BTCUSDT";
     private static readonly TimeSpan SubscribeRetryDelay = TimeSpan.FromSeconds(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -75,7 +77,14 @@ public class BinanceConnectivityWorker(
 
     private async Task ProbeStreamLoopAsync(CancellationToken ct)
     {
-        var symbol = healthOptions.Value.ProbeSymbol;
+        // An exception here would stop the host, so a blank setting falls back to the default instead of failing.
+        var configured = healthOptions.Value.ProbeSymbol;
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            logger.LogWarning("Health:ProbeSymbol is empty; probing {Symbol} instead", DefaultProbeSymbol);
+            configured = DefaultProbeSymbol;
+        }
+        var symbol = new ExchangeSymbol(configured);
         var listener = new ProbeListener(health);
 
         while (!ct.IsCancellationRequested)

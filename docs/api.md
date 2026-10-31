@@ -33,11 +33,28 @@ Admin only. Two lists take OData query options, and answer `{ "count": 13, "valu
 | Request | Returns |
 |---|---|
 | `GET /api/admin/configurations/candle-worker/odata` | The candle series the collector gathers, with the names of exchange, market, symbol and time frame next to their ids. |
-| `GET /api/admin/audit-log` | Who changed which collector setting: `occurredAt`, `userName`, `action` (`Added`, `Updated`, `Removed`), `entityType` (`CandleSeries`, `SymbolData`), `entityId`, `summary` and `details` (for an update, what changed: `start date 2020-01-01 -> 2021-06-01`). |
+| `GET /api/admin/audit-log` | Who changed which collector setting: `occurredAt`, `userName`, `action` (`Added`, `Updated`, `Removed`), `entityType` (`CandleSeries`, `SymbolData`, `Symbol`, `SymbolListing`), `entityId`, `summary` and `details` (for an update, what changed: `start date 2020-01-01 -> 2021-06-01`). |
 
 Only `$filter`, `$orderby`, `$top`, `$skip` and `$count` are accepted; `$select`, `$expand` and `$apply` are a `400`, like a malformed query or a `$top` above 100. Without `$top` a request gets 20 rows, and the key is always the last sort so pages never overlap. Dates in a filter are UTC (`occurredAt ge 2026-10-01T00:00:00Z`), like every stored time. Example: `?$filter=action eq 'Removed' and contains(tolower(userName),'shahin')&$orderby=occurredAt desc&$top=25`.
 
 The audit log is written by the same API calls that change the settings (add, change, remove of a candle series or of a symbol's funding rate and liquidations), with the user name from the access token. An update that changes nothing is not logged. It is written after the change is saved; if writing it fails, the failure is logged by the API and the change itself stands.
+
+### Symbols and where they are listed
+
+Admin only. A series or a funding rate / liquidation setting names a **symbol listing**: one symbol (`BTC/USDT`) on one exchange market, under the name that exchange uses for it (`BTCUSDT`). Both `add-config`/`update-config` and `add-symbol-data`/`update-symbol-data` take a `symbolListingId` instead of exchange, market and symbol, so a symbol that is not listed on a market cannot be chosen for it. `GET .../candle-worker/odata` and `GET .../symbol-data` still show the exchange, market and symbol ids next to it.
+
+| Request | Does |
+|---|---|
+| `GET /api/admin/symbols?keyword=&pageNumber=1&pageSize=10` | One page of the symbols by name (`pageSize` 1-100): `items` with `id`, `name`, `description` and the `markets` each is listed on (`listingId`, `exchange`, `market`, `exchangeSymbol`), plus `pageNumber`, `pageSize`, `totalItems`, `totalPages`. The keyword (any case) matches the name, the description or an exchange's name for the symbol (`btcusdt` finds `BTC/USDT`). |
+| `GET /api/admin/symbols/{id}` | One symbol with every market it is listed on: `listingId`, exchange, market, `exchangeSymbol`, and `seriesCount` / `settingsCount` (how many candle series and funding rate / liquidation settings use that listing; a listing that is used cannot be removed). `404` if it does not exist. |
+| `PUT /api/admin/symbols` | Changes the description: `{ "id": 1, "description": "..." }` (at most 100 characters, empty clears it). The name is never changed. `404` if it does not exist. |
+| `POST /api/admin/symbols` | Adds a symbol: `{ "name": "BTC/USDT", "description": "..." }`. Upper-cased, `BASE/QUOTE`, letters and digits only; `409` if it exists. |
+| `DELETE /api/admin/symbols/{id}` | Removes it; `409` while it is listed anywhere. |
+| `GET /api/admin/symbols/listings` | Every listing: `id`, exchange, market, symbol and `exchangeSymbol`. |
+| `POST /api/admin/symbols/listings` | Lists a symbol: `{ exchangeId, marketId, symbolId, exchangeSymbol }`. The name must be usable in a table name, must not share its table names with another listing of that exchange market (`409`), and the exchange (`exchangeInfo`) must list it as trading (`400` if not, `503` and nothing saved when the exchange cannot be asked). Stored as the exchange spells it. |
+| `DELETE /api/admin/symbols/listings/{id}` | Removes a listing; `409` while a series or setting uses it. |
+
+The candle and dashboard routes name the symbol by the table-name part of the exchange's name (`btcusdt`, `1000pepeusdt`; any case is accepted). A name that can never be part of a table name is a `400`; a valid name nobody collects is a `404`.
 
 ### Series that start later than their start date
 

@@ -15,7 +15,7 @@ namespace Application.UnitTests;
 public class CachedCandleReaderTests
 {
     private static readonly DateTime Now = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
-    private static readonly CandleSeries Series = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeries Series = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -110,7 +110,7 @@ public class CachedCandleReaderTests
         await reader.GetLatestAsync(Series, 52, null, Ct);
         await reader.GetLatestAsync(Series, 78, Now.AddDays(-3), Ct);
         await reader.GetLatestAsync(Series with { Timeframe = TimeFrameEnum._4H }, 78, null, Ct);
-        await reader.GetLatestAsync(Series with { Symbol = SymbolEnum.ETHUSDT }, 78, null, Ct);
+        await reader.GetLatestAsync(Series with { Symbol = SeededSymbol.ETHUSDT.Sym() }, 78, null, Ct);
 
         Assert.Equal(5, inner.Calls);
     }

@@ -51,7 +51,7 @@ public class CandleWorkerConfigurationODataTests(ApiFixture api) : IClassFixture
 
     private static async Task AddAsync(HttpClient client, int symbolId, int marketId, int timeFrameId) =>
         (await client.PostAsJsonAsync("/api/admin/configurations/add-config",
-            new { exchangeId = 1, marketId, symbolId, timeFrameId, startDate = "2020-01-01T00:00:00Z" }, Ct)).EnsureSuccessStatusCode();
+            new { symbolListingId = ListingIds.Of(1, marketId, symbolId), timeFrameId, startDate = "2020-01-01T00:00:00Z" }, Ct)).EnsureSuccessStatusCode();
 
     private static async Task<Page> GetPageAsync(HttpClient client, string query)
     {
@@ -105,7 +105,7 @@ public class CandleWorkerConfigurationODataTests(ApiFixture api) : IClassFixture
     }
 
     [Theory]
-    [InlineData("symbol eq 'ETHUSDT'", 1)]
+    [InlineData("symbol eq 'ETH/USDT'", 1)]
     [InlineData("contains(tolower(symbol),'btc')", 12)]
     [InlineData("market eq 'Spot'", 1)]
     [InlineData("contains(tolower(exchange),'binance') or contains(tolower(symbolDescription),'eth')", 13)] // what the panel's search sends
@@ -142,7 +142,7 @@ public class CandleWorkerConfigurationODataTests(ApiFixture api) : IClassFixture
         // What the panel asks for; the order they were added in (and their ids) must not matter.
         var client = await SeededAdminAsync();
 
-        var page = await GetPageAsync(client, "$filter=symbol eq 'BTCUSDT'&$orderby=symbol,intervalSeconds,id&$top=100");
+        var page = await GetPageAsync(client, "$filter=symbol eq 'BTC/USDT'&$orderby=symbol,intervalSeconds,id&$top=100");
 
         Assert.Equal(BtcTimeFrames.Order(), page.Value.Select(r => r.IntervalSeconds));
     }

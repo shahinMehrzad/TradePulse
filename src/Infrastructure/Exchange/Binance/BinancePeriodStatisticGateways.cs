@@ -3,6 +3,7 @@ using Binance.Net.Enums;
 using Binance.Net.Interfaces.Clients;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 
 namespace Infrastructure.Exchange.Binance;
 
@@ -35,7 +36,7 @@ public abstract class BinancePeriodStatisticGateway<TRow>(IBinanceRestClient cli
         string symbol, PeriodInterval period, DateTime from, DateTime to, CancellationToken cancellationToken);
 
     public async Task<ExchangeResult<ExchangePage<TRow>>> GetAsync(
-        ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeFrame, DateTime from, CancellationToken cancellationToken)
+        ExchangeEnum exchange, ExchangeSymbol symbol, TimeFrameEnum timeFrame, DateTime from, CancellationToken cancellationToken)
     {
         if (exchange != ExchangeEnum.Binance)
             throw new ArgumentException($"This gateway serves Binance only, not {exchange}.", nameof(exchange));

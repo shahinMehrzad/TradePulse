@@ -48,7 +48,7 @@ public class CandleFreshnessTests
         var services = new ServiceCollection();
         services.AddSingleton<ICandleRepository>(_repository);
         var series = await CandleSeriesTestSupport.LoadedProviderAsync(
-            _time, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+            _time, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         var monitor = new CandleFreshnessMonitor(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), series, _time);
         return (monitor, new CandleFreshnessHealthCheck(monitor, _time));
     }
@@ -82,7 +82,7 @@ public class CandleFreshnessTests
 
         Assert.Empty(await monitor.GetAsync(TestContext.Current.CancellationToken));
 
-        source.Series.Add(TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H));
+        source.Series.Add(TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         await series.StartAsync(TestContext.Current.CancellationToken);
         await series.WaitForSeriesAsync(TestContext.Current.CancellationToken);
 

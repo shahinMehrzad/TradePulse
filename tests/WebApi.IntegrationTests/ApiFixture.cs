@@ -1,9 +1,15 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Application.Exchange;
 using Application.Interfaces;
 using Domain.Entities;
+using Domain.Enums;
+using Infrastructure.Persistence;
 using Infrastructure.Repositories;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Testcontainers.PostgreSql;
@@ -36,6 +42,9 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>The key the API signs its tokens with in these tests; tests that make a token of their own use it too.</summary>
     public const string JwtSecret = "signing-key-of-the-integration-tests-of-the-api-0123456789";
 
+    /// <summary>The exchange's symbol list the API asks when a symbol is listed; no test reaches the real Binance.</summary>
+    public FakeExchangeSymbolCatalog ExchangeCatalog { get; } = new();
+
     public string ConnectionString => _postgres.GetConnectionString();
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
@@ -51,7 +60,37 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         var candles = Enumerable.Range(0, 10).Select(i =>
             new Candle(start.AddHours(i), 1m, 4m, 0.5m, 3m, 10m, start.AddHours(i + 1).AddMilliseconds(-1), 25m, 42, 6m, 15m));
         await repository.BulkInsert("binance_futures_btcusdt_1h", candles, CancellationToken.None);
+
+        await ListSymbolsOnSpotAsync();
     }
+
+    /// <summary>
+    /// The migration lists the symbols on Binance Futures only. Some tests need a second market, so they are listed on Spot too, in
+    /// the order that gives them the ids <see cref="ListingIds"/> expects. Straight into the database: signing in as the administrator
+    /// here would use up the first sign-in that the first-run tests look at.
+    /// </summary>
+    private async Task ListSymbolsOnSpotAsync()
+    {
+        using var host = CreateClient();   // starts the host, which migrates the database
+        var options = new DbContextOptionsBuilder<ConfigDbContext>()
+            .UseNpgsql(ConnectionString, npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "config"))
+            .Options;
+        await using var context = new ConfigDbContext(options);
+
+        foreach (var symbol in Enum.GetValues<SeededSymbol>())
+        {
+            var listing = new SymbolListing
+            {
+                ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Spot, SymbolId = (int)symbol, ExchangeSymbol = symbol.ToString()
+            };
+            context.SymbolListings.Add(listing);
+            await context.SaveChangesAsync();
+
+            if (listing.Id != ListingIds.Of((int)ExchangeEnum.Binance, (int)MarketTypeEnum.Spot, (int)symbol))
+                throw new InvalidOperationException($"{symbol} on Spot got listing id {listing.Id}, not the one ListingIds expects.");
+        }
+    }
+
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -72,6 +111,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             services.RemoveAll<IMailSender>();
             services.AddSingleton<IMailSender>(Mail);
         });
+        builder.ConfigureTestServices(services => services.AddSingleton<IExchangeSymbolCatalog>(ExchangeCatalog));
     }
 
     /// <summary>

@@ -24,8 +24,8 @@ internal sealed class FakeSymbolDataSource : ISymbolDataSource
 internal static class SymbolDataTestSupport
 {
     public static SymbolDataPlan Binance(
-        SymbolEnum symbol = SymbolEnum.BTCUSDT, bool funding = true, bool liquidation = true, MarketTypeEnum market = MarketTypeEnum.Futures) =>
-        new(ExchangeEnum.Binance, market, symbol, funding, funding ? new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc) : null, liquidation);
+        SeededSymbol symbol = SeededSymbol.BTCUSDT, bool funding = true, bool liquidation = true, MarketTypeEnum market = MarketTypeEnum.Futures) =>
+        new(ExchangeEnum.Binance, market, symbol.Sym(), funding, funding ? new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc) : null, liquidation);
 
     public static SymbolDataProvider NewProvider(FakeSymbolDataSource source, TimeProvider time) =>
         new(source, time, NullLogger<SymbolDataProvider>.Instance);

@@ -5,7 +5,7 @@ using Domain.ValueObjects;
 namespace Application.Exchange;
 
 /// <summary>One live subscription: the candles of several symbols of one exchange market, all at the same time frame.</summary>
-public sealed record LiveCandleSubscription(ExchangeEnum Exchange, MarketTypeEnum MarketType, TimeFrameEnum Timeframe, IReadOnlyList<SymbolEnum> Symbols);
+public sealed record LiveCandleSubscription(ExchangeEnum Exchange, MarketTypeEnum MarketType, TimeFrameEnum Timeframe, IReadOnlyList<ExchangeSymbol> Symbols);
 
 public interface ILiveCandleListener : IStreamListener
 {

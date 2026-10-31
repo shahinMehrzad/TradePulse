@@ -51,7 +51,7 @@ public class BinanceFundingRateWorker(
     {
         foreach (var target in targets)
         {
-            var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, target.Symbol);
+            var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, target.Symbol.Value);
 
             await TableCreation.EnsureWithRetryAsync(async token =>
             {
@@ -84,7 +84,7 @@ public class BinanceFundingRateWorker(
     {
         using var scope = scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IMarketDataRepository<FundingRate>>();
-        var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, target.Symbol);
+        var tableName = TableNameRegistry.GetFundingRateTableName(ExchangeEnum.Binance, target.Symbol.Value);
 
         var latest = await repository.GetLatestTimeAsync(tableName, ct);
         var from = latest is null ? target.StartDate : latest.Value.AddMilliseconds(1);

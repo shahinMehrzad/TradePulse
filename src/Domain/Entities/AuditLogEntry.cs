@@ -18,6 +18,8 @@ public static class AuditEntityTypes
 
     /// <summary>A user's key for the exchange (written by the Trader program). EntityId is 0 and the summary is the label the user gave it; no key is ever written.</summary>
     public const string ExchangeKey = "ExchangeKey";
+    public const string Symbol = "Symbol";
+    public const string SymbolListing = "SymbolListing";
 }
 
 /// <summary>Who changed which collection setting, and how. Written by the admin API only; never edited.</summary>

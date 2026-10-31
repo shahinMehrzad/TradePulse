@@ -6,6 +6,7 @@ using BackgroundWorker.Plans;
 using BackgroundWorker.SymbolData;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Domain.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -37,7 +38,7 @@ public class BinanceLiquidationWorker(
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ShutdownFlushTimeout = TimeSpan.FromSeconds(5);
 
-    private Channel<(SymbolEnum Symbol, Liquidation Row)> _queue = null!;
+    private Channel<(ExchangeSymbol Symbol, Liquidation Row)> _queue = null!;
         
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         PlanRunner.RunAsync(symbolDataProvider,
@@ -45,7 +46,7 @@ public class BinanceLiquidationWorker(
                 logger.LogWarning("Liquidations are not collected for {Symbol}: {Reason}", plan.Symbol, reason)),
             CollectAsync, logger, "liquidation symbols", stoppingToken);
 
-    private async Task CollectAsync(IReadOnlyList<SymbolEnum> symbols, CancellationToken stoppingToken)
+    private async Task CollectAsync(IReadOnlyList<ExchangeSymbol> symbols, CancellationToken stoppingToken)
     {
         try
         {
@@ -56,7 +57,7 @@ public class BinanceLiquidationWorker(
             return;
         }
 
-        _queue = Channel.CreateBounded<(SymbolEnum, Liquidation)>(
+        _queue = Channel.CreateBounded<(ExchangeSymbol, Liquidation)>(
             new BoundedChannelOptions(QueueCapacity)
             {
                 SingleReader = true,
@@ -78,11 +79,11 @@ public class BinanceLiquidationWorker(
         }
     }
 
-    private async Task EnsureTablesAsync(IReadOnlyList<SymbolEnum> symbols, CancellationToken ct)
+    private async Task EnsureTablesAsync(IReadOnlyList<ExchangeSymbol> symbols, CancellationToken ct)
     {
         foreach (var symbol in symbols)
         {
-            var tableName = TableNameRegistry.GetLiquidationTableName(ExchangeEnum.Binance, symbol);
+            var tableName = TableNameRegistry.GetLiquidationTableName(ExchangeEnum.Binance, symbol.Value);
 
             await TableCreation.EnsureWithRetryAsync(async token =>
             {
@@ -93,7 +94,7 @@ public class BinanceLiquidationWorker(
     }
 
     /// <summary>Subscribes, trying again until it works: a stream that never started would leave the table silently empty.</summary>
-    private async Task<IAsyncDisposable> SubscribeAsync(IReadOnlyList<SymbolEnum> symbols, CancellationToken ct)
+    private async Task<IAsyncDisposable> SubscribeAsync(IReadOnlyList<ExchangeSymbol> symbols, CancellationToken ct)
     {
         var listener = new LiquidationListener(_queue.Writer, health, logger);
 
@@ -116,9 +117,9 @@ public class BinanceLiquidationWorker(
 
     /// <summary>What the exchange tells about the stream. Every method runs on the socket's thread: cheap, never blocking.</summary>
     private sealed class LiquidationListener(
-        ChannelWriter<(SymbolEnum Symbol, Liquidation Row)> queue, WorkerHealthState health, ILogger logger) : ILiquidationListener
+        ChannelWriter<(ExchangeSymbol Symbol, Liquidation Row)> queue, WorkerHealthState health, ILogger logger) : ILiquidationListener
     {
-        public void OnLiquidation(SymbolEnum symbol, Liquidation liquidation)
+        public void OnLiquidation(ExchangeSymbol symbol, Liquidation liquidation)
         {
             health.RecordMessage(HealthComponents.LiquidationStream);
             queue.TryWrite((symbol, liquidation));
@@ -139,7 +140,7 @@ public class BinanceLiquidationWorker(
 
     private async Task WriteBatchesAsync(CancellationToken ct)
     {
-        var batch = new List<(SymbolEnum Symbol, Liquidation Row)>(MaxBatchSize);
+        var batch = new List<(ExchangeSymbol Symbol, Liquidation Row)>(MaxBatchSize);
 
         while (await _queue.Reader.WaitToReadAsync(ct))
         {
@@ -154,7 +155,7 @@ public class BinanceLiquidationWorker(
         }
     }
 
-    private async Task InsertWithRetryAsync(List<(SymbolEnum Symbol, Liquidation Row)> batch, CancellationToken ct)
+    private async Task InsertWithRetryAsync(List<(ExchangeSymbol Symbol, Liquidation Row)> batch, CancellationToken ct)
     {
         while (true)
         {
@@ -172,7 +173,7 @@ public class BinanceLiquidationWorker(
         }
     }
 
-    private async Task InsertAsync(List<(SymbolEnum Symbol, Liquidation Row)> batch, CancellationToken ct)
+    private async Task InsertAsync(List<(ExchangeSymbol Symbol, Liquidation Row)> batch, CancellationToken ct)
     {
         if (batch.Count == 0)
             return;
@@ -182,7 +183,7 @@ public class BinanceLiquidationWorker(
 
         foreach (var group in batch.GroupBy(b => b.Symbol))
         {
-            var tableName = TableNameRegistry.GetLiquidationTableName(ExchangeEnum.Binance, group.Key);
+            var tableName = TableNameRegistry.GetLiquidationTableName(ExchangeEnum.Binance, group.Key.Value);
             var inserted = await repository.BulkInsert(tableName, group.Select(g => g.Row).ToList(), ct);
             stats.Stored(MarketDataTypeEnum.Liquidation, inserted);
             logger.LogDebug("Inserted {Count} liquidations for {Symbol}", inserted, group.Key);
@@ -194,7 +195,7 @@ public class BinanceLiquidationWorker(
         if (_queue is null)
             return;
 
-        var rest = new List<(SymbolEnum Symbol, Liquidation Row)>();
+        var rest = new List<(ExchangeSymbol Symbol, Liquidation Row)>();
         while (_queue.Reader.TryRead(out var item))
             rest.Add(item);
 

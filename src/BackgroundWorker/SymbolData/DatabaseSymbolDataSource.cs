@@ -19,7 +19,7 @@ public sealed class DatabaseSymbolDataSource(IServiceScopeFactory scopeFactory, 
             new GetSymbolDataConfigurationsQuery(), cancellationToken);
 
         return SymbolDataMapper.ToPlans(rows, (row, reason) =>
-            logger.LogWarning("Skipping symbol data #{Id} (exchange {Exchange}, market {Market}, symbol {Symbol}): {Reason}",
-                row.Id, row.ExchangeId, row.MarketId, row.SymbolId, reason));
+            logger.LogWarning("Skipping symbol data #{Id} (symbol listing {Listing}): {Reason}",
+                row.Id, row.SymbolListingId, reason));
     }
 }

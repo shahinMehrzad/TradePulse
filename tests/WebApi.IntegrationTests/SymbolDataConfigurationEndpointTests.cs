@@ -35,10 +35,10 @@ public class SymbolDataConfigurationEndpointTests(ApiFixture api) : IClassFixtur
 
     private static object Config(int symbolId, bool funding = true, bool liquidation = true, string? fundingStartDate = "2020-01-01T00:00:00Z",
         int exchangeId = Binance, int marketId = Futures) =>
-        new { exchangeId, marketId, symbolId, collectFundingRate = funding, fundingStartDate, collectLiquidation = liquidation };
+        new { symbolListingId = ListingIds.Of(exchangeId, marketId, symbolId), collectFundingRate = funding, fundingStartDate, collectLiquidation = liquidation };
 
     private static object Edit(int id, int symbolId, bool funding = true, bool liquidation = true, string? fundingStartDate = "2021-06-01T00:00:00Z") =>
-        new { id, exchangeId = Binance, marketId = Futures, symbolId, collectFundingRate = funding, fundingStartDate, collectLiquidation = liquidation };
+        new { id, symbolListingId = ListingIds.Of(Binance, Futures, symbolId), collectFundingRate = funding, fundingStartDate, collectLiquidation = liquidation };
 
     private async Task<HttpClient> AdminAsync()
     {
@@ -148,9 +148,9 @@ public class SymbolDataConfigurationEndpointTests(ApiFixture api) : IClassFixtur
         { "exchange missing", Config(1, exchangeId: 0), "required" },
         { "market missing", Config(1, marketId: 0), "required" },
         { "symbol missing", Config(0), "required" },
-        { "unknown exchange", Config(1, exchangeId: 99), "unknown exchange" },
-        { "unknown market", Config(1, marketId: 99), "unknown market" },
-        { "unknown symbol", Config(999), "Unknown exchange, market or symbol" },
+        { "unknown exchange", Config(1, exchangeId: 99), "Unknown symbol listing" },
+        { "unknown market", Config(1, marketId: 99), "Unknown symbol listing" },
+        { "unknown symbol", Config(999), "Unknown symbol listing" },
     };
 
     [Fact]
@@ -211,7 +211,7 @@ public class SymbolDataConfigurationEndpointTests(ApiFixture api) : IClassFixtur
             ("nothing chosen", Edit(id, symbol, funding: false, liquidation: false)),
             ("funding rate without a date", Edit(id, symbol, fundingStartDate: null)),
             ("funding rate with a date in the future", Edit(id, symbol, fundingStartDate: "2999-01-01T00:00:00Z")),
-            ("moved to Spot", new { id, exchangeId = Binance, marketId = Spot, symbolId = symbol, collectFundingRate = true, fundingStartDate = "2021-06-01T00:00:00Z", collectLiquidation = true }),
+            ("moved to Spot", new { id, symbolListingId = ListingIds.Of(Binance, Spot, symbol), collectFundingRate = true, fundingStartDate = "2021-06-01T00:00:00Z", collectLiquidation = true }),
             ("unknown symbol", Edit(id, 999)),
         };
 
