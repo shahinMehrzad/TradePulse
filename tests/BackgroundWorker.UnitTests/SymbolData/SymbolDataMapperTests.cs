@@ -7,14 +7,14 @@ namespace BackgroundWorker.UnitTests.SymbolData;
 public class SymbolDataMapperTests
 {
     private static SymbolDataConfiguration Row(
-        int id = 1, int exchange = (int)ExchangeEnum.Binance, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SymbolEnum.BTCUSDT,
+        int id = 1, int exchange = (int)ExchangeEnum.Binance, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SeededSymbol.BTCUSDT,
         bool funding = true, bool liquidation = true) => new()
     {
         Id = id,
         SymbolListing = new SymbolListing
         {
             ExchangeId = exchange, MarketId = market, SymbolId = symbol,
-            ExchangeSymbol = Enum.IsDefined((SymbolEnum)symbol) ? ((SymbolEnum)symbol).ToString() : "NOSUCHUSDT"
+            ExchangeSymbol = Enum.IsDefined((SeededSymbol)symbol) ? ((SeededSymbol)symbol).ToString() : "NOSUCHUSDT"
         },
         CollectFundingRate = funding,
         FundingStartDate = funding ? new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified) : null,
@@ -26,7 +26,7 @@ public class SymbolDataMapperTests
     {
         var plan = Assert.Single(SymbolDataMapper.ToPlans([Row(symbol: 3)]));
 
-        Assert.Equal((ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, true, true),
+        Assert.Equal((ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.ETHUSDT.Sym(), true, true),
             (plan.Exchange, plan.MarketType, plan.Symbol, plan.CollectFundingRate, plan.CollectLiquidation));
         Assert.Equal((new DateTime(2020, 1, 1), DateTimeKind.Utc), (plan.FundingStartDate!.Value, plan.FundingStartDate.Value.Kind));
     }

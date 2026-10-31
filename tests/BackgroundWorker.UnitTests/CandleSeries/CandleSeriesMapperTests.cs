@@ -8,14 +8,14 @@ public class CandleSeriesMapperTests
 {
     private static CandleWorkerConfiguration Row(
         int id = 1, int exchange = (int)ExchangeEnum.Binance, int market = (int)MarketTypeEnum.Futures,
-        int symbol = (int)SymbolEnum.BTCUSDT, int timeFrame = (int)TimeFrameEnum._4H, DateTime? start = null) => new()
+        int symbol = (int)SeededSymbol.BTCUSDT, int timeFrame = (int)TimeFrameEnum._4H, DateTime? start = null) => new()
     {
         Id = id,
         TimeFrameId = timeFrame,
         SymbolListing = new SymbolListing
         {
             ExchangeId = exchange, MarketId = market, SymbolId = symbol,
-            ExchangeSymbol = Enum.IsDefined((SymbolEnum)symbol) ? ((SymbolEnum)symbol).ToString() : "NOSUCHUSDT"
+            ExchangeSymbol = Enum.IsDefined((SeededSymbol)symbol) ? ((SeededSymbol)symbol).ToString() : "NOSUCHUSDT"
         },
         StartDate = start ?? new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified),
     };
@@ -25,7 +25,7 @@ public class CandleSeriesMapperTests
     {
         var series = Assert.Single(CandleSeriesMapper.ToSeries([Row(market: 2, symbol: 3, timeFrame: 3600)]));
 
-        Assert.Equal((MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H), (series.Series.MarketType, series.Series.Symbol, series.Series.Timeframe));
+        Assert.Equal((MarketTypeEnum.Futures, SeededSymbol.ETHUSDT.Sym(), TimeFrameEnum._1H), (series.Series.MarketType, series.Series.Symbol, series.Series.Timeframe));
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class CandleSeriesMapperTests
     {
         // The lookup tables mirror these enums, so any id the admin can pick has to survive the mapping.
         var rows = (from market in Enum.GetValues<MarketTypeEnum>()
-                    from symbol in Enum.GetValues<SymbolEnum>()
+                    from symbol in Enum.GetValues<SeededSymbol>()
                     from timeFrame in Enum.GetValues<TimeFrameEnum>()
                     select Row(market: (int)market, symbol: (int)symbol, timeFrame: (int)timeFrame)).ToList();
 
@@ -99,7 +99,7 @@ public class CandleSeriesMapperTests
     [Fact]
     public void EachExchangePicksItsOwnPlans()
     {
-        var binance = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        var binance = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         var other = binance with { Series = binance.Series with { Exchange = (ExchangeEnum)2 } };
 
         Assert.Equal([binance], new[] { binance, other }.ForExchange(ExchangeEnum.Binance));

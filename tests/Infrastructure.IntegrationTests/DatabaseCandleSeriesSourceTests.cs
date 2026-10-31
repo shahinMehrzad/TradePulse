@@ -56,7 +56,7 @@ public class DatabaseCandleSeriesSourceTests(PostgresFixture postgres)
         return services.BuildServiceProvider(validateScopes: true);
     }
 
-    private static CandleWorkerConfiguration Row(MarketTypeEnum market, SymbolEnum symbol, TimeFrameEnum timeFrame, DateTime start) => new()
+    private static CandleWorkerConfiguration Row(MarketTypeEnum market, SeededSymbol symbol, TimeFrameEnum timeFrame, DateTime start) => new()
     {
         TimeFrameId = (int)timeFrame,
         // The migration lists every symbol on Binance Futures (listing id = the old enum value); any other market needs its own listing.
@@ -73,15 +73,15 @@ public class DatabaseCandleSeriesSourceTests(PostgresFixture postgres)
     {
         var connectionString = await NewDatabaseAsync();
         await MigrateAsync(connectionString,
-            Row(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H, new DateTime(2020, 1, 1)),
-            Row(MarketTypeEnum.Spot, SymbolEnum.ETHUSDT, TimeFrameEnum._1H, new DateTime(2021, 5, 5)));
+            Row(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H, new DateTime(2020, 1, 1)),
+            Row(MarketTypeEnum.Spot, SeededSymbol.ETHUSDT, TimeFrameEnum._1H, new DateTime(2021, 5, 5)));
         await using var services = WorkerServices(connectionString);
 
         var series = await services.GetRequiredService<ICandleSeriesSource>().LoadAsync(Ct);
 
         Assert.Equal(
-            [(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H, new DateTime(2020, 1, 1)),
-             (MarketTypeEnum.Spot, SymbolEnum.ETHUSDT, TimeFrameEnum._1H, new DateTime(2021, 5, 5))],
+            [(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._4H, new DateTime(2020, 1, 1)),
+             (MarketTypeEnum.Spot, SeededSymbol.ETHUSDT.Sym(), TimeFrameEnum._1H, new DateTime(2021, 5, 5))],
             series.Select(s => (s.Series.MarketType, s.Series.Symbol, s.Series.Timeframe, s.StartDate)).OrderBy(s => s.MarketType == MarketTypeEnum.Spot));
         Assert.All(series, s => Assert.Equal(DateTimeKind.Utc, s.StartDate.Kind));
     }
@@ -92,7 +92,7 @@ public class DatabaseCandleSeriesSourceTests(PostgresFixture postgres)
         // The admin list is paged (10 by default); the worker must never see only a page of what it is meant to collect.
         var connectionString = await NewDatabaseAsync();
         var rows = Enum.GetValues<TimeFrameEnum>().Select(timeFrame =>
-            Row(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, timeFrame, new DateTime(2020, 1, 1))).ToArray();
+            Row(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, timeFrame, new DateTime(2020, 1, 1))).ToArray();
         await MigrateAsync(connectionString, rows);
         await using var services = WorkerServices(connectionString);
 

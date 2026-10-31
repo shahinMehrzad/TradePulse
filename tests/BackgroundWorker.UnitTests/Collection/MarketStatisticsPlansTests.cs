@@ -9,7 +9,7 @@ public class MarketStatisticsPlansTests
 {
     private static CandleSeriesPlan Plan(
         MarketTypeEnum market = MarketTypeEnum.Futures, TimeFrameEnum timeFrame = TimeFrameEnum._1H, bool statistics = true) =>
-        TestPlans.Binance(market, SymbolEnum.BTCUSDT, timeFrame) with { CollectMarketStatistics = statistics };
+        TestPlans.Binance(market, SeededSymbol.BTCUSDT, timeFrame) with { CollectMarketStatistics = statistics };
 
     [Theory]
     [InlineData(MarketDataTypeEnum.LongShortRatio)]

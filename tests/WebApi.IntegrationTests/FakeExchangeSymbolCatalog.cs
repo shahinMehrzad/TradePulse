@@ -8,7 +8,7 @@ namespace WebApi.IntegrationTests;
 public sealed class FakeExchangeSymbolCatalog : IExchangeSymbolCatalog
 {
     /// <summary>The names that trade on every market, as the exchange spells them.</summary>
-    public HashSet<string> Trading { get; } = new([.. Enum.GetNames<SymbolEnum>(), "1000PEPEUSDT"], StringComparer.Ordinal);
+    public HashSet<string> Trading { get; } = new([.. Enum.GetNames<SeededSymbol>(), "1000PEPEUSDT"], StringComparer.Ordinal);
 
     /// <summary>When set, the exchange cannot be reached.</summary>
     public bool Down { get; set; }

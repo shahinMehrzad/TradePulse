@@ -61,7 +61,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer", (await login.Content.ReadFromJsonAsync<LoginResult>())!.AccessToken);
 
-        foreach (var symbol in Enum.GetValues<SymbolEnum>())
+        foreach (var symbol in Enum.GetValues<SeededSymbol>())
         {
             var response = await client.PostAsJsonAsync("/api/admin/symbols/listings",
                 new { exchangeId = (int)ExchangeEnum.Binance, marketId = (int)MarketTypeEnum.Spot, symbolId = (int)symbol, exchangeSymbol = symbol.ToString() });

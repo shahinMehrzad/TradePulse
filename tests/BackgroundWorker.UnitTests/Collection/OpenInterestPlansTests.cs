@@ -8,11 +8,11 @@ namespace BackgroundWorker.UnitTests.Collection;
 public class OpenInterestPlansTests
 {
     private static CandleSeriesPlan Plan(
-        MarketTypeEnum market = MarketTypeEnum.Futures, SymbolEnum symbol = SymbolEnum.BTCUSDT,
+        MarketTypeEnum market = MarketTypeEnum.Futures, SeededSymbol symbol = SeededSymbol.BTCUSDT,
         TimeFrameEnum timeFrame = TimeFrameEnum._1H, bool openInterest = true, ExchangeEnum exchange = ExchangeEnum.Binance) =>
         TestPlans.Binance(market, symbol, timeFrame) with
         {
-            Series = new Domain.ValueObjects.CandleSeries(exchange, market, symbol, timeFrame),
+            Series = new Domain.ValueObjects.CandleSeries(exchange, market, symbol.Sym(), timeFrame),
             CollectOpenInterest = openInterest,
         };
 
@@ -52,7 +52,7 @@ public class OpenInterestPlansTests
     public void AFlagTheMarketCannotHonourIsReportedAndLeftOut(MarketTypeEnum market, TimeFrameEnum timeFrame, string reason)
     {
         var bad = Plan(market: market, timeFrame: timeFrame);
-        var good = Plan(symbol: SymbolEnum.ETHUSDT, timeFrame: TimeFrameEnum._1D);
+        var good = Plan(symbol: SeededSymbol.ETHUSDT, timeFrame: TimeFrameEnum._1D);
         var refused = new List<(CandleSeriesPlan Plan, string Reason)>();
 
         var selected = OpenInterestPlans.SelectForBinance([bad, good], (plan, why) => refused.Add((plan, why)));

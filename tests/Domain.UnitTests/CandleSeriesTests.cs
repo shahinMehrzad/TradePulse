@@ -9,7 +9,7 @@ public class CandleSeriesTests
     [Fact]
     public void TheTableNameAndIntervalComeFromTheSeriesItself()
     {
-        var series = new CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
+        var series = new CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._4H);
 
         Assert.Equal("binance_futures_btcusdt_4h", series.TableName);
         Assert.Equal(TimeSpan.FromHours(4), series.Interval);
@@ -21,7 +21,7 @@ public class CandleSeriesTests
         var row = Row(exchange: (int)ExchangeEnum.Binance);
 
         Assert.True(CandleSeriesPlan.TryCreate(row, out var plan, out _));
-        Assert.Equal(new CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H), plan.Series);
+        Assert.Equal(new CandleSeries(ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H), plan.Series);
         Assert.Equal((new DateTime(2020, 1, 1), DateTimeKind.Utc), (plan.StartDate, plan.StartDate.Kind));
     }
 
@@ -38,9 +38,9 @@ public class CandleSeriesTests
     }
 
     [Theory]
-    [InlineData(99,(int)MarketTypeEnum.Futures, (int)SymbolEnum.BTCUSDT, (int)TimeFrameEnum._1H, "unknown exchange")]
-    [InlineData((int)ExchangeEnum.Binance, 99, (int)SymbolEnum.BTCUSDT, (int)TimeFrameEnum._1H, "unknown market")]
-    [InlineData((int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, (int)SymbolEnum.BTCUSDT, 12345, "unknown time frame")]
+    [InlineData(99,(int)MarketTypeEnum.Futures, (int)SeededSymbol.BTCUSDT, (int)TimeFrameEnum._1H, "unknown exchange")]
+    [InlineData((int)ExchangeEnum.Binance, 99, (int)SeededSymbol.BTCUSDT, (int)TimeFrameEnum._1H, "unknown market")]
+    [InlineData((int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, (int)SeededSymbol.BTCUSDT, 12345, "unknown time frame")]
     public void AnIdThatIsNoEnumMemberIsRefusedWithAReason(int exchange, int market, int symbol, int timeFrame, string expected)
     {
         Assert.False(CandleSeriesPlan.TryCreate(Row(exchange, market, symbol, timeFrame), out _, out var reason));
@@ -77,7 +77,7 @@ public class CandleSeriesTests
     }
 
     private static CandleWorkerConfiguration Row(
-        int exchange, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SymbolEnum.BTCUSDT, int timeFrame = (int)TimeFrameEnum._1H,
+        int exchange, int market = (int)MarketTypeEnum.Futures, int symbol = (int)SeededSymbol.BTCUSDT, int timeFrame = (int)TimeFrameEnum._1H,
         string exchangeSymbol = "BTCUSDT") => new()
     {
         TimeFrameId = timeFrame,

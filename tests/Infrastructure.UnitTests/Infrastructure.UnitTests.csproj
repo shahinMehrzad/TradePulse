@@ -9,4 +9,8 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\SeededSymbol.cs" Link="Shared\SeededSymbol.cs" />
+  </ItemGroup>
+
 </Project>

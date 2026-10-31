@@ -36,8 +36,8 @@ public class CandleReadBenchmarks
     private const int IchimokuLookback = 78; // 52 + 26
 
     private static readonly DateTime Start = new(2018, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-    private static readonly CandleSeries Series4h = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
-    private static readonly CandleSeries Series15m = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._15M);
+    private static readonly CandleSeries Series4h = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, new ExchangeSymbol("BTCUSDT"), TimeFrameEnum._4H);
+    private static readonly CandleSeries Series15m = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, new ExchangeSymbol("BTCUSDT"), TimeFrameEnum._15M);
 
     private PostgreSqlContainer _container = null!;
     private RedisContainer? _redis;

@@ -6,7 +6,7 @@ What the collector gathers is chosen in the admin panel and stored in the databa
 
 ## Candle series (chosen in the database)
 
-Which candle series (market, symbol, time frame and start date) the collector fetches is **not** in `appsettings.json`: the admin chooses them in the panel and they are stored in `config.candle_worker_configurations` (WebApi creates and migrates the `config` schema; the worker only reads it).
+Which candle series (market, symbol, time frame and start date) the collector fetches is **not** in `appsettings.json`: the admin chooses them in the panel and they are stored in `config.candle_worker_configurations` (WebApi creates and migrates the `config` schema; the worker only reads it). A row points at a **symbol listing** (`config.exchange_symbols`: a symbol on an exchange market, with the name that exchange uses for it) and a time frame. Symbols (`config.symbols`) and listings are rows too, not code: the admin adds them through the API (see [Symbols and where they are listed](api.md#symbols-and-where-they-are-listed)) and the exchange confirms a new name before it is saved. The exchanges and markets themselves still have code behind them (`ExchangeEnum`, `MarketTypeEnum`).
 
 - The worker reads the list through the same query the admin API lists them with, and **looks at it again every 30 s**: a change made in the panel applies within about half a minute, without restarting anything. Only the workers a change concerns are touched, see [How a change is applied](#how-a-change-is-applied).
 - **An empty table means the collector idles**: it has nothing to collect, checks again every 30 s and starts as soon as the first series appears, without a restart. `/health` shows `candle-series` as degraded meanwhile.
@@ -17,7 +17,7 @@ Which candle series (market, symbol, time frame and start date) the collector fe
 
 ## Funding rate and liquidations (chosen in the database)
 
-They have no time frame, so they are chosen per symbol, not per candle series: one row per exchange + market + symbol in `config.symbol_data_configurations` (`CollectFundingRate` with its `FundingStartDate`, `CollectLiquidation`). The admin API manages them under `api/admin/configurations/symbol-data`, and refuses what the market does not have (both are futures-only) with the reason. They are read exactly like the candle series: an empty table makes those workers idle, and a change applies within about half a minute. Liquidations have no history, so they are only recorded from the moment they are switched on.
+They have no time frame, so they are chosen per symbol, not per candle series: one row per symbol listing in `config.symbol_data_configurations` (`CollectFundingRate` with its `FundingStartDate`, `CollectLiquidation`). The admin API manages them under `api/admin/configurations/symbol-data`, and refuses what the market does not have (both are futures-only) with the reason. They are read exactly like the candle series: an empty table makes those workers idle, and a change applies within about half a minute. Liquidations have no history, so they are only recorded from the moment they are switched on.
 
 ## How a change is applied
 

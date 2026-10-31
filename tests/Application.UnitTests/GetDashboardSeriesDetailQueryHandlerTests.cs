@@ -27,7 +27,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
         _configurations, _symbolData, _funding, _openInterest, _liquidation,
         new DashboardSnapshotBuilder(new CandleReader(_candles)), _time);
 
-    private void Configure(MarketTypeEnum market, SymbolEnum symbol, TimeFrameEnum timeFrame, bool openInterest = false) =>
+    private void Configure(MarketTypeEnum market, SeededSymbol symbol, TimeFrameEnum timeFrame, bool openInterest = false) =>
         _configurations.Configurations.Add(new CandleWorkerConfiguration
         {
             SymbolListing = new SymbolListing { ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = (int)symbol, ExchangeSymbol = symbol.ToString() },
@@ -40,7 +40,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
         {
             SymbolListing = new SymbolListing
             {
-                ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures, SymbolId = (int)SymbolEnum.BTCUSDT, ExchangeSymbol = nameof(SymbolEnum.BTCUSDT)
+                ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures, SymbolId = (int)SeededSymbol.BTCUSDT, ExchangeSymbol = nameof(SeededSymbol.BTCUSDT)
             },
             CollectFundingRate = funding, CollectLiquidation = liquidation
         });
@@ -52,12 +52,12 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     }
 
     private static GetDashboardSeriesDetailQuery Query(MarketTypeEnum market = MarketTypeEnum.Futures, TimeFrameEnum? timeFrame = null) =>
-        new(ExchangeEnum.Binance, market, SymbolEnum.BTCUSDT, timeFrame);
+        new(ExchangeEnum.Binance, market, "btcusdt", timeFrame);
 
     [Fact]
     public async Task ASymbolThatIsNotCollectedIsNotFound()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.ETHUSDT, TimeFrameEnum._1H);
 
         await Assert.ThrowsAsync<ConfigurationNotFoundException>(() => Handler.HandleAsync(Query(), Ct));
     }
@@ -65,7 +65,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task AMarketThatIsNotCollectedIsNotFound()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
 
         await Assert.ThrowsAsync<ConfigurationNotFoundException>(() => Handler.HandleAsync(Query(MarketTypeEnum.Spot), Ct));
     }
@@ -73,7 +73,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task ATimeFrameThatIsNotCollectedForTheSymbolIsNotFound()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
 
         var error = await Assert.ThrowsAsync<ConfigurationNotFoundException>(() => Handler.HandleAsync(Query(timeFrame: TimeFrameEnum._4H), Ct));
 
@@ -83,8 +83,8 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task WithoutATimeFrameTheShortestCollectedOneIsSummarised()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         StoreCandles("binance_futures_btcusdt_1h", TimeSpan.FromHours(1), 100m);
 
         var detail = await Handler.HandleAsync(Query(), Ct);
@@ -98,8 +98,8 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task AChosenTimeFrameIsSummarisedWhileTheDefaultStaysTheShortest()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H);
         StoreCandles("binance_futures_btcusdt_1h", TimeSpan.FromHours(1), 100m);
         StoreCandles("binance_futures_btcusdt_4h", TimeSpan.FromHours(4), 200m);
 
@@ -115,13 +115,13 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task TheNumberOfCandlesTheSummaryCoversCanBeChosen()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         _candles.PerTable["binance_futures_btcusdt_1h"] = [.. Enumerable.Range(0, 30).Select(i =>
         {
             var open = NineOClock - TimeSpan.FromHours(29 - i);
             return new Candle(open, 100m + i, 110m + i, 90m + i, 100m + i, 1m, open.AddHours(1).AddMilliseconds(-1), 0m, 1, 0m, 0m);
         })];
-        var query = new GetDashboardSeriesDetailQuery(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, null, Candles: 5);
+        var query = new GetDashboardSeriesDetailQuery(ExchangeEnum.Binance, MarketTypeEnum.Futures, "btcusdt", null, Candles: 5);
 
         var current = (await Handler.HandleAsync(query, Ct)).Current;
         var byDefault = (await Handler.HandleAsync(Query(), Ct)).Current;
@@ -136,7 +136,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task SpotHasNoRelatedData()
     {
-        Configure(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Spot, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
 
         var detail = await Handler.HandleAsync(Query(MarketTypeEnum.Spot), Ct);
 
@@ -146,7 +146,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task OnlyTheDataTheAdminChoseToCollectIsListed()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
 
         Assert.Empty((await Handler.HandleAsync(Query(), Ct)).Related);
 
@@ -159,7 +159,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task RelatedDataWhoseTableDoesNotExistYetIsEmpty()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H, openInterest: true);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H, openInterest: true);
         ConfigureSymbolData(funding: true, liquidation: true);
 
         var detail = await Handler.HandleAsync(Query(), Ct);
@@ -176,7 +176,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task ATableWithoutRowsIsEmptyToo()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         ConfigureSymbolData(funding: true, liquidation: false);
         _funding.Latest["binance_futures_btcusdt_fundingrate"] = null;
 
@@ -190,7 +190,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [InlineData(8 * 3600 + 61, DashboardStatus.Late)]
     public async Task FundingRateIsLateOnceASettlementIsOverdue(int lagSeconds, string expected)
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         ConfigureSymbolData(funding: true, liquidation: false);
         _funding.Latest["binance_futures_btcusdt_fundingrate"] = Now.UtcDateTime.AddSeconds(-lagSeconds);
 
@@ -204,8 +204,8 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task OpenInterestIsJudgedAgainstTheChosenTimeFrameAndItsTable()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H, openInterest: false);
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H, openInterest: true);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H, openInterest: false);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H, openInterest: true);
         _openInterest.Latest["binance_futures_btcusdt_4h_openinterest"] = Now.UtcDateTime.AddHours(-3);
 
         var onHour = await Handler.HandleAsync(Query(timeFrame: TimeFrameEnum._1H), Ct);
@@ -219,7 +219,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task OpenInterestOlderThanItsPeriodIsLate()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H, openInterest: true);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H, openInterest: true);
         _openInterest.Latest["binance_futures_btcusdt_1h_openinterest"] = Now.UtcDateTime.AddHours(-2);
 
         var related = Assert.Single((await Handler.HandleAsync(Query(), Ct)).Related);
@@ -230,7 +230,7 @@ public class GetDashboardSeriesDetailQueryHandlerTests
     [Fact]
     public async Task LiquidationsAreNeverLateHoweverOldTheLastOneIs()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         ConfigureSymbolData(funding: false, liquidation: true);
         _liquidation.Latest["binance_futures_btcusdt_liquidation"] = Now.UtcDateTime.AddDays(-3);
 

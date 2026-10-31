@@ -13,7 +13,7 @@ public class CandleSeriesProviderTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static CandleSeriesPlan Btc4h { get; } =
-        TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
+        TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H);
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly FakeCandleSeriesSource _source = new();
@@ -155,7 +155,7 @@ public class CandleSeriesProviderTests
 
     // ---- a list that is known keeps being read: what the admin changes reaches the workers without a restart ----
 
-    private static readonly CandleSeriesPlan Eth4h = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._4H);
+    private static readonly CandleSeriesPlan Eth4h = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.ETHUSDT, TimeFrameEnum._4H);
 
     [Fact]
     public async Task ASeriesAddedLaterIsFoundAtALaterLookAndPublishedUnderANewVersion()

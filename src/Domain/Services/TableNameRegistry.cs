@@ -26,9 +26,6 @@ namespace Domain.Services
             + new[] { FundingRate, OpenInterest, LongShortRatio, TakerVolume, Liquidation }.Max(k => k.Length)
             + "_event_time".Length;
 
-        public static string GetCandleTableName(ExchangeEnum exchange, MarketTypeEnum marketType, SymbolEnum symbol, TimeFrameEnum timeframe) =>
-            GetCandleTableName(exchange, marketType, EnumName(symbol), timeframe);
-
         /// <summary>Candles of a symbol named as the exchange names it, e.g. <c>binance_futures_btcusdt_4h</c>.</summary>
         public static string GetCandleTableName(ExchangeEnum exchange, MarketTypeEnum marketType, string exchangeSymbol, TimeFrameEnum timeframe)
         {
@@ -39,16 +36,10 @@ namespace Domain.Services
         }
 
         /// <summary>Funding rate settlements, e.g. <c>binance_futures_btcusdt_fundingrate</c>.</summary>
-        public static string GetFundingRateTableName(ExchangeEnum exchange, SymbolEnum symbol) =>
-            GetFundingRateTableName(exchange, EnumName(symbol));
-
         public static string GetFundingRateTableName(ExchangeEnum exchange, string exchangeSymbol) =>
             $"{Prefix(exchange, MarketTypeEnum.Futures, exchangeSymbol)}{FundingRate}";
 
         /// <summary>Open interest snapshots per period, e.g. <c>binance_futures_btcusdt_1h_openinterest</c>.</summary>
-        public static string GetOpenInterestTableName(ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeframe) =>
-            GetOpenInterestTableName(exchange, EnumName(symbol), timeframe);
-
         public static string GetOpenInterestTableName(ExchangeEnum exchange, string exchangeSymbol, TimeFrameEnum timeframe)
         {
             var prefix = Prefix(exchange, MarketTypeEnum.Futures, exchangeSymbol);
@@ -58,9 +49,6 @@ namespace Domain.Services
         }
 
         /// <summary>Long/short ratio of all accounts per period, e.g. <c>binance_futures_btcusdt_1h_longshortratio</c>.</summary>
-        public static string GetLongShortRatioTableName(ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeframe) =>
-            GetLongShortRatioTableName(exchange, EnumName(symbol), timeframe);
-
         public static string GetLongShortRatioTableName(ExchangeEnum exchange, string exchangeSymbol, TimeFrameEnum timeframe)
         {
             var prefix = Prefix(exchange, MarketTypeEnum.Futures, exchangeSymbol);
@@ -70,9 +58,6 @@ namespace Domain.Services
         }
 
         /// <summary>Taker buy and sell volume per period, e.g. <c>binance_futures_btcusdt_1h_takervolume</c>.</summary>
-        public static string GetTakerVolumeTableName(ExchangeEnum exchange, SymbolEnum symbol, TimeFrameEnum timeframe) =>
-            GetTakerVolumeTableName(exchange, EnumName(symbol), timeframe);
-
         public static string GetTakerVolumeTableName(ExchangeEnum exchange, string exchangeSymbol, TimeFrameEnum timeframe)
         {
             var prefix = Prefix(exchange, MarketTypeEnum.Futures, exchangeSymbol);
@@ -82,9 +67,6 @@ namespace Domain.Services
         }
 
         /// <summary>Forced liquidation orders, e.g. <c>binance_futures_btcusdt_liquidation</c>.</summary>
-        public static string GetLiquidationTableName(ExchangeEnum exchange, SymbolEnum symbol) =>
-            GetLiquidationTableName(exchange, EnumName(symbol));
-
         public static string GetLiquidationTableName(ExchangeEnum exchange, string exchangeSymbol) =>
             $"{Prefix(exchange, MarketTypeEnum.Futures, exchangeSymbol)}{Liquidation}";
 
@@ -135,10 +117,6 @@ namespace Domain.Services
 
             return $"{Lower(exchange)}_{Lower(marketType)}_{part}";
         }
-
-        // A symbol that is not a member of the enum is refused as before; its name is what the exchange has always been called with.
-        private static string EnumName(SymbolEnum symbol) =>
-            Enum.IsDefined(symbol) ? symbol.ToString() : throw new ArgumentException("Invalid Symbol.", nameof(symbol));
 
         private static bool TryReduce(string name, out string reduced)
         {

@@ -47,7 +47,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
             (await context.Markets.OrderBy(x => x.Id).ToListAsync(Ct)).Select(x => (x.Id, x.Name)));
         // Symbols are data now: the fourteen the enum had keep their ids, and are named "BTC/USDT" instead of "BTCUSDT".
         Assert.Equal(
-            Enum.GetValues<SymbolEnum>().Select(v => ((int)v, v.ToString()[..^"USDT".Length] + "/USDT")),
+            Enum.GetValues<SeededSymbol>().Select(v => ((int)v, v.ToString()[..^"USDT".Length] + "/USDT")),
             (await context.Symbols.OrderBy(x => x.Id).ToListAsync(Ct)).Select(x => (x.Id, x.Name)));
         Assert.Equal(
             Enum.GetValues<TimeFrameEnum>().Select(v => ((int)v, v.ToString(), (int)v)),
@@ -62,7 +62,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var listings = await context.SymbolListings.OrderBy(x => x.Id).ToListAsync(Ct);
 
         Assert.Equal(
-            Enum.GetValues<SymbolEnum>().Select(v => ((int)v, (int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, (int)v, v.ToString())),
+            Enum.GetValues<SeededSymbol>().Select(v => ((int)v, (int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, (int)v, v.ToString())),
             listings.Select(x => (x.Id, x.ExchangeId, x.MarketId, x.SymbolId, x.ExchangeSymbol)));
     }
 
@@ -81,7 +81,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         context.SymbolListings.Add(listing);
         await context.SaveChangesAsync(Ct);
 
-        var fifteen = Enum.GetValues<SymbolEnum>().Length + 1;
+        var fifteen = Enum.GetValues<SeededSymbol>().Length + 1;
         Assert.Equal((fifteen, fifteen), (symbol.Id, listing.Id));
     }
 
@@ -93,14 +93,14 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         {
             ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Spot, SymbolId = symbolId, ExchangeSymbol = name
         };
-        context.SymbolListings.Add(Listing((int)SymbolEnum.BTCUSDT, "BTCUSDT"));
+        context.SymbolListings.Add(Listing((int)SeededSymbol.BTCUSDT, "BTCUSDT"));
         await context.SaveChangesAsync(Ct);
 
-        context.SymbolListings.Add(Listing((int)SymbolEnum.BTCUSDT, "XBTUSDT"));
+        context.SymbolListings.Add(Listing((int)SeededSymbol.BTCUSDT, "XBTUSDT"));
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(Ct));
         context.ChangeTracker.Clear();
 
-        context.SymbolListings.Add(Listing((int)SymbolEnum.ETHUSDT, "BTCUSDT"));
+        context.SymbolListings.Add(Listing((int)SeededSymbol.ETHUSDT, "BTCUSDT"));
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(Ct));
     }
 
@@ -146,7 +146,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var result = await new LookupsRepository(context).GetSymbolListAsync("usdt", Ct);
 
         Assert.Equal(
-            Enum.GetNames<SymbolEnum>().Where(n => n.EndsWith("USDT", StringComparison.Ordinal)).Select(n => n[..^"USDT".Length] + "/USDT").Order(StringComparer.Ordinal),
+            Enum.GetNames<SeededSymbol>().Where(n => n.EndsWith("USDT", StringComparison.Ordinal)).Select(n => n[..^"USDT".Length] + "/USDT").Order(StringComparer.Ordinal),
             result.Select(x => x.Name));
     }
 
@@ -160,7 +160,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
 
         var result = await new LookupsRepository(context).GetSymbolListAsync(keyword, Ct);
 
-        Assert.Equal(Enum.GetValues<SymbolEnum>().Length, result.Count());
+        Assert.Equal(Enum.GetValues<SeededSymbol>().Length, result.Count());
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         await using var context = await MigratedContextAsync();
         CandleWorkerConfiguration Series() => new()
         {
-            SymbolListingId = (int)SymbolEnum.BTCUSDT,   // the migration lists every symbol on Binance Futures with the old enum value as its id
+            SymbolListingId = (int)SeededSymbol.BTCUSDT,   // the migration lists every symbol on Binance Futures with the old enum value as its id
             TimeFrameId = (int)TimeFrameEnum._4H,
             StartDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified)
         };
@@ -218,7 +218,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         await using var context = await MigratedContextAsync();
         context.CandleWorkerConfigurations.Add(new CandleWorkerConfiguration
         {
-            SymbolListingId = (int)SymbolEnum.ETHUSDT,
+            SymbolListingId = (int)SeededSymbol.ETHUSDT,
             TimeFrameId = (int)TimeFrameEnum._1H,
             StartDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified)
         });
@@ -245,7 +245,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     // The seeded listings (Binance Futures) have the old enum value as their id.
-    private static CandleWorkerConfiguration NewSeries(DateTime startDate, int listingId = (int)SymbolEnum.BTCUSDT) => new()
+    private static CandleWorkerConfiguration NewSeries(DateTime startDate, int listingId = (int)SeededSymbol.BTCUSDT) => new()
     {
         SymbolListingId = listingId,
         TimeFrameId = (int)TimeFrameEnum._4H,
@@ -275,10 +275,10 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var repository = new CandleWorkerConfigurationRepository(context);
         var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SymbolEnum.ETHUSDT), Ct);
+        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SeededSymbol.ETHUSDT), Ct);
 
         var stored = Assert.Single(await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct));
-        Assert.Equal(((int)SymbolEnum.ETHUSDT, "ETHUSDT", (int)MarketTypeEnum.Futures),
+        Assert.Equal(((int)SeededSymbol.ETHUSDT, "ETHUSDT", (int)MarketTypeEnum.Futures),
             (stored.SymbolListingId, stored.SymbolListing!.ExchangeSymbol, stored.SymbolListing.MarketId));
     }
 
@@ -315,14 +315,14 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var id = await repository.AddNewCandleWorkerConfiguration(NewSeries(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)), Ct);
         var created = (await repository.GetConfigurationList(Ct)).Single().CreateDate;
 
-        var change = NewSeries(new DateTime(2021, 6, 1, 0, 0, 0, DateTimeKind.Utc), listingId: (int)SymbolEnum.ETHUSDT);
+        var change = NewSeries(new DateTime(2021, 6, 1, 0, 0, 0, DateTimeKind.Utc), listingId: (int)SeededSymbol.ETHUSDT);
         change.Id = id;
 
         var updated = await repository.UpdateCandleWorkerConfiguration(change, Ct);
 
-        Assert.Equal((id, (int)SymbolEnum.ETHUSDT, "ETHUSDT", new DateTime(2021, 6, 1)), (updated.Id, updated.SymbolListingId, updated.SymbolListing!.ExchangeSymbol, updated.StartDate));
+        Assert.Equal((id, (int)SeededSymbol.ETHUSDT, "ETHUSDT", new DateTime(2021, 6, 1)), (updated.Id, updated.SymbolListingId, updated.SymbolListing!.ExchangeSymbol, updated.StartDate));
         var stored = (await new CandleWorkerConfigurationRepository(context).GetConfigurationList(Ct)).Single();
-        Assert.Equal((id, (int)SymbolEnum.ETHUSDT, new DateTime(2021, 6, 1), created), (stored.Id, stored.SymbolListingId, stored.StartDate, stored.CreateDate));
+        Assert.Equal((id, (int)SeededSymbol.ETHUSDT, new DateTime(2021, 6, 1), created), (stored.Id, stored.SymbolListingId, stored.StartDate, stored.CreateDate));
     }
 
     [Fact]
@@ -343,7 +343,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var repository = new CandleWorkerConfigurationRepository(context);
         var start = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var doomed = await repository.AddNewCandleWorkerConfiguration(NewSeries(start), Ct);
-        var survivor = await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SymbolEnum.ETHUSDT), Ct);
+        var survivor = await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SeededSymbol.ETHUSDT), Ct);
 
         await repository.RemoveCandleWorkerConfiguration(doomed, Ct);
 
@@ -372,7 +372,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
             series.TimeFrameId = (int)timeFrame;
             await repository.AddNewCandleWorkerConfiguration(series, Ct);
         }
-        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SymbolEnum.ETHUSDT), Ct);
+        await repository.AddNewCandleWorkerConfiguration(NewSeries(start, listingId: (int)SeededSymbol.ETHUSDT), Ct);
 
         // The worker reads this one: every series, however many there are.
         Assert.Equal(13, (await repository.GetConfigurationList(Ct)).Count());

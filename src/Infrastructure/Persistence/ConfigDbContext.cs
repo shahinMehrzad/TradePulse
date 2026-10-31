@@ -10,6 +10,15 @@ public class ConfigDbContext : DbContext
     {
     }
 
+    // What the first migrations seeded; the ids are the values the symbol enum had before symbols moved to the database, which existing rows still use.
+    private static readonly (int Id, string Name, string ExchangeSymbol)[] FirstSymbols =
+    [
+        (1, "BTC/USDT", "BTCUSDT"), (2, "XAU/USDT", "XAUUSDT"), (3, "ETH/USDT", "ETHUSDT"), (4, "SOL/USDT", "SOLUSDT"),
+        (5, "XRP/USDT", "XRPUSDT"), (6, "BNB/USDT", "BNBUSDT"), (7, "SUI/USDT", "SUIUSDT"), (8, "ADA/USDT", "ADAUSDT"),
+        (9, "DOGE/USDT", "DOGEUSDT"), (10, "LINK/USDT", "LINKUSDT"), (11, "LTC/USDT", "LTCUSDT"), (12, "AVAX/USDT", "AVAXUSDT"),
+        (13, "DOT/USDT", "DOTUSDT"), (14, "TRX/USDT", "TRXUSDT"),
+    ];
+
     public DbSet<ExchangeLookup> Exchanges => Set<ExchangeLookup>();
     public DbSet<MarketLookup> Markets => Set<MarketLookup>();
     public DbSet<SymbolLookup> Symbols => Set<SymbolLookup>();
@@ -41,19 +50,12 @@ public class ConfigDbContext : DbContext
             e.HasData(Enum.GetValues<MarketTypeEnum>().Select(v => new MarketLookup { Id = (int)v, Name = v.ToString() }));
         });
 
-        // Symbols are data now, not an enum: the first fourteen keep the ids they always had, new ones get their id from the database.
+        // Symbols are data now: the first fourteen keep the ids they had when they were an enum, new ones get their id from the database.
         builder.Entity<SymbolLookup>(e =>
         {
             e.ToTable("symbols", "config");
             e.HasIndex(x => x.Name).IsUnique();
-            e.HasData(
-                new SymbolLookup { Id = 1, Name = "BTC/USDT" }, new SymbolLookup { Id = 2, Name = "XAU/USDT" },
-                new SymbolLookup { Id = 3, Name = "ETH/USDT" }, new SymbolLookup { Id = 4, Name = "SOL/USDT" },
-                new SymbolLookup { Id = 5, Name = "XRP/USDT" }, new SymbolLookup { Id = 6, Name = "BNB/USDT" },
-                new SymbolLookup { Id = 7, Name = "SUI/USDT" }, new SymbolLookup { Id = 8, Name = "ADA/USDT" },
-                new SymbolLookup { Id = 9, Name = "DOGE/USDT" }, new SymbolLookup { Id = 10, Name = "LINK/USDT" },
-                new SymbolLookup { Id = 11, Name = "LTC/USDT" }, new SymbolLookup { Id = 12, Name = "AVAX/USDT" },
-                new SymbolLookup { Id = 13, Name = "DOT/USDT" }, new SymbolLookup { Id = 14, Name = "TRX/USDT" });
+            e.HasData(FirstSymbols.Select(x => new SymbolLookup { Id = x.Id, Name = x.Name }));
         });
 
         builder.Entity<SymbolListing>(e =>
@@ -70,10 +72,10 @@ public class ConfigDbContext : DbContext
             e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.ExchangeSymbol }).IsUnique();
 
             // The fourteen symbols the collector always had: Binance Futures, named as Binance names them.
-            e.HasData(Enum.GetValues<SymbolEnum>().Select(v => new SymbolListing
+            e.HasData(FirstSymbols.Select(x => new SymbolListing
             {
-                Id = (int)v, ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures,
-                SymbolId = (int)v, ExchangeSymbol = v.ToString()
+                Id = x.Id, ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures,
+                SymbolId = x.Id, ExchangeSymbol = x.ExchangeSymbol
             }));
         });
 

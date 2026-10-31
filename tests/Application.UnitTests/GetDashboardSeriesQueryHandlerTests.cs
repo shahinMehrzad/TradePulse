@@ -20,7 +20,7 @@ public class GetDashboardSeriesQueryHandlerTests
 
     private GetDashboardSeriesQueryHandler Handler => new(_configurations, new DashboardSnapshotBuilder(new CandleReader(_candles)), _time);
 
-    private void Configure(MarketTypeEnum market, SymbolEnum symbol, TimeFrameEnum timeFrame) =>
+    private void Configure(MarketTypeEnum market, SeededSymbol symbol, TimeFrameEnum timeFrame) =>
         _configurations.Configurations.Add(new CandleWorkerConfiguration
         {
             SymbolListing = new SymbolListing { ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)market, SymbolId = (int)symbol, ExchangeSymbol = symbol.ToString() },
@@ -43,9 +43,9 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task OneCardPerSymbolWithEveryTimeFrameAndTheShortestAsDefault()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
-        Configure(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1D);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Spot, SeededSymbol.BTCUSDT, TimeFrameEnum._1D);
 
         var response = await Handler.HandleAsync(new(null), Ct);
 
@@ -61,8 +61,8 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task TheMarketFilterKeepsOnlyThatMarket()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
-        Configure(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Spot, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
 
         var response = await Handler.HandleAsync(new(MarketTypeEnum.Spot), Ct);
 
@@ -72,7 +72,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task ASeriesWhoseTableDoesNotExistYetIsEmpty()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         _candles.PerTable["some_other_table"] = [];
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
@@ -86,7 +86,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task ATableWithoutRowsIsEmpty()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         _candles.PerTable["binance_futures_btcusdt_1h"] = [];
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
@@ -97,7 +97,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task ACandleThatJustClosedIsOkWithNoLag()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         Store("binance_futures_btcusdt_1h", 30, NineOClock, TimeSpan.FromHours(1));
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
@@ -110,7 +110,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task LagCountsFromTheCloseOfTheNewestCandle()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         Store("binance_futures_btcusdt_1h", 30, NineOClock, TimeSpan.FromHours(1));
         _time.Advance(TimeSpan.FromMinutes(4));
 
@@ -125,7 +125,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [InlineData(3600 + 61, DashboardStatus.Late)] // one second past it
     public async Task ItIsLateOnceTheNextCandleIsOverdue(int lagSeconds, string expected)
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         Store("binance_futures_btcusdt_1h", 30, NineOClock, TimeSpan.FromHours(1));
         _time.Advance(TimeSpan.FromSeconds(lagSeconds));
 
@@ -138,7 +138,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task EverythingOnACardDescribesTheSame24NewestCandles()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._15M);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._15M);
         Store("binance_futures_btcusdt_15m", 100, Now.UtcDateTime.AddMinutes(-15), TimeSpan.FromMinutes(15)); // closes 100 .. 199
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
@@ -160,7 +160,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [InlineData(false)]  // falling line
     public async Task TheChangeHasTheDirectionOfTheLine(bool rising)
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         var lastOpen = NineOClock;
         _candles.PerTable["binance_futures_btcusdt_1h"] = [.. Enumerable.Range(0, 30).Select(i =>
         {
@@ -178,7 +178,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task ANewSeriesWithFewerCandlesThanThatShowsWhatItHas()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         Store("binance_futures_btcusdt_1h", 3, NineOClock, TimeSpan.FromHours(1)); // closes 100 .. 102
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;
@@ -192,7 +192,7 @@ public class GetDashboardSeriesQueryHandlerTests
     [Fact]
     public async Task ASingleCandleIsMeasuredFromItsOwnOpen()
     {
-        Configure(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+        Configure(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
         Store("binance_futures_btcusdt_1h", 1, NineOClock, TimeSpan.FromHours(1)); // open 99, close 100
 
         var current = Assert.Single((await Handler.HandleAsync(new(null), Ct)).Items).Current;

@@ -7,9 +7,9 @@ namespace BackgroundWorker.UnitTests.SymbolData;
 public class SymbolDataPlansTests
 {
     private static readonly DateTime Start = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-    private static readonly SymbolDataPlan Both = SymbolDataTestSupport.Binance(SymbolEnum.BTCUSDT, funding: true, liquidation: true);
-    private static readonly SymbolDataPlan FundingOnly = SymbolDataTestSupport.Binance(SymbolEnum.ETHUSDT, funding: true, liquidation: false);
-    private static readonly SymbolDataPlan LiquidationOnly = SymbolDataTestSupport.Binance(SymbolEnum.BNBUSDT, funding: false, liquidation: true);
+    private static readonly SymbolDataPlan Both = SymbolDataTestSupport.Binance(SeededSymbol.BTCUSDT, funding: true, liquidation: true);
+    private static readonly SymbolDataPlan FundingOnly = SymbolDataTestSupport.Binance(SeededSymbol.ETHUSDT, funding: true, liquidation: false);
+    private static readonly SymbolDataPlan LiquidationOnly = SymbolDataTestSupport.Binance(SeededSymbol.BNBUSDT, funding: false, liquidation: true);
 
     [Fact]
     public void FundingRatesAreTakenFromTheSymbolsThatAskedForThemWithTheirStartDate()
@@ -17,14 +17,14 @@ public class SymbolDataPlansTests
         var targets = SymbolDataPlans.FundingRatesForBinance([Both, FundingOnly, LiquidationOnly]);
 
         Assert.Equal(
-            [new FundingRateTarget(SymbolEnum.BTCUSDT, Start), new FundingRateTarget(SymbolEnum.ETHUSDT, Start)],
+            [new FundingRateTarget(SeededSymbol.BTCUSDT.Sym(), Start), new FundingRateTarget(SeededSymbol.ETHUSDT.Sym(), Start)],
             targets);
     }
 
     [Fact]
     public void LiquidationsAreTakenFromTheSymbolsThatAskedForThem()
     {
-        Assert.Equal([SymbolEnum.BTCUSDT, SymbolEnum.BNBUSDT], SymbolDataPlans.LiquidationsForBinance([Both, FundingOnly, LiquidationOnly]));
+        Assert.Equal([SeededSymbol.BTCUSDT.Sym(), SeededSymbol.BNBUSDT.Sym()], SymbolDataPlans.LiquidationsForBinance([Both, FundingOnly, LiquidationOnly]));
     }
 
     [Fact]
@@ -50,15 +50,15 @@ public class SymbolDataPlansTests
     [Fact]
     public void ChoicesTheMarketCannotHonourAreReportedAndLeftOutWithoutStoppingTheOthers()
     {
-        var onSpot = SymbolDataTestSupport.Binance(SymbolEnum.XRPUSDT, market: MarketTypeEnum.Spot);
+        var onSpot = SymbolDataTestSupport.Binance(SeededSymbol.XRPUSDT, market: MarketTypeEnum.Spot);
         var refusedFunding = new List<(SymbolDataPlan Plan, string Reason)>();
         var refusedLiquidation = new List<(SymbolDataPlan Plan, string Reason)>();
 
         var funding = SymbolDataPlans.FundingRatesForBinance([onSpot, Both], (plan, why) => refusedFunding.Add((plan, why)));
         var liquidation = SymbolDataPlans.LiquidationsForBinance([onSpot, Both], (plan, why) => refusedLiquidation.Add((plan, why)));
 
-        Assert.Equal(SymbolEnum.BTCUSDT, Assert.Single(funding).Symbol);
-        Assert.Equal([SymbolEnum.BTCUSDT], liquidation);
+        Assert.Equal(SeededSymbol.BTCUSDT.Sym(), Assert.Single(funding).Symbol);
+        Assert.Equal([SeededSymbol.BTCUSDT.Sym()], liquidation);
         Assert.Equal((onSpot, "FundingRate is not available on Binance Spot"), Assert.Single(refusedFunding));
         Assert.Equal((onSpot, "Liquidation is not available on Binance Spot"), Assert.Single(refusedLiquidation));
     }

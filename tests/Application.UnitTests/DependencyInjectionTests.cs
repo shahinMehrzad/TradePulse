@@ -34,7 +34,7 @@ public class DependencyInjectionTests
         using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher>();
         var open = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1D,
+        var command = new SaveCandlesCommand(ExchangeEnum.Binance, MarketTypeEnum.Spot, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1D,
         [
             new(open, 1m, 2m, 1m, 2m, 3m, open.AddDays(1).AddMilliseconds(-1), 4m, 5, 1m, 2m)
         ]);

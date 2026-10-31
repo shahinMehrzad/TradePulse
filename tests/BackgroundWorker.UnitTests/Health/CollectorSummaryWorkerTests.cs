@@ -56,7 +56,7 @@ public class CollectorSummaryWorkerTests
             var rig = new Rig();
             var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(rig.Repository).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
             var series = withSeries
-                ? await CandleSeriesTestSupport.LoadedProviderAsync(rig.Time, TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H))
+                ? await CandleSeriesTestSupport.LoadedProviderAsync(rig.Time, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H))
                 : CandleSeriesTestSupport.NewProvider(new FakeCandleSeriesSource(), rig.Time);
 
             rig.Worker = new CollectorSummaryWorker(

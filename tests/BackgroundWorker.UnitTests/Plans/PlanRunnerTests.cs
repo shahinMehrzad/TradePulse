@@ -16,10 +16,10 @@ public class PlanRunnerTests : IAsyncLifetime
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static readonly CandleSeriesPlan Btc1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
-    private static readonly CandleSeriesPlan Eth1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.ETHUSDT, TimeFrameEnum._1H);
-    private static readonly CandleSeriesPlan Btc4hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._4H);
-    private static readonly CandleSeriesPlan Btc1hSpot = TestPlans.Binance(MarketTypeEnum.Spot, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Btc1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Eth1hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.ETHUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeriesPlan Btc4hFutures = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._4H);
+    private static readonly CandleSeriesPlan Btc1hSpot = TestPlans.Binance(MarketTypeEnum.Spot, SeededSymbol.BTCUSDT, TimeFrameEnum._1H);
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly FakeCandleSeriesSource _source = new();

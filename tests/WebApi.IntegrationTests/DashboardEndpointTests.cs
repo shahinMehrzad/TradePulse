@@ -117,7 +117,8 @@ public class DashboardEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     [Theory]
     [InlineData("/api/admin/dashboard/series/kraken/futures/btcusdt")]
     [InlineData("/api/admin/dashboard/series/binance/options/btcusdt")]
-    [InlineData("/api/admin/dashboard/series/binance/futures/doge")]
+    [InlineData("/api/admin/dashboard/series/binance/futures/btc%20usdt")]       // a name that cannot be part of a table name
+    [InlineData("/api/admin/dashboard/series/binance/futures/---")]
     [InlineData("/api/admin/dashboard/series/binance/2/btcusdt")]               // numbers are not names
     [InlineData("/api/admin/dashboard/series/binance/futures/btcusdt?timeframe=7h")]
     [InlineData("/api/admin/dashboard/series/binance/futures/btcusdt?timeframe=3600")]
@@ -132,6 +133,7 @@ public class DashboardEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
 
     [Theory]
     [InlineData("/api/admin/dashboard/series/binance/spot/btcusdt")]                  // known names, but not collected
+    [InlineData("/api/admin/dashboard/series/binance/futures/doge")]                  // a valid name nobody lists is just not collected
     [InlineData("/api/admin/dashboard/series/binance/futures/btcusdt?timeframe=1d")]  // BTCUSDT is collected, not at 1d
     public async Task ASeriesOrTimeFrameThatIsNotCollectedIsNotFound(string url)
     {

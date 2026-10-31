@@ -9,7 +9,7 @@ namespace Application.UnitTests;
 public class CandleReaderTests
 {
     private static readonly DateTime Start = new(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-    private static readonly CandleSeries Series = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, SymbolEnum.BTCUSDT, TimeFrameEnum._1H);
+    private static readonly CandleSeries Series = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, SeededSymbol.BTCUSDT.Sym(), TimeFrameEnum._1H);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
