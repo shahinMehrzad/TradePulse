@@ -13,6 +13,7 @@ public class ConfigDbContext : DbContext
     public DbSet<ExchangeLookup> Exchanges => Set<ExchangeLookup>();
     public DbSet<MarketLookup> Markets => Set<MarketLookup>();
     public DbSet<SymbolLookup> Symbols => Set<SymbolLookup>();
+    public DbSet<SymbolListing> SymbolListings => Set<SymbolListing>();
     public DbSet<TimeFrameLookup> TimeFrames => Set<TimeFrameLookup>();
     public DbSet<CandleWorkerConfiguration> CandleWorkerConfigurations => Set<CandleWorkerConfiguration>();
     public DbSet<SymbolDataConfiguration> SymbolDataConfigurations => Set<SymbolDataConfiguration>();
@@ -40,11 +41,40 @@ public class ConfigDbContext : DbContext
             e.HasData(Enum.GetValues<MarketTypeEnum>().Select(v => new MarketLookup { Id = (int)v, Name = v.ToString() }));
         });
 
+        // Symbols are data now, not an enum: the first fourteen keep the ids they always had, new ones get their id from the database.
         builder.Entity<SymbolLookup>(e =>
         {
             e.ToTable("symbols", "config");
-            e.Property(x => x.Id).ValueGeneratedNever();
-            e.HasData(Enum.GetValues<SymbolEnum>().Select(v => new SymbolLookup { Id = (int)v, Name = v.ToString() }));
+            e.HasIndex(x => x.Name).IsUnique();
+            e.HasData(
+                new SymbolLookup { Id = 1, Name = "BTC/USDT" }, new SymbolLookup { Id = 2, Name = "XAU/USDT" },
+                new SymbolLookup { Id = 3, Name = "ETH/USDT" }, new SymbolLookup { Id = 4, Name = "SOL/USDT" },
+                new SymbolLookup { Id = 5, Name = "XRP/USDT" }, new SymbolLookup { Id = 6, Name = "BNB/USDT" },
+                new SymbolLookup { Id = 7, Name = "SUI/USDT" }, new SymbolLookup { Id = 8, Name = "ADA/USDT" },
+                new SymbolLookup { Id = 9, Name = "DOGE/USDT" }, new SymbolLookup { Id = 10, Name = "LINK/USDT" },
+                new SymbolLookup { Id = 11, Name = "LTC/USDT" }, new SymbolLookup { Id = 12, Name = "AVAX/USDT" },
+                new SymbolLookup { Id = 13, Name = "DOT/USDT" }, new SymbolLookup { Id = 14, Name = "TRX/USDT" });
+        });
+
+        builder.Entity<SymbolListing>(e =>
+        {
+            e.ToTable("exchange_symbols", "config");
+
+            // A listing with configurations (or data) must never silently disappear with its lookup row.
+            e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
+
+            // A symbol is listed once per exchange market, and the exchange's own name is unique there (the table name derives from it).
+            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId }).IsUnique();
+            e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.ExchangeSymbol }).IsUnique();
+
+            // The fourteen symbols the collector always had: Binance Futures, named as Binance names them.
+            e.HasData(Enum.GetValues<SymbolEnum>().Select(v => new SymbolListing
+            {
+                Id = (int)v, ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures,
+                SymbolId = (int)v, ExchangeSymbol = v.ToString()
+            }));
         });
 
         builder.Entity<TimeFrameLookup>(e =>
@@ -70,6 +100,7 @@ public class ConfigDbContext : DbContext
             e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.TimeFrame).WithMany().HasForeignKey(x => x.TimeFrameId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.SymbolListing).WithMany().HasForeignKey(x => x.SymbolListingId).OnDelete(DeleteBehavior.Restrict);
 
             // One row per series, like the worker's own duplicate rule.
             e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId, x.TimeFrameId }).IsUnique();
@@ -90,6 +121,7 @@ public class ConfigDbContext : DbContext
             e.HasOne(x => x.Exchange).WithMany().HasForeignKey(x => x.ExchangeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Market).WithMany().HasForeignKey(x => x.MarketId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Symbol).WithMany().HasForeignKey(x => x.SymbolId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.SymbolListing).WithMany().HasForeignKey(x => x.SymbolListingId).OnDelete(DeleteBehavior.Restrict);
 
             // One row per symbol of an exchange market.
             e.HasIndex(x => new { x.ExchangeId, x.MarketId, x.SymbolId }).IsUnique();

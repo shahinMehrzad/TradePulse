@@ -15,6 +15,10 @@ public class SymbolDataConfiguration
     public MarketLookup? Market { get; set; }
     public SymbolLookup? Symbol { get; set; }
 
+    /// <summary>Transitional: filled by the migration, replaces <see cref="ExchangeId"/>, <see cref="MarketId"/> and <see cref="SymbolId"/> once the code uses it.</summary>
+    public int? SymbolListingId { get; set; }
+    public SymbolListing? SymbolListing { get; set; }
+
     public bool CollectFundingRate { get; set; }
 
     /// <summary>UTC. Where the funding rate history starts; set exactly when <see cref="CollectFundingRate"/> is on. Stored as <c>timestamp</c> (no zone).</summary>

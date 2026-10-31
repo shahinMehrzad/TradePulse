@@ -13,6 +13,10 @@
         public SymbolLookup? Symbol { get; set; }
         public TimeFrameLookup? TimeFrame { get; set; }
 
+        /// <summary>Transitional: filled by the migration, replaces <see cref="ExchangeId"/>, <see cref="MarketId"/> and <see cref="SymbolId"/> once the code uses it.</summary>
+        public int? SymbolListingId { get; set; }
+        public SymbolListing? SymbolListing { get; set; }
+
         /// <summary>UTC. Stored as <c>timestamp</c> (no zone) like every other time column.</summary>
         public DateTime StartDate { get; set; }
         public bool CollectOpenInterest { get; set; }

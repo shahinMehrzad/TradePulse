@@ -45,12 +45,63 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         Assert.Equal(
             Enum.GetValues<MarketTypeEnum>().Select(v => ((int)v, v.ToString())),
             (await context.Markets.OrderBy(x => x.Id).ToListAsync(Ct)).Select(x => (x.Id, x.Name)));
+        // Symbols are data now: the fourteen the enum had keep their ids, and are named "BTC/USDT" instead of "BTCUSDT".
         Assert.Equal(
-            Enum.GetValues<SymbolEnum>().Select(v => ((int)v, v.ToString())),
+            Enum.GetValues<SymbolEnum>().Select(v => ((int)v, v.ToString()[..^"USDT".Length] + "/USDT")),
             (await context.Symbols.OrderBy(x => x.Id).ToListAsync(Ct)).Select(x => (x.Id, x.Name)));
         Assert.Equal(
             Enum.GetValues<TimeFrameEnum>().Select(v => ((int)v, v.ToString(), (int)v)),
             (await context.TimeFrames.OrderBy(x => x.Id).ToListAsync(Ct)).Select(x => (x.Id, x.Name, x.IntervalToSeconds)));
+    }
+
+    [Fact]
+    public async Task EverySymbolTheCollectorAlwaysHadIsListedOnBinanceFutures()
+    {
+        await using var context = await MigratedContextAsync();
+
+        var listings = await context.SymbolListings.OrderBy(x => x.Id).ToListAsync(Ct);
+
+        Assert.Equal(
+            Enum.GetValues<SymbolEnum>().Select(v => ((int)v, (int)ExchangeEnum.Binance, (int)MarketTypeEnum.Futures, (int)v, v.ToString())),
+            listings.Select(x => (x.Id, x.ExchangeId, x.MarketId, x.SymbolId, x.ExchangeSymbol)));
+    }
+
+    [Fact]
+    public async Task ANewSymbolAndListingGetTheNextIdsNotAnOldOne()
+    {
+        // The seeded rows have explicit ids; the migration moves both sequences past them.
+        await using var context = await MigratedContextAsync();
+        var symbol = new SymbolLookup { Name = "PEPE/USDT" };
+        context.Symbols.Add(symbol);
+        await context.SaveChangesAsync(Ct);
+        var listing = new SymbolListing
+        {
+            ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Futures, SymbolId = symbol.Id, ExchangeSymbol = "1000PEPEUSDT"
+        };
+        context.SymbolListings.Add(listing);
+        await context.SaveChangesAsync(Ct);
+
+        var fifteen = Enum.GetValues<SymbolEnum>().Length + 1;
+        Assert.Equal((fifteen, fifteen), (symbol.Id, listing.Id));
+    }
+
+    [Fact]
+    public async Task ASymbolIsListedOnceAndItsExchangeNameIsUniquePerMarket()
+    {
+        await using var context = await MigratedContextAsync();
+        SymbolListing Listing(int symbolId, string name) => new()
+        {
+            ExchangeId = (int)ExchangeEnum.Binance, MarketId = (int)MarketTypeEnum.Spot, SymbolId = symbolId, ExchangeSymbol = name
+        };
+        context.SymbolListings.Add(Listing((int)SymbolEnum.BTCUSDT, "BTCUSDT"));
+        await context.SaveChangesAsync(Ct);
+
+        context.SymbolListings.Add(Listing((int)SymbolEnum.BTCUSDT, "XBTUSDT"));
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(Ct));
+        context.ChangeTracker.Clear();
+
+        context.SymbolListings.Add(Listing((int)SymbolEnum.ETHUSDT, "BTCUSDT"));
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(Ct));
     }
 
     [Fact]
@@ -73,9 +124,9 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     [Theory]
-    [InlineData("btc", new[] { "BTCUSDT" })]
-    [InlineData("BTC", new[] { "BTCUSDT" })]
-    [InlineData("  btc  ", new[] { "BTCUSDT" })]
+    [InlineData("btc", new[] { "BTC/USDT" })]
+    [InlineData("BTC", new[] { "BTC/USDT" })]
+    [InlineData("  btc  ", new[] { "BTC/USDT" })]
     [InlineData("nothing-like-this", new string[0])]
     public async Task SymbolSearchIgnoresCaseAndSortsByName(string keyword, string[] expected)
     {
@@ -95,7 +146,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         var result = await new LookupsRepository(context).GetSymbolListAsync("usdt", Ct);
 
         Assert.Equal(
-            Enum.GetNames<SymbolEnum>().Where(n => n.EndsWith("USDT", StringComparison.Ordinal)).Order(StringComparer.Ordinal),
+            Enum.GetNames<SymbolEnum>().Where(n => n.EndsWith("USDT", StringComparison.Ordinal)).Select(n => n[..^"USDT".Length] + "/USDT").Order(StringComparer.Ordinal),
             result.Select(x => x.Name));
     }
 
@@ -116,14 +167,14 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     public async Task SymbolSearchAlsoLooksAtTheDescriptionWhenThereIsOne()
     {
         await using var context = await MigratedContextAsync();
-        var bitcoin = await context.Symbols.SingleAsync(x => x.Name == "BTCUSDT", Ct);
+        var bitcoin = await context.Symbols.SingleAsync(x => x.Name == "BTC/USDT", Ct);
         bitcoin.Description = "BitCoin";
         await context.SaveChangesAsync(Ct);
         var repository = new LookupsRepository(context);
 
         // Matches through the description only; every other symbol has a null description and must simply not match.
-        Assert.Equal(["BTCUSDT"], (await repository.GetSymbolListAsync("bitcoin", Ct)).Select(x => x.Name));
-        Assert.Equal(["BTCUSDT"], (await repository.GetSymbolListAsync("COIN", Ct)).Select(x => x.Name));
+        Assert.Equal(["BTC/USDT"], (await repository.GetSymbolListAsync("bitcoin", Ct)).Select(x => x.Name));
+        Assert.Equal(["BTC/USDT"], (await repository.GetSymbolListAsync("COIN", Ct)).Select(x => x.Name));
     }
 
     [Theory]
@@ -179,7 +230,7 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
 
         // Straight to SQL: through the change tracker EF would refuse before the database is even asked.
         var failure = await Assert.ThrowsAnyAsync<Exception>(
-            () => context.Symbols.Where(x => x.Name == "ETHUSDT").ExecuteDeleteAsync(Ct));
+            () => context.Symbols.Where(x => x.Name == "ETH/USDT").ExecuteDeleteAsync(Ct));
 
         var postgres = failure as PostgresException ?? failure.InnerException as PostgresException;
         Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, postgres?.SqlState);
