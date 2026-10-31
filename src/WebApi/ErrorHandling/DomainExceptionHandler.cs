@@ -17,6 +17,7 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problemDetails
             ConfigurationValidationException => (StatusCodes.Status400BadRequest, "Invalid configuration"),
             ConfigurationConflictException => (StatusCodes.Status409Conflict, "Configuration conflict"),
             ConfigurationNotFoundException => (StatusCodes.Status404NotFound, "Configuration not found"),
+            ExchangeUnavailableException => (StatusCodes.Status503ServiceUnavailable, "Exchange unavailable"),
             _ => (0, null)
         };
 

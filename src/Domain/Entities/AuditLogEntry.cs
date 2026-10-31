@@ -12,6 +12,8 @@ public static class AuditEntityTypes
 {
     public const string CandleSeries = "CandleSeries";
     public const string SymbolData = "SymbolData";
+    public const string Symbol = "Symbol";
+    public const string SymbolListing = "SymbolListing";
 }
 
 /// <summary>Who changed which collection setting, and how. Written by the admin API only; never edited.</summary>

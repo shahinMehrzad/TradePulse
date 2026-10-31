@@ -31,4 +31,16 @@ public static class BinanceExchangeRegistration
 
         return services;
     }
+
+    /// <summary>
+    /// Only what the admin API needs from Binance: asking which symbols it lists. No request budget (it is one rare call per
+    /// symbol the admin adds) and no gateways; the collector does not use this.
+    /// </summary>
+    public static IServiceCollection AddBinanceSymbolCatalog(this IServiceCollection services)
+    {
+        services.AddBinance();
+        services.AddSingleton<IExchangeSymbolCatalog, BinanceSymbolCatalog>();
+
+        return services;
+    }
 }

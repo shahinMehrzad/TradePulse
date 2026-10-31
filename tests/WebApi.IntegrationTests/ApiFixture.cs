@@ -1,7 +1,10 @@
+using Application.Exchange;
 using Domain.Entities;
 using Infrastructure.Repositories;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
 namespace WebApi.IntegrationTests;
@@ -20,6 +23,9 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>The key the API signs its tokens with in these tests; tests that make a token of their own use it too.</summary>
     public const string JwtSecret = "signing-key-of-the-integration-tests-of-the-api-0123456789";
+
+    /// <summary>The exchange's symbol list the API asks when a symbol is listed; no test reaches the real Binance.</summary>
+    public FakeExchangeSymbolCatalog ExchangeCatalog { get; } = new();
 
     public string ConnectionString => _postgres.GetConnectionString();
 
@@ -52,6 +58,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Collector:HealthUrl", "");
         // Many tests log in within a minute; the throttle itself is tested with its own low limit.
         builder.UseSetting("RateLimiting:LoginPermitsPerMinute", "1000");
+        builder.ConfigureTestServices(services => services.AddSingleton<IExchangeSymbolCatalog>(ExchangeCatalog));
     }
 
     async ValueTask IAsyncDisposable.DisposeAsync()
