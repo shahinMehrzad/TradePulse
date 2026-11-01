@@ -50,7 +50,9 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
 
 - **Order.** The API creates and migrates the schema, so the panel and the collector wait for it to be healthy; it waits for Postgres.
 - **Its own database.** The stack has a named volume (`tradepulse-stack_pgdata`) and does not touch the root `docker-compose.yml`
-  or a Postgres you run yourself.
+  or a Postgres you run yourself. It runs PostgreSQL 18, like the development database, so a `pg_dump -Fc` of that one can be loaded with
+  `pg_restore` (a dump from a newer version than the server cannot be read). A stack that was started with the old Postgres 17 definition
+  has its data in a volume this definition does not use: dump it first (`pg_dump`), start the new stack and restore.
 - **HTTP on this machine only.** The containers speak plain HTTP on `127.0.0.1`. The panel's cookie is `Secure` outside Development: Chrome and Firefox
   accept it on `http://localhost`, but for any other host you need HTTPS: see the next section.
 - **The key vault** (`trader`) has no published port and is reached only by the panel. It needs `VAULT_MASTER_KEY`: keep a copy outside the server, see [docs/exchange-keys.md](../docs/exchange-keys.md).
