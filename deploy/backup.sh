@@ -36,9 +36,11 @@ part="$out.part"
 size="$(stat -c %s "$part")"
 [ "$size" -ge "$MIN_BYTES" ] || fail "the dump is only $size bytes (expected at least $MIN_BYTES)."
 
-# The archive must be readable: its table of contents is listed by pg_restore of the same Postgres.
-"${COMPOSE[@]}" exec -T postgres pg_restore -l < "$part" 2>/dev/null | grep -q "Format: CUSTOM" \
-  || fail "the dump cannot be read back."
+# It must be a pg_dump archive (they begin with PGDMP) that pg_restore of the same Postgres can read from the first byte to the
+# last, which a file cut short cannot be. (Not `pg_restore -l | grep -q`: grep stops at the first match, pg_restore is killed while it
+# still writes the table of contents, and with pipefail that counts as a failure: it failed on every real database.)
+[ "$(head -c 5 "$part")" = "PGDMP" ] || fail "the file is not a pg_dump archive."
+"${COMPOSE[@]}" exec -T postgres pg_restore -f /dev/null < "$part" >/dev/null 2>&1 || fail "the dump cannot be read back."
 
 mv "$part" "$out" || fail "cannot move the dump into place."
 
