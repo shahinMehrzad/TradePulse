@@ -23,5 +23,5 @@ public sealed record MarketEventDetectorOptions
     public IReadOnlyList<int> Horizons { get; init; } = [1, 5, 30, 60];
 
     /// <summary>Names the rule, so events found by different rules are never taken for each other. Change it when the logic changes.</summary>
-    public string Version => string.Create(CultureInfo.InvariantCulture, $"m5-{MinFiveMinuteMove}-z{MinZScore}-w{Window}-v1");
+    public string Version => string.Create(CultureInfo.InvariantCulture, $"m5-{MinFiveMinuteMove}-z{MinZScore}-w{Window}-v2");
 }

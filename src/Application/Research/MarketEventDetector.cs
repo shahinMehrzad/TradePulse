@@ -9,7 +9,7 @@ namespace Application.Research;
 /// <para>
 /// A minute is flagged when its 5 minute logarithmic return is at least <see cref="MarketEventDetectorOptions.MinFiveMinuteMove"/> and at
 /// least <see cref="MarketEventDetectorOptions.MinZScore"/> standard deviations of the 1 minute returns of the window before it (the
-/// minute itself is not part of its own baseline). Flagged minutes close together are one event, described by its most extreme minute.
+/// minute itself is not part of its own baseline). Flagged minutes close together are one event, described by the minute with its largest move.
 /// </para>
 /// </summary>
 public sealed class MarketEventDetector(MarketEventDetectorOptions options)
@@ -103,7 +103,10 @@ public sealed class MarketEventDetector(MarketEventDetectorOptions options)
         public DateTime StartedAt { get; } = startedAt;
         public DateTime LastTime { get; private set; } = startedAt;
 
-        /// <summary>The 5 minute return and z-score of the most extreme minute (by z-score), kept together so they always agree on the direction.</summary>
+        /// <summary>
+        /// The 5 minute return of the minute with the largest move, and the z-score of that same minute, kept together so they always agree
+        /// on the direction. (The z-score of the later minutes of an event is smaller, because the baseline already contains its first candles.)
+        /// </summary>
         public double FiveMinute { get; private set; } = fiveMinute;
         public double Z { get; private set; } = z;
 
@@ -116,7 +119,7 @@ public sealed class MarketEventDetector(MarketEventDetectorOptions options)
             Minutes++;
             VolumeRatio = Math.Max(VolumeRatio, volumeRatio);
 
-            if (Math.Abs(z) > Math.Abs(Z))
+            if (Math.Abs(fiveMinute) > Math.Abs(FiveMinute))
             {
                 FiveMinute = fiveMinute;
                 Z = z;
