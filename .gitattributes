@@ -1,0 +1,3 @@
+# The scripts run on Linux: always LF, whatever the checkout of the developer.
+*.sh text eol=lf
+.gitattributes text eol=lf
