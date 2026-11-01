@@ -59,4 +59,49 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
 - **Secrets** are only in `deploy/.env` (git-ignored). Use long random values; the signing key needs at least 32 characters.
 - **Sessions** of the panel are in its memory: restarting the panel signs everyone out (the cookie keys survive, the sessions do not).
 - **Backups.** The data is in the `pgdata` volume. Liquidations, open interest and the like cannot be downloaded again from the
-  exchange, so back it up, e.g. `docker compose -f deploy/docker-compose.yml exec -T postgres pg_dump -U postgres tradepulse | gzip > backup.sql.gz`.
+  exchange, so back it up: see "Watching the stack, and backups" below.
+
+## Watching the stack, and backups
+
+The collector sends its own alerts, so it cannot tell you that it is stopped, that Docker is down or that the server is gone. Two
+scripts in this folder look at the stack from the outside, and a third makes the backups. They run on the server from cron, as the
+user that runs Docker, and read their settings from `deploy/.env` (the names are in `.env.example`).
+
+```bash
+crontab -e
+# every minute: look at the stack
+* * * * * /opt/tradepulse/deploy/watchdog.sh >/dev/null 2>&1
+# the 1st and the 15th at 03:00 UTC: a backup
+0 3 1,15 * * /opt/tradepulse/deploy/backup.sh >> $HOME/tradepulse-backup.log 2>&1
+```
+(`chmod +x deploy/*.sh` if the files lost their executable bit.) They write to the system log (`journalctl -t tradepulse-ops`) and,
+with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set, to the same Telegram chat as the collector. The messages only have names and
+numbers in them.
+
+**`watchdog.sh`** checks that every container of the stack is running (and healthy where it has a health check), that the collector
+answers on its health port, that Postgres accepts connections, that the disk is below `WATCHDOG_DISK_PERCENT` (85) and that the
+newest backup is not older than `BACKUP_MAX_AGE_DAYS` (20; `0` turns this off). A problem is reported after `WATCHDOG_FAILS` runs in a
+row (3, so not for a blink), again every `WATCHDOG_REPEAT_MINUTES` (360) while it lasts, and once more when it is over.
+
+**The watcher outside the server.** If the whole server or the cron job dies, nothing on it can say so. So the watchdog also pings
+`WATCHDOG_PING_URL` every minute while nothing is broken (and `<url>/fail` while something is), and a service that notices when
+the pings STOP tells you. With [healthchecks.io](https://healthchecks.io) (free): create a check with a period of 1 minute and a grace
+time of 5 minutes, add Telegram or e-mail as the way to tell you, and put its ping address in `WATCHDOG_PING_URL`. Once the panel has
+its domain you can also let an uptime service (for example UptimeRobot) request `https://<domain>/Login` every 5 minutes.
+
+**`backup.sh`** runs `pg_dump -Fc` of the stack's database into `BACKUP_DIR` (`/opt/tradepulse-backups`, outside the git checkout),
+checks that the file is readable and not tiny (`BACKUP_MIN_BYTES`, 100000), and keeps the newest `BACKUP_KEEP` (4). **A backup on the
+same disk does not survive the disk**: set `BACKUP_RSYNC_TARGET` (`user@host:/path/`, rsync over ssh) or `BACKUP_RCLONE_REMOTE`
+(`remote:bucket/folder`) to copy each one off the server; the copies there are not pruned. A failure is reported to Telegram.
+
+Restoring a backup into an empty database (this is how the data was moved to the server):
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d postgres
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec -T postgres   pg_restore -U postgres -d tradepulse --no-owner < /opt/tradepulse-backups/tradepulse-YYYYMMDD-HHMMSS.dump
+```
+To go back over a database that is in use: stop `api`, `panel`, `trader` and `collector` first and add `--clean --if-exists`
+(that way is not tried here; try it on a copy first).
+
+The scripts were tried against a throwaway Postgres with fake Telegram, ping and health servers. Not tried: the rsync and rclone
+copies, and `flock` (it is not in the shell the tests ran in; Ubuntu has it).
