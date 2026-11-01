@@ -1,5 +1,6 @@
 using Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Infrastructure.Persistence;
 
@@ -9,6 +10,10 @@ public class ResearchDbContext : DbContext
     public ResearchDbContext(DbContextOptions<ResearchDbContext> options) : base(options)
     {
     }
+
+    private static readonly ValueConverter<DateTime, DateTime> UtcToTimestamp = new(
+        value => DateTime.SpecifyKind(value, DateTimeKind.Unspecified),
+        value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
     public DbSet<MarketEvent> MarketEvents => Set<MarketEvent>();
     public DbSet<EventReaction> EventReactions => Set<EventReaction>();
@@ -26,9 +31,10 @@ public class ResearchDbContext : DbContext
             // The listing lives in the config schema (possibly another database): its id is kept, with no foreign key to it, like the audit log does.
             e.Ignore(x => x.SymbolListing);
 
-            // Time columns are timestamp (no zone), always UTC.
-            e.Property(x => x.StartedAt).HasColumnType("timestamp");
-            e.Property(x => x.CreateDate).HasColumnType("timestamp").HasDefaultValueSql("now() at time zone 'utc'");
+            // Time columns are timestamp (no zone), always UTC. Npgsql refuses Kind=Utc for them, so the kind is dropped on the way in
+            // (values read from candles are Utc) and put back on the way out; the same applies to the values a query is given.
+            e.Property(x => x.StartedAt).HasColumnType("timestamp").HasConversion(UtcToTimestamp);
+            e.Property(x => x.CreateDate).HasColumnType("timestamp").HasConversion(UtcToTimestamp).HasDefaultValueSql("now() at time zone 'utc'");
 
             e.Property(x => x.Direction).HasConversion<int>();
             e.Property(x => x.FiveMinuteReturn).HasPrecision(18, 8);
