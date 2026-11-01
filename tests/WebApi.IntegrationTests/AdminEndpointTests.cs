@@ -14,11 +14,19 @@ public class AdminEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     private record LoginResult(string AccessToken);
     private record AdminInfo(string UserName, string Email, string[] Roles);
 
-    private static async Task<string> LoginAsync(HttpClient client, string email, string password)
+    private record Step(string ChallengeToken);
+
+    /// <summary>Password, then the code of the user's authenticator: the two calls every sign-in takes.</summary>
+    private static async Task<string> LoginAsync(HttpClient client, string email, string password, string authenticatorKey)
     {
         var response = await client.PostAsJsonAsync("/api/auth/login", new { Email = email, Username = "", Password = password }, Ct);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<LoginResult>(Ct))!.AccessToken;
+        var step = (await response.Content.ReadFromJsonAsync<Step>(Ct))!;
+
+        var second = await client.PostAsJsonAsync("/api/auth/login/two-factor",
+            new { step.ChallengeToken, Code = Totp.Code(authenticatorKey), IsRecoveryCode = false }, Ct);
+        second.EnsureSuccessStatusCode();
+        return (await second.Content.ReadFromJsonAsync<LoginResult>(Ct))!.AccessToken;
     }
 
     private static Task<HttpResponseMessage> GetMeAsync(HttpClient client, string? bearer)
@@ -41,7 +49,7 @@ public class AdminEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task TheSeededAdminCanReadTheAdminEndpoint()
     {
         var client = api.CreateClient();
-        var token = await LoginAsync(client, ApiFixture.AdminEmail, ApiFixture.AdminPassword);
+        var token = (await (await api.AdminLoginAsync(client, Ct)).Content.ReadFromJsonAsync<LoginResult>(Ct))!.AccessToken;
 
         var response = await GetMeAsync(client, token);
 
@@ -56,15 +64,20 @@ public class AdminEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     {
         const string email = "ordinary@example.com";
         const string password = "OrdinaryPassword123!";
+        string key;
         using (var scope = api.Services.CreateScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-            var created = await users.CreateAsync(new ApplicationUser { UserName = "ordinary", Email = email, EmailConfirmed = true }, password);
+            var user = new ApplicationUser { UserName = "ordinary", Email = email, EmailConfirmed = true, MustChangePassword = false };
+            var created = await users.CreateAsync(user, password);
             Assert.True(created.Succeeded);
+            await users.ResetAuthenticatorKeyAsync(user);
+            await users.SetTwoFactorEnabledAsync(user, true);
+            key = (await users.GetAuthenticatorKeyAsync(user))!;
         }
 
         var client = api.CreateClient();
-        var token = await LoginAsync(client, email, password);
+        var token = await LoginAsync(client, email, password, key);
 
         var response = await GetMeAsync(client, token);
 

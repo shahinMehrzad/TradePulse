@@ -1,4 +1,4 @@
-﻿using Domain.Entities;
+using Domain.Entities;
 using Domain.Repositories;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +24,10 @@ public class RefreshTokenRepository(AuthDbContext context) : IRefreshTokenReposi
     }
 
 
+
+    public async Task RevokeAllAsync(Guid userId, CancellationToken cancellationToken = default, string? exceptDeviceId = null) =>
+        await context.RefreshTokens.Where(r => r.UserId == userId && !r.IsRevoked && (exceptDeviceId == null || r.DeviceId != exceptDeviceId))
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsRevoked, true), cancellationToken);
 
     public async Task<Guid?> ConsumeAsync(string tokenHash, string deviceId, CancellationToken cancellationToken = default)
     {

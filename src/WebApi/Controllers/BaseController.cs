@@ -1,20 +1,13 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
 namespace WebApi.Controllers
 {
     public abstract class BaseController : ControllerBase
     {
-        protected string GetIpAddress()
-        {
-            if (Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor))
-            {
-                var ip = forwardedFor.FirstOrDefault()?.Split(',')[0].Trim();
-                if (!string.IsNullOrEmpty(ip))
-                    return ip;
-            }
-            return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-        }
+        /// <summary>The caller's address. Behind a trusted proxy the forwarded-headers middleware has already replaced the proxy's with the client's;
+        /// the header is not read here, because anyone can send one.</summary>
+        protected string GetIpAddress() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
 
         protected string? GetUserAgent() => Request.Headers["User-Agent"].ToString();
         

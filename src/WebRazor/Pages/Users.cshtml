@@ -1,0 +1,114 @@
+@page
+@model UsersModel
+@{
+    ViewData["Title"] = "Users";
+}
+
+@if (Model.Done is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.Done</div>
+}
+@foreach (var error in Model.Errors)
+{
+    <div class="alert alert-danger" role="alert">@error</div>
+}
+@if (Model.Password is not null)
+{
+    <div class="alert alert-warning" role="alert">
+        <h4 class="alert-title">One-time password for @Model.Password.UserName</h4>
+        <div class="mb-2"><code class="fs-3 user-select-all">@Model.Password.TemporaryPassword</code></div>
+        <div>Give it to them privately. It is shown only now; they must change it and set up two-factor authentication at their first sign-in.</div>
+    </div>
+}
+
+<div class="row row-cards">
+    <div class="col-12 col-lg-8">
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+                    <thead>
+                        <tr><th>User</th><th>Role</th><th>Status</th><th class="w-1"></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in Model.Users)
+                        {
+                            var self = string.Equals(user.UserName, User.Identity?.Name, StringComparison.OrdinalIgnoreCase);
+                            <tr>
+                                <td>
+                                    <div>@user.UserName@(self ? " (you)" : "")</div>
+                                    <div class="text-secondary small">@user.Email</div>
+                                </td>
+                                <td>@string.Join(", ", user.Roles)</td>
+                                <td>
+                                    @if (user.IsDisabled)
+                                    {
+                                        <span class="badge bg-red-lt">Disabled</span>
+                                    }
+                                    else if (user.MustChangePassword || !user.TwoFactorEnabled)
+                                    {
+                                        <span class="badge bg-yellow-lt">Setup pending</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-green-lt">Active</span>
+                                    }
+                                    @if (user.TwoFactorEnabled)
+                                    {
+                                        <span class="badge bg-blue-lt">2FA</span>
+                                    }
+                                </td>
+                                <td class="text-nowrap">
+                                    @if (!self)
+                                    {
+                                        <form method="post" class="d-inline" asp-page-handler="ResetPassword" asp-route-id="@user.Id"
+                                              data-confirm="Reset the password of @user.UserName? They are signed out and must choose a new one.">
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary">Reset password</button>
+                                        </form>
+                                        <form method="post" class="d-inline" asp-page-handler="ResetTwoFactor" asp-route-id="@user.Id"
+                                              data-confirm="Reset two-factor authentication of @user.UserName? They are signed out and must set it up again.">
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary">Reset 2FA</button>
+                                        </form>
+                                        @if (user.IsDisabled)
+                                        {
+                                            <form method="post" class="d-inline" asp-page-handler="Enable" asp-route-id="@user.Id">
+                                                <button type="submit" class="btn btn-sm btn-outline-success">Enable</button>
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <form method="post" class="d-inline" asp-page-handler="Disable" asp-route-id="@user.Id"
+                                                  data-confirm="Disable @user.UserName? They are signed out and cannot sign in until you enable them again.">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">Disable</button>
+                                            </form>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Add an administrator</h3></div>
+            <div class="card-body">
+                <p class="text-secondary">Administrators can change every setting, including the accounts of the others. A one-time password is generated for them.</p>
+                <form method="post" asp-page-handler="Create" autocomplete="off">
+                    <div class="mb-3">
+                        <label asp-for="Input.UserName" class="form-label">User name</label>
+                        <input asp-for="Input.UserName" class="form-control" />
+                        <span asp-validation-for="Input.UserName" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.Email" class="form-label">Email</label>
+                        <input asp-for="Input.Email" class="form-control" type="email" />
+                        <span asp-validation-for="Input.Email" class="text-danger"></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Add administrator</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

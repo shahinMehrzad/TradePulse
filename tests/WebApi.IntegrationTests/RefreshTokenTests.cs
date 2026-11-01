@@ -24,8 +24,7 @@ public class RefreshTokenTests(ApiFixture api) : IClassFixture<ApiFixture>
 
     private async Task<Tokens> LoginAsync(string device = Device)
     {
-        var response = await PostAsync("/api/auth/login",
-            new { Email = ApiFixture.AdminEmail, Username = "", Password = ApiFixture.AdminPassword }, device);
+        var response = await api.AdminLoginAsync(api.CreateClient(), Ct, device);
         response.EnsureSuccessStatusCode();
 
         return (await response.Content.ReadFromJsonAsync<Tokens>(Ct))!;

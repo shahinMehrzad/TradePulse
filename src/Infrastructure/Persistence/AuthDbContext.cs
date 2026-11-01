@@ -1,4 +1,4 @@
-﻿using Domain.Entities;
+using Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +33,15 @@ public class AuthDbContext : IdentityDbContext<ApplicationUser, ApplicationRole,
 public class ApplicationUser : IdentityUser<Guid>
 {
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// True for a seeded account and for one an admin created or reset: the password is known to someone else, so the user
+    /// has to replace it before anything else. Existing accounts get true from the migration too.
+    /// </summary>
+    public bool MustChangePassword { get; set; } = true;
+
+    /// <summary>The user may sign in with a code mailed to their (confirmed) address instead of the authenticator app.</summary>
+    public bool EmailCodesEnabled { get; set; }
 }
 
 public class ApplicationRole : IdentityRole<Guid>

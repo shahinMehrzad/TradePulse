@@ -85,14 +85,26 @@ public static class DependencyInjection
 
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
-        services.AddIdentityCore<ApplicationUser>()
+        services.AddIdentityCore<ApplicationUser>(options =>
+            {
+                options.Password.RequiredLength = 12;
+                options.User.RequireUniqueEmail = true;
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+            })
             .AddRoles<ApplicationRole>()
             .AddSignInManager<SignInManager<ApplicationUser>>()
             .AddEntityFrameworkStores<AuthDbContext>()
             .AddDefaultTokenProviders();
 
         services.AddScoped<IIdentityService, IdentityService>();
+        services.AddScoped<IUserAdministration, UserAdministration>();
+        services.Configure<Notifications.MailOptions>(configuration.GetSection(Notifications.MailOptions.SectionName));
+        services.AddSingleton<IMailSender, Notifications.SmtpMailSender>();
         services.AddSingleton<IAccessTokenService, JwtAccessTokenService>();
+        services.AddSingleton<IChallengeTokenService, JwtChallengeTokenService>();
+        services.AddSingleton<IElevationTokenService, JwtElevationTokenService>();
+        services.TryAddSingleton(TimeProvider.System);
 
         return services;
     }

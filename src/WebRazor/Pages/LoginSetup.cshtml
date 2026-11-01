@@ -1,0 +1,84 @@
+@page
+@model LoginSetupModel
+@{
+    ViewData["Title"] = "Set up your account";
+    Layout = "_Auth";
+}
+
+<div class="card card-md">
+    <div class="card-body">
+        @if (Model.RecoveryCodes is not null)
+        {
+            <h2 class="h2 text-center mb-2">Save your recovery codes</h2>
+            <p class="text-secondary mb-3">
+                Two-factor authentication is on. If you lose your phone, each of these codes signs you in once instead of the app code.
+                They are shown <strong>only now</strong>: store them somewhere safe (a password manager, not this browser).
+            </p>
+            <pre class="border rounded p-3 mb-3 text-center fs-4">@string.Join('\n', Model.RecoveryCodes)</pre>
+            <a href="/" class="btn btn-primary w-100">I have saved them, continue</a>
+        }
+        else if (Model.Pending is null)
+        {
+            <p class="mb-0">The sign-in has expired. <a asp-page="/Login">Sign in again</a>.</p>
+        }
+        else if (Model.ChangingPassword)
+        {
+            <h2 class="h2 text-center mb-2">Choose a new password</h2>
+            <p class="text-secondary text-center mb-3">Step 1 of 2. The password you signed in with is temporary: choose your own. Use <em>Show</em> to check what you typed.</p>
+            @if (Model.Error is not null)
+            {
+                <div class="alert alert-danger" role="alert">@Model.Error</div>
+            }
+            <form method="post" asp-page-handler="ChangePassword" autocomplete="off">
+                <div class="mb-3">
+                    <label asp-for="Password.Current" class="form-label">Temporary password</label>
+                    <div class="position-relative"><input asp-for="Password.Current" class="form-control pe-5" autocomplete="current-password" autofocus /><button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+                    <span asp-validation-for="Password.Current" class="text-danger"></span>
+                </div>
+                <div class="mb-3">
+                    <label asp-for="Password.New" class="form-label">New password</label>
+                    <div class="position-relative"><input asp-for="Password.New" class="form-control pe-5" autocomplete="new-password" /><button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+                    <span asp-validation-for="Password.New" class="text-danger"></span>
+                </div>
+                <div class="mb-3">
+                    <label asp-for="Password.Repeat" class="form-label">Repeat the new password</label>
+                    <div class="position-relative"><input asp-for="Password.Repeat" class="form-control pe-5" autocomplete="new-password" /><button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+                    <span asp-validation-for="Password.Repeat" class="text-danger"></span>
+                </div>
+                <ul class="list-unstyled small mb-3" data-password-rules="Password_New" data-repeat="Password_Repeat">
+                    <li data-rule="length"><span></span> At least 12 characters</li>
+                    <li data-rule="lower"><span></span> A lower case letter</li>
+                    <li data-rule="upper"><span></span> An upper case letter</li>
+                    <li data-rule="digit"><span></span> A digit</li>
+                    <li data-rule="symbol"><span></span> A symbol, like ! or -</li>
+                    <li data-rule="match"><span></span> Both new passwords are the same</li>
+                </ul>
+                <button type="submit" class="btn btn-primary w-100">Change password</button>
+            </form>
+        }
+        else
+        {
+            <h2 class="h2 text-center mb-2">Set up two-factor authentication</h2>
+            <p class="text-secondary text-center mb-3">Step 2 of 2. Your password is changed; this is the last thing before the panel opens. Every account needs it. Scan the code with an authenticator app (Google Authenticator, Microsoft Authenticator, Authy, 1Password...), then enter the code the app shows.</p>
+            @if (Model.Error is not null)
+            {
+                <div class="alert alert-danger" role="alert">@Model.Error</div>
+            }
+            @if (Model.QrSvg is not null)
+            {
+                <div class="d-flex justify-content-center mb-3">
+                    <div class="bg-white rounded p-2" style="width: 220px" role="img" aria-label="QR code for the authenticator app">@Html.Raw(Model.QrSvg)</div>
+                </div>
+                <p class="text-center text-secondary mb-3">Cannot scan? Enter this key in the app:<br /><code class="user-select-all">@Model.SharedKey</code></p>
+                <form method="post" asp-page-handler="Confirm" autocomplete="off">
+                    <div class="mb-3">
+                        <label asp-for="Code.Value" class="form-label">Code from the app</label>
+                        <input asp-for="Code.Value" class="form-control" inputmode="numeric" autocomplete="one-time-code" autofocus />
+                        <span asp-validation-for="Code.Value" class="text-danger"></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Turn on and sign in</button>
+                </form>
+            }
+        }
+    </div>
+</div>
