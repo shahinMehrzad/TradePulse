@@ -1,0 +1,22 @@
+# The public door of the stack: HTTPS for the admin panel. Caddy asks Let's Encrypt for the certificate and renews it by itself.
+# Used only with `--profile public` (see deploy/README.md). DOMAIN and ACME_EMAIL come from deploy/.env.
+#
+# Only the panel is published. The API stays inside the stack (the panel talks to it over the internal network); to reach it from
+# outside, add a block for it deliberately instead of opening it by accident.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# After the first visit the browser refuses plain http for this site for a year.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	# Caddy sets X-Forwarded-For/-Proto itself and replaces any a visitor sends. The panel believes them only from the private network.
+	reverse_proxy panel:8080
+}

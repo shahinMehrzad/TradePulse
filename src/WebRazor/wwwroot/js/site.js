@@ -1,4 +1,90 @@
-﻿// Offers only the choices the API would accept. The rules are not written here: the API publishes them (market-data-support),
+﻿// A read-only box with data-select-on-click selects all of its text when clicked, for copying (inline handlers are blocked by the content security policy).
+document.addEventListener('click', function (event) {
+    var box = event.target.closest && event.target.closest('[data-select-on-click]');
+    if (box) {
+        box.select();
+    }
+});
+
+// The eye in a password field shows the text only while it is held down (mouse, touch or the space bar) and hides it again on release.
+(function () {
+    function reveal(button, show) {
+        button.parentElement.querySelector('input').type = show ? 'text' : 'password';
+    }
+
+    document.addEventListener('pointerdown', function (event) {
+        var button = event.target.closest && event.target.closest('[data-reveal-password]');
+        if (button) {
+            event.preventDefault(); // keep the focus (and the caret) in the text box
+            reveal(button, true);
+        }
+    });
+
+    ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach(function (type) {
+        document.addEventListener(type, function () {
+            document.querySelectorAll('[data-reveal-password]').forEach(function (button) { reveal(button, false); });
+        }, true);
+    });
+
+    document.addEventListener('keydown', function (event) {
+        var button = event.target.closest && event.target.closest('[data-reveal-password]');
+        if (button && (event.key === ' ' || event.key === 'Enter')) {
+            event.preventDefault();
+            reveal(button, true);
+        }
+    });
+
+    document.addEventListener('keyup', function (event) {
+        var button = event.target.closest && event.target.closest('[data-reveal-password]');
+        if (button) {
+            reveal(button, false);
+        }
+    });
+})();
+
+// Password fields: a checklist (data-password-rules) ticks off the rules of the new password live.
+(function () {
+    var list = document.querySelector('[data-password-rules]');
+    if (!list) {
+        return;
+    }
+
+    var password = document.getElementById(list.getAttribute('data-password-rules'));
+    var repeat = document.getElementById(list.getAttribute('data-repeat'));
+    var rules = {
+        length: function (v) { return v.length >= 12; },
+        lower: function (v) { return /[a-z]/.test(v); },
+        upper: function (v) { return /[A-Z]/.test(v); },
+        digit: function (v) { return /[0-9]/.test(v); },
+        symbol: function (v) { return /[^A-Za-z0-9]/.test(v); },
+        match: function (v) { return v.length > 0 && repeat && repeat.value === v; }
+    };
+
+    function refresh() {
+        list.querySelectorAll('[data-rule]').forEach(function (item) {
+            var ok = rules[item.getAttribute('data-rule')](password.value);
+            item.classList.toggle('text-success', ok);
+            item.classList.toggle('text-secondary', !ok);
+            item.firstElementChild.textContent = ok ? '✓' : '○';
+        });
+    }
+
+    password.addEventListener('input', refresh);
+    if (repeat) {
+        repeat.addEventListener('input', refresh);
+    }
+    refresh();
+})();
+
+// A form with data-confirm asks before it is sent (inline onsubmit handlers are blocked by the panel's content security policy).
+document.addEventListener('submit', function (event) {
+    var message = event.target.getAttribute && event.target.getAttribute('data-confirm');
+    if (message && !window.confirm(message)) {
+        event.preventDefault();
+    }
+});
+
+// Offers only the choices the API would accept. The rules are not written here: the API publishes them (market-data-support),
 // the page embeds them as JSON, and this script only reads them. Without the script nothing breaks, the API still refuses
 // an impossible choice and the page shows its reason.
 (function () {

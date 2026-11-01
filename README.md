@@ -44,11 +44,11 @@ WebRazor: no project reference at all, it only calls WebApi over HTTP
 - **Domain:** entities, value objects (`Price`, `TimeRange`), enums, repository interfaces, and the rules every service shares (`TableNameRegistry`, `MarketDataSupport`).
 - **Application:** a small hand-written CQRS layer (`ICommandHandler`, `ICommandDispatcher`, handlers discovered by reflection) and the exchange ports (`Application/Exchange`). The worker only uses those ports and never touches Binance.Net directly; an architecture test enforces it.
 - **Infrastructure:** Dapper and Npgsql for market data, EF Core with ASP.NET Identity for authentication.
-- **WebApi:** JWT login and refresh tokens, the candle read API and the dashboard API ([docs/api.md](docs/api.md)). **WebRazor:** admin panel (sign-in, a dashboard with a page per symbol, and the lists of candle series, funding rates and liquidations to collect), see [Admin panel](docs/admin-panel.md).
+- **WebApi:** JWT login with a forced password change and mandatory two-factor (TOTP) for every account, refresh tokens, user management, the candle read API and the dashboard API ([docs/api.md](docs/api.md)). **WebRazor:** admin panel (sign-in with two-factor, user management, a dashboard with a page per symbol, and the lists of candle series, funding rates and liquidations to collect), see [Admin panel](docs/admin-panel.md).
 
 ### Admin panel
 
-A [Tabler](https://tabler.io)-based panel that only the seeded administrator can enter, and the only place where the collector is configured. The **Dashboard** shows one card per symbol (price, change, sparkline, and how fresh the data is, with a time frame picker per card); a card opens a **symbol page** with a candlestick chart and the funding rate, open interest and liquidations collected for it. Charts are drawn on the server as inline SVG. More: [docs/admin-panel.md](docs/admin-panel.md).
+A [Tabler](https://tabler.io)-based panel that only administrators can enter (the seeded one, and the ones added on the **Users** page), and the only place where the collector is configured. The **Dashboard** shows one card per symbol (price, change, sparkline, and how fresh the data is, with a time frame picker per card); a card opens a **symbol page** with a candlestick chart and the funding rate, open interest and liquidations collected for it. Charts are drawn on the server as inline SVG. More: [docs/admin-panel.md](docs/admin-panel.md).
 
 ### More documentation
 
@@ -61,6 +61,8 @@ A [Tabler](https://tabler.io)-based panel that only the seeded administrator can
 | [docs/configuration.md](docs/configuration.md) | Choosing candle series, open interest, funding rate and liquidations in the database. |
 | [docs/api.md](docs/api.md) | The candle read API, the dashboard API, login and refresh tokens. |
 | [docs/admin-panel.md](docs/admin-panel.md) | The panel's pages, sessions and what it asks WebApi for. |
+| [docs/exchange-keys.md](docs/exchange-keys.md) | The key vault: how administrators keep their Binance Futures keys, and how they are protected. |
+| [docs/trading.md](docs/trading.md) | Manual market orders with Demo/Live keys, the server-side limits and the halt switch. |
 | [docs/candle-cache.md](docs/candle-cache.md) | `HybridCache` in front of the candle reads, with benchmark results. |
 | [docs/testing.md](docs/testing.md) | Unit, integration and contract tests, benchmarks, CI. |
 
@@ -82,7 +84,7 @@ dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Da
 dotnet user-secrets set "ConnectionStrings:AuthConnection"    "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/WebApi
 dotnet user-secrets set "JwtConfigurations:Secret"            "<at least 32 random characters>"                                          --project src/WebApi
 dotnet user-secrets set "AdminConfigurations:Email"           "admin@example.com"                                                        --project src/WebApi
-dotnet user-secrets set "AdminConfigurations:Password"        "<a strong password>"                                                      --project src/WebApi
+dotnet user-secrets set "AdminConfigurations:Password"        "<a temporary password, at least 12 characters>"                                                      --project src/WebApi
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/BackgroundWorker
 ```
 
@@ -93,7 +95,7 @@ dotnet run --project src/WebRazor     # the admin panel, by default on http://lo
 dotnet run --project src/BackgroundWorker
 ```
 
-Sign in to the panel with the admin you gave above and add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. A change made later applies by itself within about half a minute; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
+Sign in to the panel with the admin you gave above (if every administrator ever loses both the phone and the recovery codes, [docs/api.md](docs/api.md#getting-back-in-from-the-server) shows the way back in from the server). The first sign-in asks for a new password and sets up two-factor authentication (scan the QR code with Google or Microsoft Authenticator and keep the recovery codes). Then add a series under **Collector series**: **the worker has nothing to collect, and idles, until you do**. A change made later applies by itself within about half a minute; the dashboard then shows each series as its first candles arrive. How the choice is stored and read: [Configuration in the database](docs/configuration.md).
 
 Or everything in containers, with its own database: [deploy/README.md](deploy/README.md).
 

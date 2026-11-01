@@ -1,4 +1,4 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
 using Application.Queries.Candles;
 using Application.Queries.Dashboard;
 using Application.Services;
@@ -12,7 +12,11 @@ namespace Application;
 
 public static class DependencyInjection
 {    
-    public static readonly string[] ApiOnlyNamespaces = ["Application.Commands.Auth", "Application.Queries.Collector", "Application.Commands.Symbols", "Application.Queries.Symbols"];        
+    public static readonly string[] ApiOnlyNamespaces =
+    [
+        "Application.Commands.Auth", "Application.Commands.Users", "Application.Queries.Collector",
+        "Application.Commands.Symbols", "Application.Queries.Symbols",
+    ];
 
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
@@ -31,6 +35,9 @@ public static class DependencyInjection
     public static IServiceCollection AddApiOnlyApplicationServices(this IServiceCollection services)
     {
         AddHandlers(services, IsApiOnlyHandler);
+        services.AddScoped<LoginSteps>();
+        services.AddScoped<EmailCodeSender>();
+        services.AddSingleton<EmailCodeThrottle>();
         return services;
     }
 

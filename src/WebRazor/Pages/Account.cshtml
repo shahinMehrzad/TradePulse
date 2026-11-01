@@ -1,0 +1,148 @@
+@page
+@model AccountModel
+@{
+    ViewData["Title"] = "My account";
+    const string Eye = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>";
+}
+
+@if (Model.Done is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.Done</div>
+}
+@foreach (var error in Model.Errors)
+{
+    <div class="alert alert-danger" role="alert">@error</div>
+}
+@if (Model.RecoveryCodes is not null)
+{
+    <div class="alert alert-warning" role="alert">
+        <h4 class="alert-title">Your new recovery codes</h4>
+        <p class="mb-2">Each one signs you in once instead of the app code. The old codes no longer work. They are shown <strong>only now</strong>: store them somewhere safe.</p>
+        <pre class="mb-0 fs-4 user-select-all">@string.Join('\n', Model.RecoveryCodes)</pre>
+    </div>
+}
+
+<div class="row row-cards">
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Change password</h3></div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="ChangePassword" autocomplete="off">
+                    <div class="mb-3">
+                        <label asp-for="Password.Current" class="form-label">Current password</label>
+                        <div class="position-relative">
+                            <input asp-for="Password.Current" class="form-control pe-5" autocomplete="current-password" />
+                            <button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show">@Html.Raw(Eye)</button>
+                        </div>
+                        <span asp-validation-for="Password.Current" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Password.New" class="form-label">New password</label>
+                        <div class="position-relative">
+                            <input asp-for="Password.New" class="form-control pe-5" autocomplete="new-password" />
+                            <button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show">@Html.Raw(Eye)</button>
+                        </div>
+                        <span asp-validation-for="Password.New" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Password.Repeat" class="form-label">Repeat the new password</label>
+                        <div class="position-relative">
+                            <input asp-for="Password.Repeat" class="form-control pe-5" autocomplete="new-password" />
+                            <button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show">@Html.Raw(Eye)</button>
+                        </div>
+                        <span asp-validation-for="Password.Repeat" class="text-danger"></span>
+                    </div>
+                    <ul class="list-unstyled small mb-3" data-password-rules="Password_New" data-repeat="Password_Repeat">
+                        <li data-rule="length"><span></span> At least 12 characters</li>
+                        <li data-rule="lower"><span></span> A lower case letter</li>
+                        <li data-rule="upper"><span></span> An upper case letter</li>
+                        <li data-rule="digit"><span></span> A digit</li>
+                        <li data-rule="symbol"><span></span> A symbol, like ! or -</li>
+                        <li data-rule="match"><span></span> Both new passwords are the same</li>
+                    </ul>
+                    <button type="submit" class="btn btn-primary">Change password</button>
+                    <div class="text-secondary small mt-2">Your other devices are signed out; this one stays signed in.</div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Account</h3></div>
+            <div class="card-body">
+                @if (Model.Info is not null)
+                {
+                    <dl class="row mb-0">
+                        <dt class="col-5">User name</dt><dd class="col-7">@Model.Info.UserName</dd>
+                        <dt class="col-5">Email</dt><dd class="col-7">@Model.Info.Email</dd>
+                        <dt class="col-5">Role</dt><dd class="col-7">@string.Join(", ", Model.Info.Roles)</dd>
+                        <dt class="col-5">Two-factor</dt><dd class="col-7">@(Model.Info.TwoFactorEnabled ? "On" : "Off")</dd>
+                        <dt class="col-5">Recovery codes left</dt><dd class="col-7">@Model.Info.RecoveryCodesLeft</dd>
+                        @if (Model.Info.EmailAvailable)
+                        {
+                            <dt class="col-5">Email codes</dt><dd class="col-7">@(Model.Info.EmailCodesEnabled ? "On" : "Off")</dd>
+                        }
+                    </dl>
+                }
+            </div>
+        </div>
+        @if (Model.Info is { TwoFactorEnabled: true, EmailAvailable: true })
+        {
+            <div class="card mt-3">
+                <div class="card-header"><h3 class="card-title">Sign-in codes by email</h3></div>
+                <div class="card-body">
+                    @if (Model.Info.EmailCodesEnabled)
+                    {
+                        <p class="text-secondary">At sign-in you can ask for a code to be sent to <strong>@Model.Info.Email</strong> instead of opening your authenticator app.</p>
+                        <form method="post" asp-page-handler="DisableEmail" autocomplete="off">
+                            <div class="mb-3">
+                                <label asp-for="DisableEmail.Password" class="form-label">Your password</label>
+                                <div class="position-relative">
+                                    <input asp-for="DisableEmail.Password" class="form-control pe-5" autocomplete="current-password" />
+                                    <button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show">@Html.Raw(Eye)</button>
+                                </div>
+                                <span asp-validation-for="DisableEmail.Password" class="text-danger"></span>
+                            </div>
+                            <button type="submit" class="btn btn-outline-danger">Turn off</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <p class="text-secondary">Get a sign-in code by email instead of opening the app. Your authenticator app keeps working either way. We first send a test code to <strong>@Model.Info.Email</strong>; entering it turns this on and confirms the address.</p>
+                        <form method="post" asp-page-handler="SendEmailCode" class="mb-3">
+                            <button type="submit" class="btn btn-outline-primary">Send me a test code</button>
+                        </form>
+                        <form method="post" asp-page-handler="EnableEmail" autocomplete="off">
+                            <div class="mb-3">
+                                <label asp-for="EmailCode.Value" class="form-label">Code from the email</label>
+                                <input asp-for="EmailCode.Value" class="form-control" inputmode="numeric" autocomplete="one-time-code" />
+                                <span asp-validation-for="EmailCode.Value" class="text-danger"></span>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Turn on</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        }
+        @if (Model.Info is { TwoFactorEnabled: true })
+        {
+            <div class="card mt-3">
+                <div class="card-header"><h3 class="card-title">Recovery codes</h3></div>
+                <div class="card-body">
+                    <p class="text-secondary">Lost or used most of your codes? Make a new set. The old ones stop working. Your password is asked again.</p>
+                    <form method="post" asp-page-handler="RecoveryCodes" autocomplete="off" data-confirm="Make new recovery codes? The old ones stop working.">
+                        <div class="mb-3">
+                            <label asp-for="Codes.Password" class="form-label">Your password</label>
+                            <div class="position-relative">
+                                <input asp-for="Codes.Password" class="form-control pe-5" autocomplete="current-password" />
+                                <button type="button" class="btn btn-link position-absolute top-0 end-0 h-100 px-3 text-secondary" data-reveal-password tabindex="-1" aria-label="Hold to show the password" title="Hold to show">@Html.Raw(Eye)</button>
+                            </div>
+                            <span asp-validation-for="Codes.Password" class="text-danger"></span>
+                        </div>
+                        <button type="submit" class="btn btn-outline-primary">Make new recovery codes</button>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+</div>

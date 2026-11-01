@@ -36,8 +36,7 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     private async Task<HttpClient> AdminAsync()
     {
         var client = api.CreateClient();
-        var response = await client.PostAsJsonAsync(
-            "/api/auth/login", new { Email = ApiFixture.AdminEmail, Username = "", Password = ApiFixture.AdminPassword }, Ct);
+        var response = await api.AdminLoginAsync(client, Ct);
         response.EnsureSuccessStatusCode();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer", (await response.Content.ReadFromJsonAsync<LoginResult>(Ct))!.AccessToken);

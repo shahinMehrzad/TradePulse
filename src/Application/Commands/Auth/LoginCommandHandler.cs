@@ -1,17 +1,21 @@
 ﻿using Application.Dtos.Auth;
 using Application.Interfaces;
+using Application.Services;
 
 namespace Application.Commands.Auth;
 
-public class LoginCommandHandler(IIdentityService identityService, IAccessTokenService accessTokenService)
-    : ICommandHandler<LoginCommand, AuthResponseDto>
+/// <summary>Step one: the password. It never returns tokens by itself, only what the user has to do next.</summary>
+public class LoginCommandHandler(IIdentityService identityService, LoginSteps steps)
+    : ICommandHandler<LoginCommand, LoginStepDto>
 {
-    public async Task<AuthResponseDto> HandleAsync(LoginCommand request, CancellationToken cancellationToken)
+    public async Task<LoginStepDto> HandleAsync(LoginCommand request, CancellationToken cancellationToken)
     {
-        var user = await identityService.CheckCredentialsAsync(request.Email, request.Username, request.Password, cancellationToken)
-                   ?? throw new UnauthorizedAccessException("The email/username or password is incorrect.");
+        var result = await identityService.CheckCredentialsAsync(request.Email, request.Username, request.Password, cancellationToken);
 
-        var token = accessTokenService.Create(user);
-        return new AuthResponseDto(token.Token, token.ExpiresAt, user.UserName, user.Id, token.RefreshTokenDurationInDays);
+        // A locked or disabled account answers like a wrong password: a stranger learns nothing about which accounts exist.
+        if (result.Outcome != CredentialsOutcome.Valid)
+            throw new UnauthorizedAccessException("The email/username or password is incorrect.");
+
+        return steps.Next(result.Account!);
     }
 }

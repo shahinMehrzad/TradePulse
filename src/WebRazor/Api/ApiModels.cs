@@ -1,7 +1,19 @@
 namespace WebRazor.Api;
 
 // Wire shapes of WebApi responses. Kept here on purpose: the panel must not reference the Application layer.
-public record LoginResponse(string AccessToken, DateTime ExpiresAt, string UserName, string RefreshToken);
+/// <summary>The answer of every sign-in step. <c>Stage</c> is Authenticated (the tokens are set), TwoFactorRequired or SetupRequired (a challenge token is).</summary>
+public record LoginResponse(
+    string Stage, string? AccessToken, DateTime? ExpiresAt, string? UserName, string? RefreshToken,
+    string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string[]? RecoveryCodes, bool EmailCodeAvailable);
+
+public record AccountInfo(string UserName, string Email, string[] Roles, bool TwoFactorEnabled, int RecoveryCodesLeft, bool EmailCodesEnabled, bool EmailAvailable);
+
+public record TwoFactorEnrollment(string SharedKey, string AuthenticatorUri);
+
+public record UserRow(Guid Id, string UserName, string Email, string[] Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled);
+
+/// <summary>A one-time password the API generated; the panel shows it once.</summary>
+public record OneTimePassword(Guid UserId, string UserName, string TemporaryPassword);
 
 public record AdminInfo(string UserName, string Email, string[] Roles);
 
@@ -93,7 +105,25 @@ public record SymbolsPage(IReadOnlyList<SymbolRow> Items, int PageNumber, int Pa
 }
 
 /// <summary>Outcome of a write. <see cref="SessionRejected"/> means the API no longer accepts the signed-in session.</summary>
-public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false);
+/// <param name="StepUpRequired">The API wants a fresh second-factor confirmation for this (not a lack of rights): see the StepUp page.</param>
+public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false, bool StepUpRequired = false);
+
+public record ElevationGrant(string Token, DateTime ExpiresAt);
+
+/// <summary>A key of the signed-in user at the exchange, as the Trader program describes it. Never a private key.</summary>
+public record ExchangeKeyInfo(
+    Guid Id, string Label, string Exchange, string Algorithm, string Status, string PublicKeyPem,
+    string? ApiKeyHint, string[] Problems, DateTime CreatedAt, DateTime? VerifiedAt, string Environment)
+{
+    public bool IsDemo => Environment == "Demo";
+}
+
+public record TradingState(
+    bool Halted, bool HaltedByServer, bool LiveAllowed, string[] AllowedSymbols, decimal MaxOrderUsd, decimal MaxDailyUsd, decimal OpenedTodayUsd);
+
+public record TradingOrder(
+    Guid Id, Guid KeyId, string Symbol, string Side, decimal Quantity, bool ReduceOnly, decimal NotionalUsd, string Status,
+    long? ExchangeOrderId, string? Error, DateTime CreatedAt);
 
 /// <summary>
 /// One kind of data an exchange market provides (the API publishes it from the same rule that refuses the impossible choices).

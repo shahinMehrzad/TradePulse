@@ -1,0 +1,141 @@
+@page
+@model ExchangeKeysModel
+@{
+    ViewData["Title"] = "Exchange keys";
+}
+
+@if (!Model.Configured)
+{
+    <div class="alert alert-info" role="alert">The key vault is not part of this installation (<code>Trader:BaseUrl</code> is not set).</div>
+    return;
+}
+
+@if (Model.Done is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.Done</div>
+}
+@foreach (var error in Model.Errors)
+{
+    <div class="alert alert-danger" role="alert">@error</div>
+}
+
+<div class="row row-cards">
+    <div class="col-12 col-xl-8">
+        @if (Model.Keys.Count == 0)
+        {
+            <div class="card"><div class="card-body text-secondary">You have no keys yet. Add one on the right.</div></div>
+        }
+        @foreach (var key in Model.Keys)
+        {
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h3 class="card-title">@key.Label</h3>
+                    <div class="card-actions">
+                        <span class="badge @(key.IsDemo ? "bg-azure-lt" : "bg-orange-lt") me-1">@(key.IsDemo ? "DEMO" : "LIVE")</span>
+                        @switch (key.Status)
+                        {
+                            case "Active":
+                                <span class="badge bg-green-lt">Active</span>
+                                break;
+                            case "Rejected":
+                                <span class="badge bg-red-lt">Rejected</span>
+                                break;
+                            default:
+                                <span class="badge bg-yellow-lt">Waiting for the API key</span>
+                                break;
+                        }
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (key.Problems.Length > 0)
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <div class="alert-title">Binance does not accept this key yet</div>
+                            <ul class="mb-0">@foreach (var problem in key.Problems) { <li>@problem</li> }</ul>
+                        </div>
+                    }
+
+                    @if (key.Status == "Active")
+                    {
+                        <p class="mb-2">
+                            @if (key.IsDemo)
+                            {
+                                <text>Binance Futures <strong>Demo</strong> (play money), API key <code>@key.ApiKeyHint</code>. Checked @(key.VerifiedAt?.ToString("yyyy-MM-dd HH:mm") + " UTC"):
+                                Binance answered to the signature. Demo has no permission check; the key holds no real money.</text>
+                            }
+                            else
+                            {
+                                <text>Binance Futures, API key <code>@key.ApiKeyHint</code>. Checked @(key.VerifiedAt?.ToString("yyyy-MM-dd HH:mm") + " UTC"):
+                                it can read and trade futures, it cannot withdraw or transfer, and it only works from this server's address.</text>
+                            }
+                        </p>
+                    }
+                    else
+                    {
+                        <ol class="mb-3">
+                            <li class="mb-2">
+                                In Binance open <strong>API Management</strong> and create an API key of the kind <strong>self-generated</strong> (not system-generated),
+                                and paste this <strong>public key</strong>:
+                                <textarea class="form-control font-monospace mt-1" rows="6" readonly data-select-on-click>@key.PublicKeyPem</textarea>
+                            </li>
+                            <li class="mb-2">
+                                In the restrictions of that key: choose <strong>Restrict access to trusted IPs only</strong> and add the public address of <strong>this server</strong>;
+                                turn on <strong>Enable Futures</strong> (and Reading); leave <strong>Enable Withdrawals</strong> and all transfer options <strong>off</strong>.
+                                Binance only lets you turn on trading when an IP is set.
+                            </li>
+                            <li>
+                                Copy the <strong>API key</strong> Binance shows (it is not a secret key) and give it here:
+                                <form method="post" asp-page-handler="SetApiKey" asp-route-id="@key.Id" autocomplete="off" class="mt-2">
+                                    <div class="input-group">
+                                        <input name="ApiKey" class="form-control font-monospace" placeholder="API key from Binance" autocomplete="off" />
+                                        <button type="submit" class="btn btn-primary">Check with Binance</button>
+                                    </div>
+                                </form>
+                            </li>
+                        </ol>
+                    }
+
+                    <div class="d-flex gap-2">
+                        @if (key.ApiKeyHint is not null)
+                        {
+                            <form method="post" asp-page-handler="Verify" asp-route-id="@key.Id">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm">Check again</button>
+                            </form>
+                        }
+                        <form method="post" asp-page-handler="Delete" asp-route-id="@key.Id"
+                              data-confirm="Delete '@key.Label'? Its private key is destroyed and cannot be brought back. You can make a new key.">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="col-12 col-xl-4">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Add a key</h3></div>
+            <div class="card-body">
+                <p class="text-secondary">
+                    This makes a key pair for Binance <strong>Futures</strong>. The private half is created inside the key vault and never leaves it:
+                    you never see it or type it, and the panel and the API cannot read it. Only you can use your keys.
+                </p>
+                <form method="post" asp-page-handler="Create" autocomplete="off">
+                    <div class="mb-3">
+                        <label asp-for="Input.Label" class="form-label">Name</label>
+                        <input asp-for="Input.Label" class="form-control" placeholder="e.g. main account" />
+                        <span asp-validation-for="Input.Label" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.Environment" class="form-label">Environment</label>
+                        <select asp-for="Input.Environment" class="form-select">
+                            <option value="Demo">Demo (play money, start here)</option>
+                            <option value="Live">Live (real money)</option>
+                        </select>
+                        <div class="form-hint">A Demo key and a live key are different keys at Binance. This cannot be changed later.</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Make a key pair</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

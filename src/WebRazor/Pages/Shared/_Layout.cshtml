@@ -1,4 +1,7 @@
-﻿@{
+@using Microsoft.Extensions.Options
+@using WebRazor.Api
+@inject IOptions<TraderOptions> TraderOptions
+@{
     var current = ViewContext.RouteData.Values["page"]?.ToString();
     string Active(string page) => string.Equals(current, page, StringComparison.OrdinalIgnoreCase) ? "active" : "";
 }
@@ -62,6 +65,28 @@
                                 <span class="nav-link-title">Audit log</span>
                             </a>
                         </li>
+                        <li class="nav-item mt-3"><div class="subheader px-3 pb-1">Administration</div></li>
+                        <li class="nav-item @Active("/Users")">
+                            <a class="nav-link" asp-page="/Users">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9"/></svg></span>
+                                <span class="nav-link-title">Users</span>
+                            </a>
+                        </li>
+                        @if (TraderOptions.Value.Enabled)
+                        {
+                            <li class="nav-item @Active("/ExchangeKeys")">
+                                <a class="nav-link" asp-page="/ExchangeKeys">
+                                    <span class="nav-link-icon d-md-none d-lg-inline-block"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4M18 5l3 3M15 8l3 3"/></svg></span>
+                                    <span class="nav-link-title">Exchange keys</span>
+                                </a>
+                            </li>
+                            <li class="nav-item @Active("/Trading")">
+                                <a class="nav-link" asp-page="/Trading">
+                                    <span class="nav-link-icon d-md-none d-lg-inline-block"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
+                                    <span class="nav-link-title">Trading</span>
+                                </a>
+                            </li>
+                        }
                     </ul>
                 </div>
             </div>
@@ -69,7 +94,7 @@
         <header class="navbar navbar-expand-md d-print-none">
             <div class="container-xl">
                 <div class="navbar-nav flex-row ms-auto align-items-center">
-                    <span class="nav-link text-secondary">@User.Identity?.Name</span>
+                    <a asp-page="/Account" class="nav-link text-secondary" title="My account">@User.Identity?.Name</a>
                     <form method="post" asp-page="/Logout" class="ms-2">
                         <button type="submit" class="btn btn-outline-secondary btn-sm">Sign out</button>
                     </form>

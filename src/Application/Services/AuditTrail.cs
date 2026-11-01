@@ -11,14 +11,16 @@ namespace Application.Services;
 /// </summary>
 public sealed class AuditTrail(IAuditLogRepository repository, ICurrentUser user, TimeProvider timeProvider, ILogger<AuditTrail> logger)
 {
-    public async Task RecordAsync(AuditAction action, string entityType, int entityId, string summary, string? details, CancellationToken cancellationToken)
+    /// <param name="userName">Who did it, for the few changes made before there is a signed-in user (a user's own first password); the current user otherwise.</param>
+    public async Task RecordAsync(AuditAction action, string entityType, int entityId, string summary, string? details,
+        CancellationToken cancellationToken, string? userName = null)
     {
         try
         {
             await repository.Add(new AuditLogEntry
             {
                 OccurredAt = timeProvider.GetUtcNow().UtcDateTime,
-                UserName = user.Name,
+                UserName = userName ?? user.Name,
                 Action = action,
                 EntityType = entityType,
                 EntityId = entityId,

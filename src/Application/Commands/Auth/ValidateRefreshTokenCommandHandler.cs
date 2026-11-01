@@ -17,10 +17,12 @@ public class ValidateRefreshTokenCommandHandler(
         if (userId is null)
             throw new UnauthorizedAccessException("Invalid token.");
 
-        var user = await identityService.FindByIdAsync(userId.Value, cancellationToken)
-                   ?? throw new UnauthorizedAccessException("Invalid token.");
+        // A disabled user, or one who has to set up again (password or two-factor reset), gets no new session from an old token.
+        var account = await identityService.FindActiveAccountAsync(userId.Value, cancellationToken);
+        if (account is null || account.NeedsSetup)
+            throw new UnauthorizedAccessException("Invalid token.");
 
-        var token = accessTokenService.Create(user);
-        return new AuthResponseDto(token.Token, token.ExpiresAt, user.UserName, user.Id, token.RefreshTokenDurationInDays);
+        var token = accessTokenService.Create(account.User);
+        return new AuthResponseDto(token.Token, token.ExpiresAt, account.User.UserName, account.User.Id, token.RefreshTokenDurationInDays);
     }
 }

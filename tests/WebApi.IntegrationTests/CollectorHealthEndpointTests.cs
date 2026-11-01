@@ -26,8 +26,7 @@ public class CollectorHealthEndpointTests(ApiFixture api) : IClassFixture<ApiFix
     public async Task WithoutAConfiguredAddressItSaysSoInsteadOfFailing()
     {
         var client = api.CreateClient();
-        var login = await client.PostAsJsonAsync(
-            "/api/auth/login", new { Email = ApiFixture.AdminEmail, Username = "", Password = ApiFixture.AdminPassword }, Ct);
+        var login = await api.AdminLoginAsync(client, Ct);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer", (await login.Content.ReadFromJsonAsync<LoginResult>(Ct))!.AccessToken);
 

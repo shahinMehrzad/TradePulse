@@ -1,0 +1,52 @@
+@page
+@model LoginTwoFactorModel
+@{
+    ViewData["Title"] = "Verification code";
+    Layout = "_Auth";
+}
+
+<div class="card card-md">
+    <div class="card-body">
+        <h2 class="h2 text-center mb-2">Two-factor verification</h2>
+        <p class="text-secondary text-center mb-4">Enter the 6-digit code your authenticator app shows@(Model.EmailCodeAvailable ? ", a code we email you," : "") or one of your recovery codes.</p>
+        @if (Model.Notice is not null)
+        {
+            <div class="alert alert-info" role="alert">@Model.Notice</div>
+        }
+        @if (Model.Error is not null)
+        {
+            <div class="alert alert-danger" role="alert">@Model.Error</div>
+        }
+        <form method="post" autocomplete="off">
+            <div class="mb-3">
+                <label asp-for="Input.Code" class="form-label">Code</label>
+                <input asp-for="Input.Code" class="form-control" inputmode="numeric" autocomplete="one-time-code" autofocus />
+                <span asp-validation-for="Input.Code" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">The code is from</label>
+                <label class="form-check">
+                    <input type="radio" name="Input.Method" value="Authenticator" class="form-check-input" checked="@(Model.Input.Method == "Authenticator")" />
+                    <span class="form-check-label">My authenticator app</span>
+                </label>
+                @if (Model.EmailCodeAvailable)
+                {
+                    <label class="form-check">
+                        <input type="radio" name="Input.Method" value="Email" class="form-check-input" checked="@(Model.Input.Method == "Email")" />
+                        <span class="form-check-label">An email we sent</span>
+                    </label>
+                }
+                <label class="form-check">
+                    <input type="radio" name="Input.Method" value="Recovery" class="form-check-input" checked="@(Model.Input.Method == "Recovery")" />
+                    <span class="form-check-label">A recovery code</span>
+                </label>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Verify</button>
+            @if (Model.EmailCodeAvailable)
+            {
+                <button type="submit" asp-page-handler="SendEmail" formnovalidate class="btn btn-outline-secondary w-100 mt-2">Email me a code</button>
+            }
+        </form>
+        <div class="text-center mt-3"><a asp-page="/Login" class="text-secondary">Back to sign in</a></div>
+    </div>
+</div>

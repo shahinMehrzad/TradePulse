@@ -1,0 +1,2 @@
+# Keys made by the test tool never belong in git.
+*.pem

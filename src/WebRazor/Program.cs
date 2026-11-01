@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Options;
@@ -16,15 +17,32 @@ namespace WebRazor
                 .Validate(o => Uri.TryCreate(o.BaseUrl, UriKind.Absolute, out _), "Api:BaseUrl must be an absolute URL.")
                 .ValidateOnStart();
 
+            // Keys of data protection (the sign-in cookies, antiforgery) survive a restart when a folder is given; the deploy stack mounts a volume there.
+            var dataProtection = builder.Services.AddDataProtection().SetApplicationName("TradePulse.Panel");
+            if (builder.Configuration["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
+                dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+            builder.Services.AddProxyHeaders();
             builder.Services.AddSingleton(TimeProvider.System);
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddSingleton<SessionTokenStore>();
             builder.Services.AddScoped<AdminLoginService>();
+            builder.Services.AddSingleton<PendingLoginCookie>();
             builder.Services.AddTransient<ApiAuthHandler>();
 
             // Raw client: login and refresh, where there is no session token to attach yet.
             builder.Services.AddHttpClient(ApiAuthHandler.RawClientName, ConfigureApiClient);
             builder.Services.AddHttpClient<TradePulseApiClient>(ConfigureApiClient)
+                .AddHttpMessageHandler<ApiAuthHandler>();
+
+            // The key vault (the Trader program) is optional: without Trader:BaseUrl the Exchange keys page says so and the menu does not show it.
+            builder.Services.Configure<TraderOptions>(builder.Configuration.GetSection(TraderOptions.SectionName));
+            builder.Services.AddHttpClient<TraderApiClient>((services, client) =>
+                {
+                    var trader = services.GetRequiredService<IOptions<TraderOptions>>().Value;
+                    if (trader.Enabled)
+                        client.BaseAddress = new Uri(trader.BaseUrl.TrimEnd('/') + "/");
+                    client.Timeout = TimeSpan.FromSeconds(60); // making a 4096-bit key pair and asking Binance take a few seconds
+                })
                 .AddHttpMessageHandler<ApiAuthHandler>();
 
             // The browser only ever holds this cookie; the API tokens stay in SessionTokenStore on the server.
@@ -62,10 +80,15 @@ namespace WebRazor
             builder.Services.AddRazorPages(options =>
             {
                 options.Conventions.AllowAnonymousToPage("/Login");
+                options.Conventions.AllowAnonymousToPage("/LoginTwoFactor");
+                options.Conventions.AllowAnonymousToPage("/LoginSetup");
                 options.Conventions.AllowAnonymousToPage("/Error");
             });
 
             var app = builder.Build();
+
+            // First, so that the scheme and the client address are the visitor's, not the proxy's.
+            app.UseForwardedHeaders();
 
             if (!app.Environment.IsDevelopment())
             {

@@ -13,7 +13,7 @@ public sealed class TradePulseApiClient(HttpClient http)
     private const string SymbolsRoot = "api/admin/symbols";
     private const string NotFoundSymbol = "That symbol or listing does not exist (anymore). Reload the page.";
 
-    private static bool IsRejected(HttpResponseMessage response) =>
+    internal static bool IsRejected(HttpResponseMessage response) =>
         response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
 
     /// <returns>The admin the token belongs to, or null when the session is no longer accepted by the API.</returns>
@@ -369,11 +369,109 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
     }
 
+    private const string UsersRoot = "api/admin/users";
+
+    /// <returns>The signed-in user's own account, or null when the session is no longer accepted by the API.</returns>
+    public async Task<AccountInfo?> GetAccountAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("api/account", cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AccountInfo>(cancellationToken);
+    }
+
+    public async Task<ApiResult> ChangeOwnPasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/change-password", new { CurrentPassword = currentPassword, NewPassword = newPassword }, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
+    }
+
+    /// <summary>New recovery codes (the old ones stop working); they are shown once.</summary>
+    public async Task<(ApiResult Result, string[]? Codes)> RegenerateRecoveryCodesAsync(string password, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/recovery-codes", new { Password = password }, cancellationToken);
+        var result = await ToResultAsync(response, "The account does not exist.", cancellationToken);
+        return result.Success
+            ? (result, (await response.Content.ReadFromJsonAsync<RecoveryCodesBody>(cancellationToken))?.RecoveryCodes)
+            : (result, null);
+    }
+
+    private record RecoveryCodesBody(string[] RecoveryCodes);
+
+    /// <summary>Mails a test code to the user's address (the first step of turning sign-in codes by email on).</summary>
+    public async Task<ApiResult> SendOwnEmailCodeAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("api/account/email-codes/send", content: null, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
+    }
+
+    public async Task<ApiResult> EnableEmailCodesAsync(string code, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/email-codes/enable", new { Code = code }, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
+    }
+
+    public async Task<ApiResult> DisableEmailCodesAsync(string password, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/email-codes/disable", new { Password = password }, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
+    }
+    private const string NotFoundUser = "That user does not exist (anymore). Reload the page.";
+
+    /// <returns>The accounts of the panel, or null when the session is no longer accepted by the API.</returns>
+    public async Task<IReadOnlyList<UserRow>?> GetUsersAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync(UsersRoot, cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<UserRow>>(cancellationToken);
+    }
+
+    /// <summary>Creates an administrator; the password in the answer is the only time it is ever shown.</summary>
+    public async Task<(ApiResult Result, OneTimePassword? Password)> CreateAdministratorAsync(string userName, string email, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync(UsersRoot, new { UserName = userName, Email = email }, cancellationToken);
+        return await ToPasswordResultAsync(response, cancellationToken);
+    }
+
+    public async Task<(ApiResult Result, OneTimePassword? Password)> ResetPasswordAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{UsersRoot}/{id}/reset-password", content: null, cancellationToken);
+        return await ToPasswordResultAsync(response, cancellationToken);
+    }
+
+    public async Task<ApiResult> ResetTwoFactorAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{UsersRoot}/{id}/reset-two-factor", content: null, cancellationToken);
+        return await ToResultAsync(response, NotFoundUser, cancellationToken);
+    }
+
+    public async Task<ApiResult> SetUserDisabledAsync(Guid id, bool disabled, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{UsersRoot}/{id}/{(disabled ? "disable" : "enable")}", content: null, cancellationToken);
+        return await ToResultAsync(response, NotFoundUser, cancellationToken);
+    }
+
+    private static async Task<(ApiResult, OneTimePassword?)> ToPasswordResultAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var result = await ToResultAsync(response, NotFoundUser, cancellationToken);
+        return result.Success
+            ? (result, await response.Content.ReadFromJsonAsync<OneTimePassword>(cancellationToken))
+            : (result, null);
+    }
+
     /// <summary>Success, or the reasons the API gave (a ProblemDetails <c>detail</c>, or the <c>errors</c> of a validation problem).</summary>
-    private static async Task<ApiResult> ToResultAsync(HttpResponseMessage response, string notFound, CancellationToken cancellationToken)
+    internal static async Task<ApiResult> ToResultAsync(HttpResponseMessage response, string notFound, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
             return new ApiResult(true, []);
+        // Before the check for rejection: a 403 that asks for a confirmation is not a lost role.
+        if (response.StatusCode == HttpStatusCode.Forbidden && await AsksForStepUpAsync(response, cancellationToken))
+            return new ApiResult(false, [], StepUpRequired: true);
         if (IsRejected(response))
             return new ApiResult(false, [], SessionRejected: true);
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -381,6 +479,36 @@ public sealed class TradePulseApiClient(HttpClient http)
 
         var reasons = await ReadReasonsAsync(response, cancellationToken);
         return new ApiResult(false, reasons.Count > 0 ? reasons : [$"The API answered {(int)response.StatusCode}."]);
+    }
+
+    private static async Task<bool> AsksForStepUpAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            return document.RootElement.TryGetProperty("code", out var code) && code.GetString() == "step_up_required";
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Confirms with a code that it is really this user. The grant goes to <see cref="SessionTokenStore"/>; nothing else keeps it.</summary>
+    public async Task<(ApiResult Result, ElevationGrant? Grant)> StepUpAsync(string code, string method, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("api/account/step-up", new { Code = code, Method = method }, cancellationToken);
+        var result = await ToResultAsync(response, "The account does not exist.", cancellationToken);
+        return result.Success
+            ? (result, await response.Content.ReadFromJsonAsync<ElevationGrant>(cancellationToken))
+            : (result, null);
+    }
+
+    public async Task<ApiResult> SendStepUpEmailCodeAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("api/account/step-up/email", content: null, cancellationToken);
+        return await ToResultAsync(response, "The account does not exist.", cancellationToken);
     }
 
     private static async Task<List<string>> ReadReasonsAsync(HttpResponseMessage response, CancellationToken cancellationToken)

@@ -2,6 +2,7 @@
 #   cp deploy/.env.example deploy/.env      (fill it in)
 #   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 # Nothing here touches the root docker-compose.yml, which is only the development infrastructure.
+# On a server with a domain, add `--profile public` to also start Caddy: HTTPS for the panel on ports 80 and 443 (see deploy/README.md).
 
 # Not "tradepulse": the root docker-compose.yml takes that name from the folder, and compose would then treat the two files as one project
 # (and recreate the development database of the root file with the definition below).
@@ -15,13 +16,17 @@ x-probe: &probe
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # Same major version as the development database (the root docker-compose.yml runs the latest), so a dump of that one can be
+    # restored here: pg_restore cannot read a dump made by a newer pg_dump.
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: tradepulse
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # Since PostgreSQL 18 the image keeps the data in a versioned folder under /var/lib/postgresql, so the volume goes there, not
+      # on /var/lib/postgresql/data (which would leave the data outside the volume).
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d tradepulse"]
       interval: 5s
@@ -42,6 +47,14 @@ services:
       AdminConfigurations__Email: ${ADMIN_EMAIL:?set ADMIN_EMAIL in deploy/.env}
       AdminConfigurations__Password: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/.env}
       Collector__HealthUrl: http://collector:8080/health
+      # The same mail server as the collector's alerts. Without SMTP_HOST and SMTP_FROM the API offers no sign-in codes by email.
+      Email__Host: ${SMTP_HOST:-}
+      Email__Port: ${SMTP_PORT:-587}
+      Email__UserName: ${SMTP_USER:-}
+      Email__Password: ${SMTP_PASSWORD:-}
+      Email__From: ${SMTP_FROM:-}
+    volumes:
+      - api-keys:/keys
     ports:
       - "127.0.0.1:${API_PORT:-8087}:8080"
     healthcheck:
@@ -49,17 +62,67 @@ services:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/lookups/exchanges HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
     restart: unless-stopped
 
+  # The key vault: the only program that holds the private keys of the users' exchange keys (and later the one that trades with them).
+  # It has NO published port: only the panel reaches it, over this stack's internal network. It trusts the same access tokens as the
+  # API, and it alone knows VAULT_MASTER_KEY, so a database dump or a hacked API/panel does not give anybody a usable key.
+  trader:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: trader }
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      ConnectionStrings__Vault: *db
+      JwtConfigurations__Secret: ${JWT_SECRET}
+      JwtConfigurations__Issuer: TradePulseApi
+      JwtConfigurations__Audience: TradePulseClient
+      AdminConfigurations__Role: Administrator
+      Vault__MasterKey: ${VAULT_MASTER_KEY:?set VAULT_MASTER_KEY in deploy/.env (openssl rand -base64 32), and keep a copy outside this server}
+      # What may be traded and how much (see docs/trading.md). Real money stays off until TRADING_ALLOW_LIVE=true.
+      Trading__AllowLive: ${TRADING_ALLOW_LIVE:-false}
+      Trading__Halted: ${TRADING_HALTED:-false}
+      Trading__MaxOrderUsd: ${TRADING_MAX_ORDER_USD:-100}
+      Trading__MaxDailyUsd: ${TRADING_MAX_DAILY_USD:-500}
+      Trading__AllowedSymbols__0: ${TRADING_SYMBOL_1:-BTCUSDT}
+      Trading__AllowedSymbols__1: ${TRADING_SYMBOL_2:-ETHUSDT}
+    healthcheck:
+      <<: *probe
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+    restart: unless-stopped
+
   panel:
     build: { context: .., dockerfile: deploy/Dockerfile, target: panel }
     depends_on:
       api: { condition: service_healthy }
+      trader: { condition: service_healthy }
     environment:
       Api__BaseUrl: http://api:8080
+      Trader__BaseUrl: http://trader:8080
+    volumes:
+      - panel-keys:/keys
     ports:
       - "127.0.0.1:${PANEL_PORT:-8088}:8080"
     healthcheck:
       <<: *probe
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /Login HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+    restart: unless-stopped
+
+  # The only service that is reachable from the internet, and only with `--profile public`. Everything else stays on
+  # 127.0.0.1 or inside the stack.
+  caddy:
+    profiles: ["public"]
+    image: caddy:2.10-alpine
+    depends_on:
+      panel: { condition: service_healthy }
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
     restart: unless-stopped
 
   collector:
@@ -86,3 +149,9 @@ services:
 
 volumes:
   pgdata:
+  # Keys of data protection (the sign-in cookies of the panel, tokens of the API): without them a restart signs everyone out.
+  api-keys:
+  panel-keys:
+  # The certificates Caddy got; losing them means asking Let's Encrypt again (which limits how often).
+  caddy-data:
+  caddy-config:
