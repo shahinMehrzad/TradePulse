@@ -36,7 +36,7 @@ public class MarketEventDetectorTests
         Assert.Equal(7, found.SymbolListingId);
         Assert.Equal(bars[200].OpenTime, found.StartedAt);
         Assert.Equal(EventDirectionEnum.Up, found.Direction);
-        Assert.True(found.FiveMinuteReturn > 0.01m);
+        Assert.True(found.FiveMinuteReturn > 0.03m, "the whole move of the three candles, not the first one");
         Assert.True(found.ZScore >= (decimal)Options.MinZScore);
         Assert.True(found.VolumeRatio > 10m);
         Assert.True(found.FlaggedMinutes > 1);
@@ -51,8 +51,23 @@ public class MarketEventDetectorTests
         var found = Assert.Single(Detector.Detect(bars, symbolListingId: 1));
 
         Assert.Equal(EventDirectionEnum.Down, found.Direction);
-        Assert.True(found.FiveMinuteReturn < -0.01m);
+        Assert.True(found.FiveMinuteReturn < -0.03m);
         Assert.True(found.ZScore < 0);
+    }
+
+    [Fact]
+    public void TheMoveAndTheZScoreComeFromTheSameMinuteTheOneWithTheLargestMove()
+    {
+        // The first candle is the most unusual (the baseline is still quiet); the third one has the largest 5 minute move.
+        var bars = MinuteBars.Build(400, MinuteBars.Jump(at: 200, each: 0.015m));
+        var singleCandle = MinuteBars.Build(400, new Dictionary<int, decimal> { [200] = 0.015m });
+
+        var wholeJump = Assert.Single(Detector.Detect(bars, symbolListingId: 1));
+        var firstCandleOnly = Assert.Single(Detector.Detect(singleCandle, symbolListingId: 1));
+
+        Assert.True(wholeJump.FiveMinuteReturn > 2 * firstCandleOnly.FiveMinuteReturn);
+        Assert.True(wholeJump.ZScore < firstCandleOnly.ZScore, "the baseline already holds the first candles of the jump");
+        Assert.True(wholeJump.ZScore >= (decimal)Options.MinZScore, "the minute was flagged, so it passed the threshold");
     }
 
     [Fact]
