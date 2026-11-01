@@ -18,13 +18,20 @@ public sealed class GapRepairSchedule(TimeProvider timeProvider)
     /// <summary>How long a table is left alone after a repair.</summary>
     public static readonly TimeSpan Period = TimeSpan.FromHours(24);
 
-    private readonly ConcurrentDictionary<string, DateTime> _repairedAt = new();
+    private readonly ConcurrentDictionary<string, (DateTime At, DateTime StartDate)> _repairedAt = new();
     private readonly ConcurrentDictionary<string, DateTime> _nothingBefore = new();
 
-    public bool IsDue(string table) =>
-        !_repairedAt.TryGetValue(table, out var at) || timeProvider.GetUtcNow().UtcDateTime - at >= Period;
+    /// <summary>
+    /// Due when the table was never repaired, a day has passed, or the start date is not the one it was repaired for: an admin who
+    /// moves it earlier wants that stretch filled now, not tomorrow.
+    /// </summary>
+    public bool IsDue(string table, DateTime startDate) =>
+        !_repairedAt.TryGetValue(table, out var last)
+        || last.StartDate != startDate
+        || timeProvider.GetUtcNow().UtcDateTime - last.At >= Period;
 
-    public void MarkRepaired(string table) => _repairedAt[table] = timeProvider.GetUtcNow().UtcDateTime;
+    public void MarkRepaired(string table, DateTime startDate) =>
+        _repairedAt[table] = (timeProvider.GetUtcNow().UtcDateTime, startDate);
 
     /// <summary>True when the exchange was asked for the candles before <paramref name="firstCandle"/> and had none.</summary>
     public bool KnowsNothingBefore(string table, DateTime firstCandle) =>

@@ -167,7 +167,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
     private async Task RepairGapsAsync(List<CandleSeriesPlan> plans, bool force, CancellationToken ct)
     {
         // The gap query scans a whole table: only the tables that are due, unless everything is asked for.
-        var due = force ? plans : plans.Where(p => schedule.IsDue(p.Series.TableName)).ToList();
+        var due = force ? plans : plans.Where(p => schedule.IsDue(p.Series.TableName, p.StartDate)).ToList();
         if (due.Count == 0)
             return;
 
@@ -237,7 +237,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             alerts.Raise(new Alert($"New gap in {tableName}",
                 $"{now.Gaps} gap(s), {now.MissingCandles} candle(s) missing, from {now.Oldest:yyyy-MM-dd HH:mm} UTC. The exchange has no candles for them."));
 
-        schedule.MarkRepaired(tableName);
+        schedule.MarkRepaired(tableName, plan.StartDate);
     }
 
     // Usually the symbol was listed after the start date and the exchange has nothing there: ask once, then not again while the
