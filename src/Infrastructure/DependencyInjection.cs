@@ -50,6 +50,14 @@ public static class DependencyInjection
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "config");
             }));
 
+        // Like ConfigConnection, ResearchConnection is optional: the research schema normally sits in the same database as everything else.
+        var researchConnectionString = configuration.GetConnectionString("ResearchConnection") ?? connectionString;
+        services.AddDbContext<ResearchDbContext>(options =>
+            options.UseNpgsql(researchConnectionString, npgsqlOptions =>
+            {
+                npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "research");
+            }));
+
         services.Configure<JwtConfigurations>(configuration.GetSection(nameof(JwtConfigurations)));
 
         return services;
@@ -118,11 +126,13 @@ public static class DependencyInjection
         {
             var context = services.GetRequiredService<AuthDbContext>();
             var contextConfig = services.GetRequiredService<ConfigDbContext>();
+            var contextResearch = services.GetRequiredService<ResearchDbContext>();
             var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
             var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
 
             await context.Database.MigrateAsync();
             await contextConfig.Database.MigrateAsync();
+            await contextResearch.Database.MigrateAsync();
 
             string? adminRoleName = configuration["AdminConfigurations:Role"];
             if (string.IsNullOrEmpty(adminRoleName))
