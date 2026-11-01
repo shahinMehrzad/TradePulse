@@ -20,8 +20,13 @@ internal sealed class FakeCandleRepository : ICandleRepository
         return Task.FromResult(InsertResult);
     }
 
-    public Task<IEnumerable<Candle>> GetHistoryAsync(string tableName, DateTime? from, DateTime? to, CancellationToken cancellationToken) =>
-        throw new NotSupportedException();
+    public Task<IEnumerable<Candle>> GetHistoryAsync(string tableName, DateTime? from, DateTime? to, CancellationToken cancellationToken)
+    {
+        LastRead = (tableName, from, to, 0);
+        return Task.FromResult<IEnumerable<Candle>>(Stored
+            .Where(c => (from is null || c.TimeRange.OpenTime >= from) && (to is null || c.TimeRange.OpenTime <= to))
+            .ToList());
+    }
 
     public Task EnsureTableExistsAsync(string tableName, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
