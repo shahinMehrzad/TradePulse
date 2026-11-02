@@ -158,6 +158,36 @@ namespace Infrastructure.Migrations.ConfigDb
                         });
                 });
 
+            modelBuilder.Entity("Domain.Entities.ShockWatchConfiguration", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreateDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SymbolListingId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SymbolListingId")
+                        .IsUnique();
+
+                    b.ToTable("shock_watch_configurations", "config");
+                });
+
             modelBuilder.Entity("Domain.Entities.SymbolDataConfiguration", b =>
                 {
                     b.Property<int>("Id")
@@ -554,6 +584,17 @@ namespace Infrastructure.Migrations.ConfigDb
                     b.Navigation("SymbolListing");
 
                     b.Navigation("TimeFrame");
+                });
+
+            modelBuilder.Entity("Domain.Entities.ShockWatchConfiguration", b =>
+                {
+                    b.HasOne("Domain.Entities.SymbolListing", "SymbolListing")
+                        .WithMany()
+                        .HasForeignKey("SymbolListingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("SymbolListing");
                 });
 
             modelBuilder.Entity("Domain.Entities.SymbolDataConfiguration", b =>
