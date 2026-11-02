@@ -109,6 +109,72 @@ namespace Infrastructure.Migrations.ResearchDb
                     b.ToTable("market_events", "research");
                 });
 
+            modelBuilder.Entity("Domain.Entities.ShockAlert", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreateDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<int>("Direction")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("EndPrice")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
+
+                    b.Property<int>("FlaggedSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Move")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
+
+                    b.Property<string>("RuleVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<decimal>("StartPrice")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
+
+                    b.Property<int>("SymbolListingId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("TriggeredAt")
+                        .HasColumnType("timestamp");
+
+                    b.Property<decimal>("Volume")
+                        .HasPrecision(28, 8)
+                        .HasColumnType("numeric(28,8)");
+
+                    b.Property<int>("WindowSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("ZScore")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TriggeredAt");
+
+                    b.HasIndex("SymbolListingId", "RuleVersion", "TriggeredAt")
+                        .IsUnique();
+
+                    b.ToTable("shock_alerts", "research");
+                });
+
             modelBuilder.Entity("Domain.Entities.EventReaction", b =>
                 {
                     b.HasOne("Domain.Entities.MarketEvent", "MarketEvent")

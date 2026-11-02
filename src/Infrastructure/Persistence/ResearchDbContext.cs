@@ -17,6 +17,7 @@ public class ResearchDbContext : DbContext
 
     public DbSet<MarketEvent> MarketEvents => Set<MarketEvent>();
     public DbSet<EventReaction> EventReactions => Set<EventReaction>();
+    public DbSet<ShockAlert> ShockAlerts => Set<ShockAlert>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -59,6 +60,30 @@ public class ResearchDbContext : DbContext
             e.HasOne(x => x.MarketEvent).WithMany(x => x.Reactions).HasForeignKey(x => x.MarketEventId).OnDelete(DeleteBehavior.Cascade);
 
             e.HasIndex(x => new { x.MarketEventId, x.HorizonMinutes }).IsUnique();
+        });
+
+        builder.Entity<ShockAlert>(e =>
+        {
+            e.ToTable("shock_alerts", "research");
+
+            // Like market events: the listing lives in the config schema, only its id is kept.
+            e.Ignore(x => x.SymbolListing);
+
+            e.Property(x => x.TriggeredAt).HasColumnType("timestamp").HasConversion(UtcToTimestamp);
+            e.Property(x => x.CreateDate).HasColumnType("timestamp").HasConversion(UtcToTimestamp).HasDefaultValueSql("now() at time zone 'utc'");
+
+            e.Property(x => x.Direction).HasConversion<int>();
+            e.Property(x => x.Level).HasConversion<int>();
+            e.Property(x => x.Move).HasPrecision(18, 8);
+            e.Property(x => x.ZScore).HasPrecision(18, 4);
+            e.Property(x => x.StartPrice).HasPrecision(18, 8);
+            e.Property(x => x.EndPrice).HasPrecision(18, 8);
+            e.Property(x => x.Volume).HasPrecision(28, 8);
+            e.Property(x => x.RuleVersion).HasMaxLength(32);
+
+            // Replaying the same seconds (a restart that sees the same trades again) must not store the same alert twice.
+            e.HasIndex(x => new { x.SymbolListingId, x.RuleVersion, x.TriggeredAt }).IsUnique();
+            e.HasIndex(x => x.TriggeredAt);
         });
     }
 }
