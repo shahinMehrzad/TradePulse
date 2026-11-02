@@ -29,13 +29,21 @@ public class MarketDataSupportTests
         }
     }
 
-    [Theory]
-    [InlineData(MarketTypeEnum.Spot)]
-    [InlineData(MarketTypeEnum.Futures)]
-    public void CandlesExistForEveryTimeFrame(MarketTypeEnum market)
+    [Fact]
+    public void SpotCandlesExistForEveryTimeFrame()
     {
         Assert.All(Enum.GetValues<TimeFrameEnum>(), timeFrame =>
-            Assert.True(MarketDataSupport.IsSupported(Binance, market, MarketDataTypeEnum.Candle, timeFrame)));
+            Assert.True(MarketDataSupport.IsSupported(Binance, MarketTypeEnum.Spot, MarketDataTypeEnum.Candle, timeFrame)));
+    }
+
+    [Fact]
+    public void FuturesCandlesExistForEveryTimeFrameExceptOneSecond()
+    {
+        Assert.All(Enum.GetValues<TimeFrameEnum>().Where(t => t != TimeFrameEnum._1S), timeFrame =>
+            Assert.True(MarketDataSupport.IsSupported(Binance, MarketTypeEnum.Futures, MarketDataTypeEnum.Candle, timeFrame)));
+
+        // Binance refuses the 1s interval for futures klines ("Invalid interval", -1120).
+        Assert.False(MarketDataSupport.IsSupported(Binance, MarketTypeEnum.Futures, MarketDataTypeEnum.Candle, TimeFrameEnum._1S));
     }
 
     [Fact]
