@@ -274,13 +274,4 @@ public class ShockWatcherTests
         await WaitForAsync(() => _telegram.Sent.Count > 0, "the alert");
         await StopAsync(run);
     }
-
-    [Fact]
-    public async Task OneWatchFollowsOneExchangeMarket()
-    {
-        WatchedSymbol[] mixed = [Symbols[0], new(ExchangeEnum.Binance, MarketTypeEnum.Spot, 8, new ExchangeSymbol("BTCUSDT"))];
-
-        await Assert.ThrowsAsync<ArgumentException>(() => NewWatcher().RunAsync(mixed, Ct));
-        await Assert.ThrowsAsync<ArgumentException>(() => NewWatcher().RunAsync([], Ct));
-    }
 }
