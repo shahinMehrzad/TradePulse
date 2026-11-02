@@ -65,7 +65,7 @@ public class MarketEventStoreTests(PostgresFixture postgres)
         while (await reader.ReadAsync(Ct))
             tables.Add(reader.GetString(0));
 
-        Assert.Equal(["__EFMigrationsHistory", "event_reactions", "market_events"], tables);
+        Assert.Equal(["__EFMigrationsHistory", "event_reactions", "market_events", "shock_alerts"], tables);
     }
 
     [Fact]

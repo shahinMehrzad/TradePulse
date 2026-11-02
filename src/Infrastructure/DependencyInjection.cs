@@ -2,6 +2,7 @@ using Application.Dtos.AuditLog;
 using Application.Dtos.CandleWorkerConfigurations;
 using Application.Interfaces;
 using Application.Research;
+using Application.Research.Watch;
 using Domain.Entities;
 using Infrastructure.Identity;
 using Domain.Repositories;
@@ -39,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IReadModel<AuditLogListItem>, AuditLogReadModel>();
         services.AddScoped<IMarketEventStore, MarketEventStore>();
+        services.AddScoped<IShockAlertStore, ShockAlertStore>();
 
         // Work without a signed-in user (the collector) is done by "system"; the API registers the user of the request after this.
         services.TryAddScoped<ICurrentUser, SystemUser>();
