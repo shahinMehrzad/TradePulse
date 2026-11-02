@@ -33,7 +33,11 @@ Admin only. Two lists take OData query options, and answer `{ "count": 13, "valu
 | Request | Returns |
 |---|---|
 | `GET /api/admin/configurations/candle-worker/odata` | The candle series the collector gathers, with the names of exchange, market, symbol and time frame next to their ids. |
-| `GET /api/admin/audit-log` | Who changed which collector setting: `occurredAt`, `userName`, `action` (`Added`, `Updated`, `Removed`), `entityType` (`CandleSeries`, `SymbolData`, `Symbol`, `SymbolListing`), `entityId`, `summary` and `details` (for an update, what changed: `start date 2020-01-01 -> 2021-06-01`). |
+| `GET /api/admin/audit-log` | Who changed which collector setting: `occurredAt`, `userName`, `action` (`Added`, `Updated`, `Removed`), `entityType` (`CandleSeries`, `SymbolData`, `ShockWatch`, `Symbol`, `SymbolListing`), `entityId`, `summary` and `details` (for an update, what changed: `start date 2020-01-01 -> 2021-06-01`). |
+| `GET /api/admin/shock-watch` | The symbols the live watch follows ([docs/research.md](research.md)): `id`, `symbolListingId`, exchange, market, symbol, `exchangeSymbol`, `reason` (`Manual`: the admin added it), `isEnabled` (the watch of this symbol is on), `hasMinuteCandles` (its 1 minute candles are collected: the watch starts from them) and `createDate`. |
+| `POST /api/admin/shock-watch` | Puts a symbol on the list, switched on: `{ "symbolListingId": 1 }`. `400` when the listing is unknown or its 1 minute candles are not collected, `409` when it is on the list already. Answers `201 { id }`. |
+| `PUT /api/admin/shock-watch/{id}/enabled` | Switches the watch of one symbol: `{ "enabled": false }`. Off always works; on is `400` while the 1 minute candles are not collected. `404` if the row does not exist. `204`. |
+| `DELETE /api/admin/shock-watch/{id}` | Takes a symbol off the list (`204`); `404` if it does not exist. The watch does not stop the collection, and the collection does not start the watch: they are separate lists. |
 
 Only `$filter`, `$orderby`, `$top`, `$skip` and `$count` are accepted; `$select`, `$expand` and `$apply` are a `400`, like a malformed query or a `$top` above 100. Without `$top` a request gets 20 rows, and the key is always the last sort so pages never overlap. Dates in a filter are UTC (`occurredAt ge 2026-10-01T00:00:00Z`), like every stored time. Example: `?$filter=action eq 'Removed' and contains(tolower(userName),'shahin')&$orderby=occurredAt desc&$top=25`.
 
