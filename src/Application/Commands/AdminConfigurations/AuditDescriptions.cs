@@ -38,6 +38,13 @@ internal static class AuditDescriptions
         Change("funding start date", Date(before.FundingStartDate), Date(after.FundingStartDate)),
         Change("liquidations", OnOff(before.CollectLiquidation), OnOff(after.CollectLiquidation)));
 
+    public static string Summary(ShockWatchConfiguration c) => Where(c.SymbolListing);
+
+    public static string Values(ShockWatchConfiguration c) => $"{c.Reason.ToString().ToLowerInvariant()}, watch {OnOff(c.IsEnabled)}";
+
+    public static string? Changes(ShockWatchConfiguration before, ShockWatchConfiguration after) =>
+        Change("watch", OnOff(before.IsEnabled), OnOff(after.IsEnabled));
+
     private static string Where(SymbolListing? l) => $"{Exchange(l)} / {Market(l)} / {Symbol(l)}";
 
     // The listing is loaded with every row the repositories hand out; "?" only shows a row that was built by hand.

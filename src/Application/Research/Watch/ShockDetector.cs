@@ -108,6 +108,9 @@ public sealed class ShockDetector(int symbolListingId, ShockWatchOptions options
 
     private const int GraceSeconds = 2;
 
+    /// <summary>Ends the alert that is running, if any (the symbol is no longer followed), so it is stored with its final figures.</summary>
+    public void Close(ICollection<ShockSignal> signals) => CloseCluster(signals);
+
     private static long SecondOf(DateTime time) => (long)(time - DateTime.UnixEpoch).TotalSeconds;
 
     // Room for the baseline, the window and the second being built.

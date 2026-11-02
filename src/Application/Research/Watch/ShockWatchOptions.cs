@@ -42,6 +42,9 @@ public sealed record ShockWatchOptions
     /// </summary>
     public TimeSpan BlindAfter { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>How often the watch looks again at which symbols it should follow, and adds or drops the ones that changed.</summary>
+    public TimeSpan WatchListRefresh { get; init; } = TimeSpan.FromSeconds(30);
+
     /// <summary>Names the rule, so alerts of different settings are never taken for each other. Change it when the logic changes.</summary>
     public string Version => string.Create(CultureInfo.InvariantCulture, $"s{WindowSeconds}-{AttentionMove}-{AlarmMove}-z{MinZScore}-v1");
 }
