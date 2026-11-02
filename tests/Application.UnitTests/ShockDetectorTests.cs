@@ -218,6 +218,85 @@ public class ShockDetectorTests
         Assert.Equal(first.Select(s => (s.Kind, s.Alert.TriggeredAt, s.Alert.Move, s.Alert.ZScore)), second.Select(s => (s.Kind, s.Alert.TriggeredAt, s.Alert.Move, s.Alert.ZScore)));
     }
 
+    // The tape's seconds move by about 0.0095 % (see ShockTape.Wobble).
+    private const double TapeSecondVolatility = 9.5e-5;
+
+    [Fact]
+    public void WithASeedItJudgesAfterTheWindowNotAfterTheWholeBaseline()
+    {
+        var seeded = NewDetector();
+        seeded.Seed(TapeSecondVolatility);
+        var unseeded = NewDetector();
+
+        var withSeed = Feed(seeded, 0, 40, second => Price(second, at: 25, jump: 0.01m));
+        var withoutSeed = Feed(unseeded, 0, 40, second => Price(second, at: 25, jump: 0.01m));
+
+        Assert.Single(withSeed, s => s.Kind == ShockSignalKind.Started);
+        Assert.Empty(withoutSeed);
+    }
+
+    [Fact]
+    public void ASeededDetectorIsSilentUntilTheWindowIsFilled()
+    {
+        var detector = NewDetector();
+        detector.Seed(TapeSecondVolatility);
+
+        var signals = Feed(detector, 0, 5, second => Price(second, at: 2, jump: 0.01m));
+
+        Assert.Empty(signals);
+        Assert.False(detector.IsWarm);
+    }
+
+    [Fact]
+    public void TheSeedIsReplacedByRealSecondsOnceTheBaselineIsFull()
+    {
+        var detector = NewDetector();
+        detector.Seed(TapeSecondVolatility);
+
+        Feed(detector, 0, 50);
+        Assert.True(detector.IsWarm);
+        Assert.False(detector.IsSeedReplaced);
+
+        Feed(detector, 50, 150);
+        Assert.True(detector.IsSeedReplaced);
+    }
+
+    [Fact]
+    public void ASeedThatIsTooHighMakesTheDetectorLessSensitiveOnlyUntilRealSecondsTakeOver()
+    {
+        // An estimate ten times the real size: a 0.4 % move is not unusual against it, so the early jump passes unnoticed.
+        var detector = NewDetector();
+        detector.Seed(TapeSecondVolatility * 10);
+
+        var early = Feed(detector, 0, 60, second => Price(second, at: 30, jump: 0.004m));
+        Assert.Empty(early);
+
+        // Once the baseline is made of real seconds the same kind of jump is caught.
+        var late = Feed(detector, 60, 400, second => Price(second, at: 300, jump: 0.01m) * (second >= 30 ? 1.004m : 1m));
+        Assert.Single(late, s => s.Kind == ShockSignalKind.Started);
+    }
+
+    [Fact]
+    public void ASeedMustBePositive()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => NewDetector().Seed(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NewDetector().Seed(-1e-4));
+    }
+
+    [Fact]
+    public void ASeedSurvivesALongGapSoTheWatchCanJudgeAgainSoonAfter()
+    {
+        var detector = NewDetector();
+        detector.Seed(TapeSecondVolatility);
+        Feed(detector, 0, 150);
+
+        var signals = new List<ShockSignal>();
+        for (var second = 4000; second < 4040; second++)
+            detector.Add(Trade(second, Price(second, at: 4025, jump: 0.01m)), signals);
+
+        Assert.Single(signals, s => s.Kind == ShockSignalKind.Started);
+    }
+
     [Fact]
     public void TheVersionNamesTheRuleSoADifferentRuleIsADifferentVersion()
     {

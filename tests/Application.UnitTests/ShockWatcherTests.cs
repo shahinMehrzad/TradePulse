@@ -18,11 +18,12 @@ public class ShockWatcherTests
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(Start));
     private readonly FakeLiveTradeStream _stream = new();
     private readonly FakeShockAlertStore _store = new();
+    private readonly FakeCandleRepository _candles = new();
     private readonly RecordingNotifier _telegram = new("telegram");
     private readonly RecordingNotifier _email = new("email");
     private readonly CancellationTokenSource _stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
 
-    private ShockWatcher NewWatcher() => new(_stream, _store, [_telegram, _email], Options, _time, NullLogger<ShockWatcher>.Instance);
+    private ShockWatcher NewWatcher() => new(_stream, _store, _candles, [_telegram, _email], Options, _time, NullLogger<ShockWatcher>.Instance);
 
     private Task Run() => Task.Run(() => NewWatcher().RunAsync(Symbols, _stop.Token), Ct);
 
@@ -206,6 +207,71 @@ public class ShockWatcherTests
         await PassAsync(2);
 
         Assert.Empty(_telegram.Sent);
+        await StopAsync(run);
+    }
+
+    /// <summary>The last hour of 1 minute candles as the collector would have stored it, ending a minute before the fake "now".</summary>
+    private void StoreMinuteCandles(int count = 61, int endsMinutesBefore = 1)
+    {
+        var bars = MinuteBars.Build(count);
+        var first = Start.AddMinutes(-endsMinutesBefore - count + 1);
+        for (var i = 0; i < bars.Count; i++)
+            _candles.Stored.Add(MinuteBars.ToCandle(bars[i] with { OpenTime = DateTime.SpecifyKind(first.AddMinutes(i), DateTimeKind.Unspecified) }));
+    }
+
+    [Fact]
+    public async Task WithMinuteCandlesStoredItJudgesFromTheFirstSecondsNotAfterAnHour()
+    {
+        StoreMinuteCandles();
+        var run = Run();
+        var listener = await SubscribedAsync();
+
+        // 30 seconds after the start the price jumps 1 %: the baseline is still the estimate from the candles.
+        Quiet(listener, 0, 60, second => Price(second, at: 30, jump: 0.01m));
+        await WaitForAsync(() => _telegram.Sent.Count > 0, "the alert");
+
+        Assert.StartsWith("ALARM: BTCUSDT rose", Assert.Single(_telegram.Sent).Title);
+        Assert.Equal("binance_futures_btcusdt_1m", _candles.LastRead!.Value.TableName);
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task WithoutMinuteCandlesTheSameJumpIsNotJudgedUntilTheBaselineIsFull()
+    {
+        var run = Run();
+        var listener = await SubscribedAsync();
+
+        Quiet(listener, 0, 60, second => Price(second, at: 30, jump: 0.01m));
+        await PassAsync(3);
+
+        Assert.Empty(_telegram.Sent);
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task StaleMinuteCandlesAreNotUsedBecauseTheyDescribeAnotherTime()
+    {
+        StoreMinuteCandles(endsMinutesBefore: 120);
+        var run = Run();
+        var listener = await SubscribedAsync();
+
+        Quiet(listener, 0, 60, second => Price(second, at: 30, jump: 0.01m));
+        await PassAsync(3);
+
+        Assert.Empty(_telegram.Sent);
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task ACandleTableThatCannotBeReadDoesNotStopTheWatch()
+    {
+        _candles.PerTable["some_other_table"] = [];   // the 1 minute table does not exist: the repository throws
+        var run = Run();
+
+        var listener = await SubscribedAsync();
+
+        Quiet(listener, 0, 200, second => Price(second, at: 150, jump: 0.01m));
+        await WaitForAsync(() => _telegram.Sent.Count > 0, "the alert");
         await StopAsync(run);
     }
 
