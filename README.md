@@ -16,7 +16,7 @@ It continuously collects Binance market data into PostgreSQL, built for speed an
 
 | Data | Source | Notes |
 | --- | --- | --- |
-| **Candles (OHLCV)** | REST | Spot and USD-M Futures, any configured symbol and timeframe from 1s to 1d. Resumes from the newest stored candle, repairs gaps automatically. |
+| **Candles (OHLCV)** | REST | Spot (1s to 1d) and USD-M Futures (1m to 1d: Binance has no futures candles below a minute), any configured symbol. Resumes from the newest stored candle, repairs gaps automatically. |
 | **Funding rates** | REST | Futures. Full history from a configured start date, polled hourly. |
 | **Open interest** | REST | Futures, per period (5m to 1d). Binance only keeps ~30 days of history, so this must run continuously to build a long series. |
 | **Long/short ratio, taker volume** | REST | Futures, per period (5m to 1d), like open interest: Binance keeps ~30 days, so they must run continuously. One admin flag (`CollectMarketStatistics`) turns on both for a series. |
@@ -50,6 +50,10 @@ WebRazor: no project reference at all, it only calls WebApi over HTTP
 
 A [Tabler](https://tabler.io)-based panel that only administrators can enter (the seeded one, and the ones added on the **Users** page), and the only place where the collector is configured. The **Dashboard** shows one card per symbol (price, change, sparkline, and how fresh the data is, with a time frame picker per card); a card opens a **symbol page** with a candlestick chart and the funding rate, open interest and liquidations collected for it. Charts are drawn on the server as inline SVG. More: [docs/admin-panel.md](docs/admin-panel.md).
 
+### Research tools
+
+A separate console (`src/Research`, its own process, its own `research` schema) works on what the collector stored: it finds the minutes in which the price moved far more than it usually does and what the price did next, and it **watches the live trades** and sends a Telegram/email message within seconds of a sudden move (attention or alarm), saying what happened and never what to do. Details and the figures behind the thresholds: [docs/research.md](docs/research.md).
+
 ### More documentation
 
 | Page | What is in it |
@@ -57,6 +61,7 @@ A [Tabler](https://tabler.io)-based panel that only administrators can enter (th
 | [docs/collector.md](docs/collector.md) | The data the worker collects and how the collection path is built. |
 | [docs/health.md](docs/health.md) | `GET /health` and every check behind it. |
 | [docs/alerts.md](docs/alerts.md) | Telegram and email messages when a check changes or a new gap appears. |
+| [docs/research.md](docs/research.md) | The research console: market events and the live watch for sudden price moves. |
 | [deploy/README.md](deploy/README.md) | Running Postgres, the API, the panel and the collector with Docker. |
 | [docs/configuration.md](docs/configuration.md) | Choosing candle series, open interest, funding rate and liquidations in the database. |
 | [docs/api.md](docs/api.md) | The candle read API, the dashboard API, login and refresh tokens. |
