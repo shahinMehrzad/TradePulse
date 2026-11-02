@@ -126,6 +126,7 @@ public sealed class ShockWatcher(
             if (result.Success)
             {
                 listener.Handle = result.Value;
+                logger.LogInformation("Following the trades of {Symbols}", names);
                 if (told)
                     outgoing.TryWrite(new Outgoing(ShockAlertMessage.Restored(names, time.GetUtcNow() - failingSince!.Value), null));
                 return true;
