@@ -2,6 +2,8 @@ using System.Threading.Channels;
 using Application.Exchange;
 using Application.Notifications;
 using Domain.Entities;
+using Domain.Repositories;
+using Domain.Services;
 using Domain.Enums;
 using Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
@@ -22,6 +24,7 @@ public sealed record WatchedSymbol(ExchangeEnum Exchange, MarketTypeEnum MarketT
 public sealed class ShockWatcher(
     ILiveTradeStream stream,
     IShockAlertStore store,
+    ICandleRepository candleRepository,
     IEnumerable<INotifier> notifiers,
     ShockWatchOptions options,
     TimeProvider time,
@@ -58,6 +61,8 @@ public sealed class ShockWatcher(
         var sender = Task.Run(() => SendAsync(outgoing.Reader));
         try
         {
+            await SeedAsync(watched.Values, cancellationToken);
+
             if (!await ConnectAsync(first, symbols, listener, outgoing.Writer, names, cancellationToken))
                 return;
 
@@ -72,6 +77,39 @@ public sealed class ShockWatcher(
         {
             outgoing.Writer.TryComplete();
             await sender;
+        }
+    }
+
+    /// <summary>
+    /// Tells each detector how much its symbol usually moves in a second, from the 1 minute candles already stored, so it can judge from
+    /// the start. A symbol without usable candles is not an error: it listens for a whole baseline first, and the log says so.
+    /// </summary>
+    private async Task SeedAsync(IEnumerable<(WatchedSymbol Symbol, ShockDetector Detector)> watched, CancellationToken cancellationToken)
+    {
+        foreach (var (symbol, detector) in watched)
+        {
+            var name = symbol.Symbol.Value;
+            try
+            {
+                var table = TableNameRegistry.GetCandleTableName(symbol.Exchange, symbol.MarketType, name, TimeFrameEnum._1M);
+                var candles = await candleRepository.GetLatestAsync(table, options.SeedMinutes + 1, null, cancellationToken);
+
+                if (ShockSeed.TryEstimate(candles, time.GetUtcNow().UtcDateTime, options.SeedMaxAge, options.SeedMinReturns, out var volatility))
+                {
+                    detector.Seed(volatility);
+                    logger.LogInformation("{Symbol} starts from the 1 minute candles: a second usually moves {Volatility:P4}", name, volatility);
+                }
+                else
+                {
+                    logger.LogWarning("{Symbol}: no recent 1 minute candles to start from. It will be silent for {Seconds} s while it listens", name, options.BaselineSeconds);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The database or the table being unavailable must not stop the watch; it just starts without the estimate.
+                logger.LogWarning("{Symbol}: the 1 minute candles could not be read ({Error}). It will be silent for {Seconds} s while it listens",
+                    name, ex.GetType().Name, options.BaselineSeconds);
+            }
         }
     }
 

@@ -48,9 +48,27 @@ public sealed class ShockDetector(int symbolListingId, ShockWatchOptions options
     private double _sumSquares;
     private decimal _windowVolume;         // traded in the last WindowSeconds seconds
     private Cluster? _cluster;
+    private double _seedVariance;          // variance of a 1 second return estimated from older, coarser candles; 0 = none
 
-    /// <summary>True once the baseline is full, so the detector can judge. Before that it is silent.</summary>
-    public bool IsWarm => _completed > _baseline;
+    /// <summary>
+    /// True once the detector can judge: the baseline is full, or (with a <see cref="Seed"/>) the window is. Before that it is silent.
+    /// </summary>
+    public bool IsWarm => _completed > _baseline || (_seedVariance > 0 && _completed >= _window);
+
+    /// <summary>True once the baseline is made of real seconds only and the seed no longer counts.</summary>
+    public bool IsSeedReplaced => _completed > _baseline;
+
+    /// <summary>
+    /// Lets the detector judge right away instead of after a full baseline: <paramref name="secondVolatility"/> is the usual standard
+    /// deviation of a 1 second logarithmic return, estimated from the 1 minute candles that were already stored. Every real second then
+    /// takes the place of one second of the estimate, until after BaselineSeconds the estimate is gone. It is an estimate, so it is only
+    /// used while there is nothing better; it also stays after a long gap, when the real seconds are gone.
+    /// </summary>
+    public void Seed(double secondVolatility)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(secondVolatility, 0);
+        _seedVariance = secondVolatility * secondVolatility;
+    }
 
     /// <summary>Trades older than the second being built, which cannot be placed any more and are left out.</summary>
     public long LateTrades { get; private set; }
@@ -139,7 +157,7 @@ public sealed class ShockDetector(int symbolListingId, ShockWatchOptions options
 
         // Judged before this second's return joins the baseline. The baseline then holds the returns of the seconds t-B .. t-1, which
         // all exist once B+1 seconds are complete (the first one has no return).
-        if (_completed > _baseline)
+        if (IsWarm)
             Judge(t, windowVolume, signals);
 
         _returns[slot] = ret;
@@ -177,7 +195,10 @@ public sealed class ShockDetector(int symbolListingId, ShockWatchOptions options
         var endPrice = _close;
         var move = Math.Log((double)(endPrice / startPrice));
 
-        var variance = (_sumSquares - _sum * _sum / _baseline) / (_baseline - 1);
+        // A full baseline of real seconds, or: the real seconds so far with the estimate for the rest of the baseline.
+        var variance = _completed > _baseline
+            ? (_sumSquares - _sum * _sum / _baseline) / (_baseline - 1)
+            : (_sumSquares + (_baseline - Math.Max(0, _completed - 1)) * _seedVariance) / _baseline;
         var flagged = false;
         double z = 0;
 

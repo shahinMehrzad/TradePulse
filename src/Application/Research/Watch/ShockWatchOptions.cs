@@ -25,6 +25,18 @@ public sealed record ShockWatchOptions
     public TimeSpan MergeGap { get; init; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
+    /// How many of the latest stored 1 minute candles estimate the usual size of a move at the start, so the watch need not listen for a
+    /// whole <see cref="BaselineSeconds"/> first. The collector of that symbol must be running at the 1 minute time frame.
+    /// </summary>
+    public int SeedMinutes { get; init; } = 60;
+
+    /// <summary>Fewer minute-to-minute returns than this are too few to estimate from.</summary>
+    public int SeedMinReturns { get; init; } = 30;
+
+    /// <summary>If the newest stored candle is older than this, the collector is not keeping up and the candles say nothing about now.</summary>
+    public TimeSpan SeedMaxAge { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>
     /// How long the connection may be down before the admin is told the watch is blind. Silence of a blind watch looks like a calm
     /// market, which is the one thing it must never be taken for.
     /// </summary>
