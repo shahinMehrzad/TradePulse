@@ -18,6 +18,9 @@ public static class MarketDataSupport
 
     private static readonly FrozenSet<TimeFrameEnum> EveryTimeFrame = Enum.GetValues<TimeFrameEnum>().ToFrozenSet();
 
+    // Binance's futures klines start at 1 minute: the REST endpoint answers a 1s interval with "Invalid interval" (-1120). Spot has 1s.
+    private static readonly FrozenSet<TimeFrameEnum> FuturesCandleTimeFrames = EveryTimeFrame.Where(t => t != TimeFrameEnum._1S).ToFrozenSet();
+
     // Binance's futures statistics endpoints (open interest history, ...) only know these periods. The worker maps them onto
     // Binance's own enum in BinancePeriodIntervals; a test keeps the two lists equal.
     private static readonly FrozenSet<TimeFrameEnum> OpenInterestTimeFrames = FrozenSet.ToFrozenSet(
@@ -36,7 +39,7 @@ public static class MarketDataSupport
 
             [(ExchangeEnum.Binance, MarketTypeEnum.Futures)] = new Dictionary<MarketDataTypeEnum, Rule>
             {
-                [MarketDataTypeEnum.Candle] = new(EveryTimeFrame),
+                [MarketDataTypeEnum.Candle] = new(FuturesCandleTimeFrames),
                 [MarketDataTypeEnum.FundingRate] = new((FrozenSet<TimeFrameEnum>?)null),
                 [MarketDataTypeEnum.OpenInterest] = new(OpenInterestTimeFrames),
                 [MarketDataTypeEnum.LongShortRatio] = new(OpenInterestTimeFrames),
