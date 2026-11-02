@@ -1,0 +1,47 @@
+using System.Globalization;
+using Application.Notifications;
+using Domain.Entities;
+using Domain.Enums;
+
+namespace Application.Research.Watch;
+
+/// <summary>
+/// The words of a shock alert. It says what the price did, never what it will do and never what to do: after such a move the price
+/// goes on the same way only about as often as it turns back.
+/// </summary>
+public static class ShockAlertMessage
+{
+    public static Alert Create(ShockAlert alert, string symbol, ShockSignalKind kind)
+    {
+        var culture = CultureInfo.InvariantCulture;
+        var level = alert.Level == AlertLevelEnum.Alarm ? "ALARM" : "Attention";
+        var verb = alert.Direction == EventDirectionEnum.Up ? "rose" : "fell";
+        var stage = kind switch
+        {
+            ShockSignalKind.Started => string.Empty,
+            ShockSignalKind.Escalated => " (raised)",
+            _ => " (over)",
+        };
+
+        var title = string.Create(culture, $"{level}: {symbol} {verb} {Math.Abs(alert.Move) * 100:0.00} % in {alert.WindowSeconds} s{stage}");
+
+        var body = string.Join(Environment.NewLine,
+            string.Create(culture, $"Since: {alert.TriggeredAt:yyyy-MM-dd HH:mm:ss} UTC"),
+            string.Create(culture, $"Price: {alert.StartPrice:0.##} -> {alert.EndPrice:0.##}"),
+            string.Create(culture, $"Unusual by: {Math.Abs(alert.ZScore):0.0} standard deviations of the last hour"),
+            string.Create(culture, $"Traded in the window: {alert.Volume:0.###}"),
+            string.Create(culture, $"Flagged seconds: {alert.FlaggedSeconds}"),
+            $"Rule: {alert.RuleVersion}");
+
+        return new Alert(title, body);
+    }
+
+    /// <summary>The watch cannot see the market: no alert can come until it can.</summary>
+    public static Alert Blind(string symbols, TimeSpan offlineFor) =>
+        new("Watch is blind", string.Create(CultureInfo.InvariantCulture,
+            $"No trades from the exchange for {offlineFor.TotalSeconds:0} s ({symbols}). Quiet now does not mean a calm market."));
+
+    public static Alert Restored(string symbols, TimeSpan offlineFor) =>
+        new("Watch sees the market again", string.Create(CultureInfo.InvariantCulture,
+            $"The trade stream is back after {offlineFor.TotalSeconds:0} s ({symbols}). Moves during that time were not seen."));
+}
