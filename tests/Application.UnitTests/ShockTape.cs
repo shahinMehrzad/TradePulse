@@ -1,5 +1,6 @@
 using Application.Exchange;
 using Application.Research.Watch;
+using Domain.Entities;
 
 namespace Application.UnitTests;
 
@@ -15,6 +16,14 @@ internal static class ShockTape
         BaselineSeconds = 100,
         MergeGap = TimeSpan.FromSeconds(60),
     };
+
+    /// <summary>The last hour of 1 minute candles as the collector would have stored it, ending <paramref name="endsMinutesBefore"/> minutes before <see cref="Start"/>.</summary>
+    public static List<Candle> MinuteCandles(int count = 61, int endsMinutesBefore = 1)
+    {
+        var bars = MinuteBars.Build(count);
+        var first = Start.AddMinutes(-endsMinutesBefore - count + 1);
+        return bars.Select((bar, i) => MinuteBars.ToCandle(bar with { OpenTime = DateTime.SpecifyKind(first.AddMinutes(i), DateTimeKind.Unspecified) })).ToList();
+    }
 
     public static LiveTrade Trade(int second, decimal price, decimal quantity = 2m) => new(Start.AddSeconds(second), price, quantity);
 

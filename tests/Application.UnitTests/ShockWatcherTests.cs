@@ -23,6 +23,9 @@ public class ShockWatcherTests
     private readonly RecordingNotifier _email = new("email");
     private readonly CancellationTokenSource _stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
 
+    // A symbol normally has the last hour of 1 minute candles stored (the collector keeps them), so the watch starts from them.
+    public ShockWatcherTests() => _candles.Stored.AddRange(MinuteCandles());
+
     private ShockWatcher NewWatcher() => new(_stream, _store, _candles, [_telegram, _email], Options, _time, NullLogger<ShockWatcher>.Instance);
 
     private Task Run() => Task.Run(() => NewWatcher().RunAsync(Symbols, _stop.Token), Ct);
@@ -210,19 +213,11 @@ public class ShockWatcherTests
         await StopAsync(run);
     }
 
-    /// <summary>The last hour of 1 minute candles as the collector would have stored it, ending a minute before the fake "now".</summary>
-    private void StoreMinuteCandles(int count = 61, int endsMinutesBefore = 1)
-    {
-        var bars = MinuteBars.Build(count);
-        var first = Start.AddMinutes(-endsMinutesBefore - count + 1);
-        for (var i = 0; i < bars.Count; i++)
-            _candles.Stored.Add(MinuteBars.ToCandle(bars[i] with { OpenTime = DateTime.SpecifyKind(first.AddMinutes(i), DateTimeKind.Unspecified) }));
-    }
+    private static bool IsWarmingUp(Application.Notifications.Alert message) => message.Title.StartsWith("Watch is warming up");
 
     [Fact]
     public async Task WithMinuteCandlesStoredItJudgesFromTheFirstSecondsNotAfterAnHour()
     {
-        StoreMinuteCandles();
         var run = Run();
         var listener = await SubscribedAsync();
 
@@ -236,34 +231,40 @@ public class ShockWatcherTests
     }
 
     [Fact]
-    public async Task WithoutMinuteCandlesTheSameJumpIsNotJudgedUntilTheBaselineIsFull()
+    public async Task WithoutMinuteCandlesTheSameJumpIsNotJudgedUntilTheBaselineIsFullAndTheAdminIsToldSo()
     {
+        _candles.Stored.Clear();
         var run = Run();
         var listener = await SubscribedAsync();
 
         Quiet(listener, 0, 60, second => Price(second, at: 30, jump: 0.01m));
+        await WaitForAsync(() => _telegram.Sent.Count > 0, "the warm-up message");
         await PassAsync(3);
 
-        Assert.Empty(_telegram.Sent);
+        var message = Assert.Single(_telegram.Sent);
+        Assert.Equal("Watch is warming up: BTCUSDT", message.Title);
+        Assert.Contains("no recent 1 minute candles", message.Body, StringComparison.OrdinalIgnoreCase);
         await StopAsync(run);
     }
 
     [Fact]
     public async Task StaleMinuteCandlesAreNotUsedBecauseTheyDescribeAnotherTime()
     {
-        StoreMinuteCandles(endsMinutesBefore: 120);
+        _candles.Stored.Clear();
+        _candles.Stored.AddRange(MinuteCandles(endsMinutesBefore: 120));
         var run = Run();
         var listener = await SubscribedAsync();
 
         Quiet(listener, 0, 60, second => Price(second, at: 30, jump: 0.01m));
+        await WaitForAsync(() => _telegram.Sent.Count > 0, "the warm-up message");
         await PassAsync(3);
 
-        Assert.Empty(_telegram.Sent);
+        Assert.True(IsWarmingUp(Assert.Single(_telegram.Sent)), "the jump was not judged, only the warm-up was told");
         await StopAsync(run);
     }
 
     [Fact]
-    public async Task ACandleTableThatCannotBeReadDoesNotStopTheWatch()
+    public async Task ACandleTableThatCannotBeReadDoesNotStopTheWatchAndTheAdminIsToldItIsWarmingUp()
     {
         _candles.PerTable["some_other_table"] = [];   // the 1 minute table does not exist: the repository throws
         var run = Run();
@@ -271,7 +272,26 @@ public class ShockWatcherTests
         var listener = await SubscribedAsync();
 
         Quiet(listener, 0, 200, second => Price(second, at: 150, jump: 0.01m));
-        await WaitForAsync(() => _telegram.Sent.Count > 0, "the alert");
+        await WaitForAsync(() => _telegram.Sent.Any(m => m.Title.StartsWith("ALARM")), "the alert");
+        Assert.Single(_telegram.Sent, IsWarmingUp);
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task TheWarmUpIsToldOnceEvenWhenTheSubscriptionHadToBeTriedAgain()
+    {
+        _candles.Stored.Clear();
+        _stream.Answers.Enqueue(ExchangeResult<IAsyncDisposable>.Fail("the exchange said no"));
+        var run = Run();
+        await WaitForAsync(() => _stream.SubscribeCalls == 1, "the first attempt");
+        Assert.DoesNotContain(_telegram.Sent, IsWarmingUp);   // nothing is watched yet: it would be told for a symbol that is not followed
+
+        await PassAsync(30);
+        await SubscribedAsync();
+        await WaitForAsync(() => _telegram.Sent.Any(IsWarmingUp), "the warm-up message");
+        await PassAsync(65);
+
+        Assert.Single(_telegram.Sent, IsWarmingUp);
         await StopAsync(run);
     }
 }

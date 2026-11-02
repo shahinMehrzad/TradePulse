@@ -148,7 +148,7 @@ public sealed class ShockWatcher(
 
         foreach (var (name, symbol) in wantedByName.Where(w => !subscribed.ContainsKey(w.Key)))
         {
-            var one = await StartAsync(symbol, trades, changes, cancellationToken);
+            var one = await StartAsync(symbol, trades, changes, outgoing, cancellationToken);
             var now = time.GetUtcNow();
 
             if (one is null)
@@ -172,11 +172,16 @@ public sealed class ShockWatcher(
         }
     }
 
-    /// <summary>Seeds a detector, hands it to the judging task, then subscribes. Null when the exchange said no (tried again next time).</summary>
-    private async Task<Subscribed?> StartAsync(WatchedSymbol symbol, ChannelWriter<Item> trades, ConcurrentQueue<Change> changes, CancellationToken cancellationToken)
+    /// <summary>
+    /// Seeds a detector, hands it to the judging task, then subscribes. Null when the exchange said no (tried again next time).
+    /// A symbol that starts without the estimate is told to the admin once it is subscribed (not at every failed try): its silence for
+    /// the next hour would look like a calm market.
+    /// </summary>
+    private async Task<Subscribed?> StartAsync(
+        WatchedSymbol symbol, ChannelWriter<Item> trades, ConcurrentQueue<Change> changes, ChannelWriter<Outgoing> outgoing, CancellationToken cancellationToken)
     {
         var detector = new ShockDetector(symbol.SymbolListingId, options);
-        await SeedAsync(symbol, detector, cancellationToken);
+        var seeded = await SeedAsync(symbol, detector, cancellationToken);
 
         var listener = new Listener(trades, time);
 
@@ -185,7 +190,12 @@ public sealed class ShockWatcher(
 
         var result = await stream.SubscribeAsync(symbol.Exchange, symbol.MarketType, [symbol.Symbol], listener, cancellationToken);
         if (result.Success)
+        {
+            if (!seeded)
+                outgoing.TryWrite(new Outgoing(ShockAlertMessage.WarmingUp(symbol.Symbol.Value, TimeSpan.FromSeconds(options.BaselineSeconds)), null));
+
             return new Subscribed(symbol, result.Value);
+        }
 
         changes.Enqueue(new Change(null, symbol.Symbol));
         logger.LogWarning("{Symbol}: the trade stream could not be subscribed: {Error}. Trying again in {Seconds} s",
@@ -211,7 +221,8 @@ public sealed class ShockWatcher(
     /// Tells the detector how much its symbol usually moves in a second, from the 1 minute candles already stored, so it can judge from
     /// the start. A symbol without usable candles is not an error: it listens for a whole baseline first, and the log says so.
     /// </summary>
-    private async Task SeedAsync(WatchedSymbol symbol, ShockDetector detector, CancellationToken cancellationToken)
+    /// <returns>True when the detector got an estimate and can judge at once.</returns>
+    private async Task<bool> SeedAsync(WatchedSymbol symbol, ShockDetector detector, CancellationToken cancellationToken)
     {
         var name = symbol.Symbol.Value;
         try
@@ -223,11 +234,10 @@ public sealed class ShockWatcher(
             {
                 detector.Seed(volatility);
                 logger.LogInformation("{Symbol} starts from the 1 minute candles: a second usually moves {Volatility:P4}", name, volatility);
+                return true;
             }
-            else
-            {
-                logger.LogWarning("{Symbol}: no recent 1 minute candles to start from. It will be silent for {Seconds} s while it listens", name, options.BaselineSeconds);
-            }
+
+            logger.LogWarning("{Symbol}: no recent 1 minute candles to start from. It will be silent for {Seconds} s while it listens", name, options.BaselineSeconds);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -235,6 +245,8 @@ public sealed class ShockWatcher(
             logger.LogWarning("{Symbol}: the 1 minute candles could not be read ({Error}). It will be silent for {Seconds} s while it listens",
                 name, ex.GetType().Name, options.BaselineSeconds);
         }
+
+        return false;
     }
 
     // ---- the task that judges ----------------------------------------------------------------------------------------------

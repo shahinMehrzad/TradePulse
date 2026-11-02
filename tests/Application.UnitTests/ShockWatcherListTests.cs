@@ -26,6 +26,9 @@ public class ShockWatcherListTests
     private readonly FakeWatchedSymbolSource _source = new();
     private readonly CancellationTokenSource _stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
 
+    // A symbol normally has the last hour of 1 minute candles stored (the collector keeps them), so the watch starts from them.
+    public ShockWatcherListTests() => _candles.Stored.AddRange(MinuteCandles());
+
     private Task Run() => Task.Run(() =>
         new ShockWatcher(_stream, _store, _candles, [_telegram], Options, _time, NullLogger<ShockWatcher>.Instance).RunAsync(_source, _stop.Token), Ct);
 
@@ -97,6 +100,24 @@ public class ShockWatcherListTests
         Assert.StartsWith("ALARM: ETHUSDT rose", Assert.Single(_telegram.Sent).Title);
         Assert.Equal(3, Assert.Single(_store.Saved).SymbolListingId);
         Assert.Equal(2, _stream.SubscribeCalls);                  // bitcoin was not subscribed again
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task OnlyTheSymbolWithoutMinuteCandlesIsToldToBeWarmingUp()
+    {
+        // Bitcoin has its candles; the table of ethereum does not exist, so the repository throws for it.
+        _candles.Stored.Clear();
+        _candles.PerTable["binance_futures_btcusdt_1m"] = MinuteCandles();
+        _source.Symbols.AddRange([BtcWatched, EthWatched]);
+        var run = Run();
+
+        await ListenerOfAsync("BTCUSDT");
+        await ListenerOfAsync("ETHUSDT");
+        await WaitForAsync(() => _telegram.Sent.Count > 0, "the warm-up message");
+        await PassAsync(3);
+
+        Assert.Equal("Watch is warming up: ETHUSDT", Assert.Single(_telegram.Sent).Title);
         await StopAsync(run);
     }
 
