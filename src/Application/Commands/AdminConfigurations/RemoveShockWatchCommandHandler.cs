@@ -20,9 +20,10 @@ public sealed class RemoveShockWatchCommandHandler(IShockWatchConfigurationRepos
         var existing = await repository.GetById(request.Id, cancellationToken)
             ?? throw new ConfigurationNotFoundException("Configuration does not exist.");
 
-        // A row that is there because the symbol is enabled for trading would be put back by the trading sync: switching it off is the way.
+        // A row of a traded symbol only says "the admin switched this watch off". Taking it away is switching the watch on, which is
+        // what the admin means, so it is done that way (and the symbol goes back to being watched on its own).
         if (existing.Reason == WatchReasonEnum.Trading)
-            throw new ConfigurationValidationException("This symbol is watched because it is enabled for trading. Switch its watch off instead of removing it.");
+            throw new ConfigurationValidationException("This symbol is on the list because it is enabled for trading. Switch its watch on to return to the automatic watch, or off to keep it silent.");
 
         await repository.Remove(existing.Id, cancellationToken);
         await audit.RecordAsync(AuditAction.Removed, AuditEntityTypes.ShockWatch, existing.Id,
