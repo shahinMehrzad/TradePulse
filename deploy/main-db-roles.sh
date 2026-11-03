@@ -1,39 +1,43 @@
 #!/usr/bin/env bash
-# Makes (or updates) the one role the key vault ("trader") has in the MAIN database: tp_trader. It may add rows to the audit log and
-# publish the copy of the enabled symbols, and nothing else: it cannot read a single table. The password is TRADER_MAIN_DB_PASSWORD
-# from deploy/.env (the same one the trader connects with).
+# Makes (or updates) the roles of the programs in the MAIN database: tp_api, tp_collector and tp_trader, with exactly the rights that
+# deploy/main-db-roles.sql gives them. The passwords are API_DB_PASSWORD, COLLECTOR_DB_PASSWORD and TRADER_MAIN_DB_PASSWORD from
+# deploy/.env (the programs connect with the same ones).
 #
-# Run it as the user that runs docker compose, once the API has started (its migrations make the two tables), and again whenever the
-# password changes or after the main database is restored from a backup (a restore with --no-owner leaves the grants out).
-# It can be run any number of times. See docs/database-security.md.
+# Run it as the user that runs docker compose:
+#   - on a new server: before the API starts, and once more after it has started (its migrations make the tables the last grants need);
+#   - on an older server: once before the new version is started (the tables change hands), and once more after the API has started;
+#   - again after a restore of the main database from a backup, and whenever a password changes.
+# It can be run any number of times, and while the stack is running. See docs/database-security.md.
 set -u -o pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/ops-common.sh"
 
-PASSWORD="$(setting TRADER_MAIN_DB_PASSWORD)"
+API_PASSWORD="$(setting API_DB_PASSWORD)"
+COLLECTOR_PASSWORD="$(setting COLLECTOR_DB_PASSWORD)"
+TRADER_PASSWORD="$(setting TRADER_MAIN_DB_PASSWORD)"
 DATABASE="$(setting POSTGRES_DB tradepulse)"
 
-if ! [[ "$PASSWORD" =~ ^[A-Za-z0-9]{16,}$ ]]; then
-  echo "TRADER_MAIN_DB_PASSWORD in $ENV_FILE must be at least 16 letters and digits (openssl rand -hex 24)." >&2
+for name in API_DB_PASSWORD COLLECTOR_DB_PASSWORD TRADER_MAIN_DB_PASSWORD; do
+  value="$(setting "$name")"
+  if ! [[ "$value" =~ ^[A-Za-z0-9]{16,}$ ]]; then
+    echo "$name in $ENV_FILE must be at least 16 letters and digits (openssl rand -hex 24)." >&2
+    exit 1
+  fi
+done
+
+if [ "$API_PASSWORD" = "$COLLECTOR_PASSWORD" ] || [ "$API_PASSWORD" = "$TRADER_PASSWORD" ] || [ "$COLLECTOR_PASSWORD" = "$TRADER_PASSWORD" ]; then
+  echo "The three passwords (API_DB_PASSWORD, COLLECTOR_DB_PASSWORD, TRADER_MAIN_DB_PASSWORD) must be different from each other." >&2
   exit 1
 fi
 
-# The password goes in through stdin, so that it shows in no list of processes. The first line sets it as a psql variable.
+# The passwords go in through stdin, so that they show in no list of processes: first the psql variables, then the SQL.
 {
-  printf "\\\\set password '%s'\n" "$PASSWORD"
-  cat <<'SQL'
--- Create the role when it is not there, then (re)set its password. format(%L) quotes it.
-SELECT format('CREATE ROLE tp_trader LOGIN PASSWORD %L', :'password')
-WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'tp_trader') \gexec
-SELECT format('ALTER ROLE tp_trader LOGIN PASSWORD %L', :'password') \gexec
-
--- Nothing beyond the two tables below: a plain role can neither read nor change anything else, and cannot make tables.
-SELECT format('GRANT CONNECT ON DATABASE %I TO tp_trader', current_database()) \gexec
-GRANT USAGE ON SCHEMA config TO tp_trader;
-GRANT INSERT ON config.audit_log TO tp_trader;
-GRANT INSERT, DELETE ON config.traded_symbols TO tp_trader;
-SQL
+  printf "\\\\set api_password '%s'\n" "$API_PASSWORD"
+  printf "\\\\set collector_password '%s'\n" "$COLLECTOR_PASSWORD"
+  printf "\\\\set trader_password '%s'\n" "$TRADER_PASSWORD"
+  cat "$DEPLOY_DIR/main-db-roles.sql"
 } | "${COMPOSE[@]}" exec -T postgres psql -U postgres -d "$DATABASE" -v ON_ERROR_STOP=1 -q \
-  || { echo "Could not set up the role. Is the API up (it makes config.audit_log and config.traded_symbols)?" >&2; exit 1; }
+  || { echo "Could not set up the roles." >&2; exit 1; }
 
-echo "Role tp_trader is ready in database $DATABASE."
+echo "The roles tp_api, tp_collector and tp_trader are ready in database $DATABASE."
+echo "If a notice above says a table does not exist yet, run this script again after the API has started."

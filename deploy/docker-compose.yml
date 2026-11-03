@@ -40,9 +40,11 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     environment:
-      ConnectionStrings__DefaultConnection: &db Host=postgres;Database=tradepulse;Username=postgres;Password=${POSTGRES_PASSWORD}
-      ConnectionStrings__AuthConnection: *db
-      ConnectionStrings__ConfigConnection: *db
+      # The API has its own role (tp_api): it owns the schemas auth, config and research, and may read the data tables. Not the
+      # superuser. The roles are made by deploy/main-db-roles.sh; see docs/database-security.md.
+      ConnectionStrings__DefaultConnection: &api-db Host=postgres;Database=tradepulse;Username=tp_api;Password=${API_DB_PASSWORD:?set API_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
+      ConnectionStrings__AuthConnection: *api-db
+      ConnectionStrings__ConfigConnection: *api-db
       JwtConfigurations__Secret: ${JWT_SECRET:?set JWT_SECRET in deploy/.env (at least 32 characters)}
       AdminConfigurations__Email: ${ADMIN_EMAIL:?set ADMIN_EMAIL in deploy/.env}
       AdminConfigurations__Password: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/.env}
@@ -155,7 +157,9 @@ services:
     depends_on:
       api: { condition: service_healthy }
     environment:
-      ConnectionStrings__DefaultConnection: *db
+      # The collector has its own role (tp_collector): it owns and writes the data tables and reads the config tables that say what to
+      # collect. It cannot see the accounts (auth) or anything else.
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=tradepulse;Username=tp_collector;Password=${COLLECTOR_DB_PASSWORD:?set COLLECTOR_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
       Alerts__InstanceName: ${ALERT_INSTANCE_NAME:-tradepulse}
       Alerts__Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
       Alerts__Telegram__ChatId: ${TELEGRAM_CHAT_ID:-}

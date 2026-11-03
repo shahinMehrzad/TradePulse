@@ -65,7 +65,7 @@ Binance's terms (clause 2.3) make the holder responsible for reporting a lost or
 - The vault is the `trader` service of `deploy/docker-compose.yml`; it needs the same `JWT_SECRET` as the API (it believes the same access tokens) and
   `ConnectionStrings__Vault`. It makes its own schema `vault` in its own Postgres (`vault-db`, password `VAULT_DB_PASSWORD`), which only it can
   reach. In the main database it has one role, `tp_trader`, that may only add to the audit log and publish the list of enabled symbols
-  (`deploy/main-db-roles.sh`). All of this, and how to move an existing server over, is in [database-security.md](database-security.md).
+  (`deploy/main-db-roles.sh`, which also makes the API's and the collector's roles). All of this, and how to move an existing server over, is in [database-security.md](database-security.md).
   The panel finds the vault through `Trader__BaseUrl` (empty: no Exchange keys page and no menu item).
 
 ## Demo or Live

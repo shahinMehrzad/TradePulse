@@ -60,9 +60,12 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
 - **HTTP on this machine only.** The containers speak plain HTTP on `127.0.0.1`. The panel's cookie is `Secure` outside Development: Chrome and Firefox
   accept it on `http://localhost`, but for any other host you need HTTPS: see the next section.
 - **The key vault** (`trader`) has no published port and is reached only by the panel. It needs `VAULT_MASTER_KEY`: keep a copy outside the server, see [docs/exchange-keys.md](../docs/exchange-keys.md).
-  It has **its own Postgres** (`vault-db`, volume `vault-pgdata`) on a network nothing else is on, and a limited role (`tp_trader`) in the main
-  database that you create with `./deploy/main-db-roles.sh` once the API is up. Passwords: `VAULT_DB_PASSWORD`, `TRADER_MAIN_DB_PASSWORD`.
-  Setting up a new server, **upgrading one that has the vault in the main database**, restoring and defining roles: [docs/database-security.md](../docs/database-security.md).
+  It has **its own Postgres** (`vault-db`, volume `vault-pgdata`) on a network nothing else is on.
+- **Database roles.** No program connects as the superuser: the API is `tp_api`, the collector `tp_collector`, the trader's way into the main
+  database `tp_trader` (passwords `API_DB_PASSWORD`, `COLLECTOR_DB_PASSWORD`, `TRADER_MAIN_DB_PASSWORD`, and `VAULT_DB_PASSWORD` for the vault's
+  Postgres). `./deploy/main-db-roles.sh` makes the roles and gives them their rights (run it **before** the API starts the first time and again
+  **after** it, and after any restore); `./deploy/check-db-roles.sh` tries each role and says `ok` or `FAIL`. Setting up a new server,
+  **upgrading a running one**, restoring, looking at the databases and defining a role yourself: [docs/database-security.md](../docs/database-security.md).
 - **Secrets** are only in `deploy/.env` (git-ignored). Use long random values; the signing key needs at least 32 characters.
 - **Sessions** of the panel are in its memory: restarting the panel signs everyone out (the cookie keys survive, the sessions do not).
 - **Backups.** The data is in the `pgdata` volume (and the key vault's in `vault-pgdata`; `backup.sh` dumps both). Liquidations, open interest and the like cannot be downloaded again from the
@@ -102,7 +105,7 @@ same disk does not survive the disk**: set `BACKUP_RSYNC_TARGET` (`user@host:/pa
 (`remote:bucket/folder`) to copy each one off the server; the copies there are not pruned. A failure is reported to Telegram.
 
 Restoring a backup into an empty database (this is how the data was moved to the server). After a restore of the main database run
-`./deploy/main-db-roles.sh` again (a restore with `--no-owner` drops the grants); the vault's dump (`vaultdb-*.dump`) is restored into `vault-db`, see
+`./deploy/main-db-roles.sh` again (a restore with `--no-owner` makes `postgres` the owner of everything and drops the grants); the vault's dump (`vaultdb-*.dump`) is restored into `vault-db`, see
 [docs/database-security.md](../docs/database-security.md):
 
 ```bash
