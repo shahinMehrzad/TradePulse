@@ -6,8 +6,8 @@ using Npgsql;
 namespace WebApi.IntegrationTests;
 
 /// <summary>
-/// The symbols enabled for trading are watched on their own, and the admin can switch that off. The trading service keeps its choice in
-/// <c>vault.trading_symbols</c>; here the table is made the way it makes it and filled by hand, as the service would.
+/// The symbols enabled for trading are watched on their own, and the admin can switch that off. The trading service publishes the
+/// enabled symbols as a copy in <c>config.traded_symbols</c> (a table of the API's own migrations); here it is filled by hand, as the service would.
 /// </summary>
 public class ShockWatchTradingEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
 {
@@ -45,19 +45,15 @@ public class ShockWatchTradingEndpointTests(ApiFixture api) : IClassFixture<ApiF
         return client;
     }
 
-    /// <summary>What the trading service does when an admin enables (or later disables) a symbol.</summary>
+    /// <summary>What the trading service does to the copy when an admin enables (or later disables) a symbol.</summary>
     private async Task SetTradedAsync(int symbolId, bool enabled)
     {
         await using var connection = new NpgsqlConnection(api.ConnectionString);
         await connection.OpenAsync(Ct);
-        await using var command = new NpgsqlCommand("""
-            CREATE SCHEMA IF NOT EXISTS vault;
-            CREATE TABLE IF NOT EXISTS vault.trading_symbols (symbol text PRIMARY KEY, enabled boolean NOT NULL, changed_by text NOT NULL, changed_at timestamp NOT NULL);
-            INSERT INTO vault.trading_symbols VALUES (@symbol, @enabled, 'admin', now() at time zone 'utc')
-            ON CONFLICT (symbol) DO UPDATE SET enabled = @enabled;
-            """, connection);
+        await using var command = new NpgsqlCommand(enabled
+            ? "INSERT INTO config.traded_symbols VALUES (@symbol, now() at time zone 'utc') ON CONFLICT (symbol) DO NOTHING"
+            : "DELETE FROM config.traded_symbols WHERE symbol = @symbol", connection);
         command.Parameters.AddWithValue("symbol", Names[symbolId]);
-        command.Parameters.AddWithValue("enabled", enabled);
         await command.ExecuteNonQueryAsync(Ct);
     }
 

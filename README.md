@@ -67,6 +67,7 @@ A separate console (`src/Research`, its own process, its own `research` schema) 
 | [docs/api.md](docs/api.md) | The candle read API, the dashboard API, login and refresh tokens. |
 | [docs/admin-panel.md](docs/admin-panel.md) | The panel's pages, sessions and what it asks WebApi for. |
 | [docs/exchange-keys.md](docs/exchange-keys.md) | The key vault: how administrators keep their Binance Futures keys, and how they are protected. |
+| [docs/database-security.md](docs/database-security.md) | The two databases, who may touch what, upgrading a server, restoring, and defining a role. |
 | [docs/trading.md](docs/trading.md) | Manual market orders with Demo/Live keys, the server-side limits and the halt switch. |
 | [docs/candle-cache.md](docs/candle-cache.md) | `HybridCache` in front of the candle reads, with benchmark results. |
 | [docs/testing.md](docs/testing.md) | Unit, integration and contract tests, benchmarks, CI. |

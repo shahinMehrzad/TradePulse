@@ -20,7 +20,7 @@ set -u
 STATE_DIR="$(setting WATCHDOG_STATE_DIR /var/tmp/tradepulse-watchdog)"
 THRESHOLD="$(setting WATCHDOG_FAILS 3)"
 REPEAT_MINUTES="$(setting WATCHDOG_REPEAT_MINUTES 360)"
-SERVICES="$(setting WATCHDOG_SERVICES 'postgres api trader panel collector')"
+SERVICES="$(setting WATCHDOG_SERVICES 'postgres vault-db api trader panel collector')"
 DISK_LIMIT="$(setting WATCHDOG_DISK_PERCENT 85)"
 HEALTH_PORT="$(setting HEALTH_PORT 8089)"
 BACKUP_DIR="$(setting BACKUP_DIR /opt/tradepulse-backups)"
@@ -114,6 +114,17 @@ case " $SERVICES " in
     ;;
 esac
 
+# ---- the key vault's own Postgres
+case " $SERVICES " in
+  *" vault-db "*)
+    if "${COMPOSE[@]}" exec -T vault-db pg_isready -U vault -q >/dev/null 2>&1; then
+      record vault-db-ready 0 ""
+    else
+      record vault-db-ready 1 "The key vault's Postgres does not accept connections."
+    fi
+    ;;
+esac
+
 # ---- the disk
 used="$(df --output=pcent / 2>/dev/null | tail -n 1 | tr -dc '0-9')"
 if [ -n "$used" ] && [ "$used" -ge "$DISK_LIMIT" ]; then
@@ -133,6 +144,19 @@ if [ "$BACKUP_MAX_AGE_DAYS" -gt 0 ]; then
       record backup 1 "the newest backup is $age_days days old (the limit is $BACKUP_MAX_AGE_DAYS)."
     else
       record backup 0 ""
+    fi
+  fi
+fi
+
+# ---- the backup of the vault's database (once one exists: the stack may not have been upgraded to its own database yet)
+if [ "$BACKUP_MAX_AGE_DAYS" -gt 0 ]; then
+  newest_vault="$(ls -1t "$BACKUP_DIR"/vaultdb-*.dump 2>/dev/null | head -n 1)"
+  if [ -n "$newest_vault" ]; then
+    age_days=$(( (now - $(stat -c %Y "$newest_vault")) / 86400 ))
+    if [ "$age_days" -gt "$BACKUP_MAX_AGE_DAYS" ]; then
+      record vault-backup 1 "the newest backup of the vault's database is $age_days days old (the limit is $BACKUP_MAX_AGE_DAYS)."
+    else
+      record vault-backup 0 ""
     fi
   fi
 fi

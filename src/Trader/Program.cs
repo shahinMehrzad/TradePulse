@@ -30,7 +30,13 @@ builder.Services.AddOptions<TradingOptions>().BindConfiguration(TradingOptions.S
 
 var connectionString = builder.Configuration.GetConnectionString("Vault")
     ?? throw new InvalidOperationException("Connection string 'Vault' is not set (environment variable ConnectionStrings__Vault).");
-builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
+var vaultSource = NpgsqlDataSource.Create(connectionString);
+builder.Services.AddSingleton(vaultSource);
+// Audit log and the copy of the enabled symbols go to the main database (a role that may do only that). Not set: the vault's own database.
+var mainConnectionString = builder.Configuration.GetConnectionString("Main");
+builder.Services.AddSingleton(new MainDatabase(string.IsNullOrWhiteSpace(mainConnectionString) ? vaultSource : NpgsqlDataSource.Create(mainConnectionString)));
+builder.Services.AddSingleton<TradedSymbolMirror>();
+builder.Services.AddHostedService<TradedSymbolMirrorService>();
 builder.Services.AddSingleton<VaultCrypto>();
 builder.Services.AddSingleton<ExchangeKeyRepository>();
 builder.Services.AddSingleton<TradingRepository>();

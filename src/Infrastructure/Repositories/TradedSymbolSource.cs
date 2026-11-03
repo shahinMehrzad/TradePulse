@@ -5,10 +5,9 @@ using Npgsql;
 namespace Infrastructure.Repositories;
 
 /// <summary>
-/// The symbols an administrator enabled for trading, read from <c>vault.trading_symbols</c>, the table the trading service keeps (it
-/// owns it and is the only one that writes it). The watch and the admin API only read: choosing happens in the trading service,
-/// behind a second-factor code. The table lives in the same database as the config schema (the trading service writes the audit log
-/// there too).
+/// The symbols an administrator enabled for trading, read from <c>config.traded_symbols</c>: a copy the trading service publishes (the
+/// truth is in the key vault's own database, which the API cannot reach). The watch and the admin API only read; choosing happens in the
+/// trading service, behind a second-factor code. A copy that is wrong can change what the watch follows, never what may be traded.
 /// </summary>
 public sealed class TradedSymbolSource(string connectionString) : ITradedSymbolSource
 {
@@ -18,7 +17,7 @@ public sealed class TradedSymbolSource(string connectionString) : ITradedSymbolS
         {
             await using var connection = new NpgsqlConnection(connectionString);
             return (await connection.QueryAsync<string>(new CommandDefinition(
-                    "SELECT symbol FROM vault.trading_symbols WHERE enabled", cancellationToken: cancellationToken)))
+                    "SELECT symbol FROM config.traded_symbols", cancellationToken: cancellationToken)))
                 .Select(s => s.ToUpperInvariant())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }

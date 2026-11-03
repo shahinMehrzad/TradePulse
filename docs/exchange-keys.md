@@ -36,7 +36,8 @@ A key that fails is **Rejected** with the reasons in plain words; fix it at Bina
 
 | Threat | What stands in the way |
 | --- | --- |
-| Someone gets a copy of the database | Private keys are encrypted (AES-256-GCM) with `VAULT_MASTER_KEY`, which is **only in the vault's environment**, not in the database. A row moved to another key id or another user does not decrypt either (the id and the owner are part of what the tag covers). |
+| Someone gets a copy of the main database | The keys are not in it: the vault has a **Postgres of its own** on a network only the vault is on ([database-security.md](database-security.md)). |
+| Someone gets a copy of the vault's database | Private keys are encrypted (AES-256-GCM) with `VAULT_MASTER_KEY`, which is **only in the vault's environment**, not in the database. A row moved to another key id or another user does not decrypt either (the id and the owner are part of what the tag covers). |
 | The API or the panel is hacked | They never have the private key or the master key, and have no endpoint that hands one out. The vault is a program of its own with **no published port**; the panel reaches it over the internal network of the stack. |
 | A stolen session | Making, changing or deleting a key needs a **fresh second-factor code** (the elevation token, see [api.md](api.md#confirming-sensitive-actions-step-up)), which the vault checks itself. A stolen access token alone is not enough. |
 | One administrator reading or using another's key | Every query takes the signed-in user's id; a key of somebody else is a 404. Nobody has a role that lists or uses all keys. |
@@ -62,10 +63,10 @@ Binance's terms (clause 2.3) make the holder responsible for reporting a lost or
 - `VAULT_MASTER_KEY` in `deploy/.env`: `openssl rand -base64 32`. **Keep a copy somewhere that is not the server.** Without it every stored key is lost
   (users make new ones). Changing it later does not re-encrypt what is stored (a rotation tool is not written yet).
 - The vault is the `trader` service of `deploy/docker-compose.yml`; it needs the same `JWT_SECRET` as the API (it believes the same access tokens) and
-  `ConnectionStrings__Vault`. It makes its own schema `vault` in the stack's Postgres. The panel finds it through `Trader__BaseUrl` (empty: no
-  Exchange keys page and no menu item).
-- Hardening worth doing before real money: give the vault its **own Postgres role** that may touch only the `vault` schema (and insert into
-  `config.audit_log`), so the other programs' database users cannot read the encrypted keys either.
+  `ConnectionStrings__Vault`. It makes its own schema `vault` in its own Postgres (`vault-db`, password `VAULT_DB_PASSWORD`), which only it can
+  reach. In the main database it has one role, `tp_trader`, that may only add to the audit log and publish the list of enabled symbols
+  (`deploy/main-db-roles.sh`). All of this, and how to move an existing server over, is in [database-security.md](database-security.md).
+  The panel finds the vault through `Trader__BaseUrl` (empty: no Exchange keys page and no menu item).
 
 ## Demo or Live
 
