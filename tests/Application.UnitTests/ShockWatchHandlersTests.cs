@@ -19,20 +19,6 @@ public class ShockWatchHandlersTests
     private static readonly SymbolListing Btc = new() { Id = 1, ExchangeId = 1, MarketId = 2, SymbolId = 1, ExchangeSymbol = "BTCUSDT" };
     private static readonly SymbolListing Eth = new() { Id = 3, ExchangeId = 1, MarketId = 2, SymbolId = 3, ExchangeSymbol = "ETHUSDT" };
 
-    private sealed class FakeCatalog(params SymbolListing[] listings) : ISymbolCatalogRepository
-    {
-        public Task<IReadOnlyList<SymbolListing>> GetListings(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SymbolListing>>(listings);
-        public Task<SymbolListing?> GetListing(int id, CancellationToken cancellationToken) => Task.FromResult(listings.FirstOrDefault(l => l.Id == id));
-        public Task<SymbolLookup?> GetSymbol(int id, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<(IReadOnlyList<SymbolLookup> Items, int Total)> GetSymbolsPage(string? keyword, int skip, int take, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<IReadOnlyDictionary<int, (int Series, int Settings)>> GetListingUsage(int symbolId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<SymbolLookup> UpdateSymbolDescription(int id, string? description, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<int> AddSymbol(SymbolLookup symbol, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task RemoveSymbol(int id, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<int> AddListing(SymbolListing listing, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task RemoveListing(int id, CancellationToken cancellationToken) => throw new NotSupportedException();
-    }
-
     private sealed class FakeAuditLog : IAuditLogRepository
     {
         public List<AuditLogEntry> Entries { get; } = [];
@@ -62,7 +48,7 @@ public class ShockWatchHandlersTests
         _watch.Rows.Add(new ShockWatchConfiguration { Id = _watch.Rows.Count + 10, SymbolListingId = listing.Id, SymbolListing = listing, Reason = reason, IsEnabled = enabled });
 
     private Task<int> AddAsync(int listingId, params SymbolListing[] listings) =>
-        new AddShockWatchCommandHandler(_watch, new FakeCatalog(listings), _series, Audit).HandleAsync(new AddShockWatchCommand(listingId), Ct);
+        new AddShockWatchCommandHandler(_watch, new FakeSymbolCatalog(listings), _series, Audit).HandleAsync(new AddShockWatchCommand(listingId), Ct);
 
     // ---- adding ------------------------------------------------------------------------------------------------------------
 
@@ -193,13 +179,13 @@ public class ShockWatchHandlersTests
     }
 
     [Fact]
-    public async Task ASymbolThereBecauseOfTradingIsNotRemovedButSwitchedOff()
+    public async Task ASymbolThereBecauseOfTradingIsNotRemovedBecauseSwitchingItOnIsTheWay()
     {
         OnTheList(Btc, WatchReasonEnum.Trading);
 
         var refused = await Assert.ThrowsAsync<ConfigurationValidationException>(() => RemoveAsync(_watch.Rows[0].Id));
 
-        Assert.Contains("Switch its watch off", refused.Message);
+        Assert.Contains("Switch its watch on to return to the automatic watch", refused.Message);
         Assert.Single(_watch.Rows);
     }
 
@@ -218,7 +204,7 @@ public class ShockWatchHandlersTests
         OnTheList(Btc, WatchReasonEnum.Trading);
         OnTheList(Eth, WatchReasonEnum.Manual, enabled: false);
 
-        var list = await new GetShockWatchQueryHandler(_watch, _series).HandleAsync(new GetShockWatchQuery(), Ct);
+        var list = await new GetShockWatchQueryHandler(_watch, _series, new FakeTradedSymbolSource(), new FakeSymbolCatalog(Btc, Eth)).HandleAsync(new GetShockWatchQuery(), Ct);
 
         Assert.Equal(["BTCUSDT", "ETHUSDT"], list.Select(i => i.ExchangeSymbol));
         Assert.Equal(["Trading", "Manual"], list.Select(i => i.Reason));
@@ -234,7 +220,7 @@ public class ShockWatchHandlersTests
         OnTheList(Btc);
         OnTheList(Eth, enabled: false);
 
-        var followed = await new Application.Research.Watch.ConfiguredWatchedSymbols(_watch).GetAsync(Ct);
+        var followed = await new Application.Research.Watch.ConfiguredWatchedSymbols(_watch, new FakeTradedSymbolSource(), new FakeSymbolCatalog(Btc, Eth)).GetAsync(Ct);
 
         var symbol = Assert.Single(followed);
         Assert.Equal(("BTCUSDT", Btc.Id, ExchangeEnum.Binance, MarketTypeEnum.Futures), (symbol.Symbol.Value, symbol.SymbolListingId, symbol.Exchange, symbol.MarketType));
@@ -243,6 +229,6 @@ public class ShockWatchHandlersTests
     [Fact]
     public async Task AnEmptyListIsNothingToFollowNotAnError()
     {
-        Assert.Empty(await new Application.Research.Watch.ConfiguredWatchedSymbols(_watch).GetAsync(Ct));
+        Assert.Empty(await new Application.Research.Watch.ConfiguredWatchedSymbols(_watch, new FakeTradedSymbolSource(), new FakeSymbolCatalog(Btc, Eth)).GetAsync(Ct));
     }
 }

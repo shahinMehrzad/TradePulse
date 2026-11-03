@@ -60,6 +60,37 @@ internal sealed class FakeLiveTradeStream : ILiveTradeStream
     }
 }
 
+/// <summary>The symbols enabled for trading, as the trading service would say.</summary>
+internal sealed class FakeTradedSymbolSource(params string[] enabled) : ITradedSymbolSource
+{
+    public HashSet<string> Enabled { get; } = new(enabled, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The trading service cannot be read.</summary>
+    public bool Throws { get; set; }
+
+    public Task<IReadOnlySet<string>> GetEnabledAsync(CancellationToken cancellationToken)
+    {
+        if (Throws)
+            throw new InvalidOperationException("the trading service is down");
+
+        return Task.FromResult<IReadOnlySet<string>>(Enabled.ToHashSet(StringComparer.OrdinalIgnoreCase));
+    }
+}
+
+internal sealed class FakeSymbolCatalog(params SymbolListing[] listings) : Domain.Repositories.ISymbolCatalogRepository
+{
+    public Task<IReadOnlyList<SymbolListing>> GetListings(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SymbolListing>>(listings);
+    public Task<SymbolListing?> GetListing(int id, CancellationToken cancellationToken) => Task.FromResult(listings.FirstOrDefault(l => l.Id == id));
+    public Task<SymbolLookup?> GetSymbol(int id, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task<(IReadOnlyList<SymbolLookup> Items, int Total)> GetSymbolsPage(string? keyword, int skip, int take, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task<IReadOnlyDictionary<int, (int Series, int Settings)>> GetListingUsage(int symbolId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task<SymbolLookup> UpdateSymbolDescription(int id, string? description, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task<int> AddSymbol(SymbolLookup symbol, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task RemoveSymbol(int id, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task<int> AddListing(SymbolListing listing, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task RemoveListing(int id, CancellationToken cancellationToken) => throw new NotSupportedException();
+}
+
 internal sealed class FakeWatchedSymbolSource : IWatchedSymbolSource
 {
     public List<WatchedSymbol> Symbols { get; } = [];
