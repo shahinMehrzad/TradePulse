@@ -67,10 +67,51 @@
                 </div>
             </div>
 
+            <div class="card mb-3">
+                <div class="card-header"><h3 class="card-title">Symbols for trading</h3></div>
+                <div class="card-body">
+                    <p class="text-secondary small">
+                        The server allows the symbols below and you choose which are enabled; nothing is enabled until somebody chooses it.
+                        Enabling asks for a code, disabling is one click. A symbol you disable can still be closed (an order that only reduces a position always goes through).
+                        <strong>Every enabled symbol is watched for sudden price moves on its own</strong> (<a asp-page="/ShockWatch">Price watch</a>); you can switch that off there, on your own responsibility.
+                    </p>
+                    @if (Model.Symbols.Count == 0)
+                    {
+                        <p class="text-secondary mb-0">The server allows no symbol.</p>
+                    }
+                    else
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var symbol in Model.Symbols)
+                            {
+                                <div class="list-group-item d-flex align-items-center px-0">
+                                    <span class="fw-bold me-2">@symbol.Symbol</span>
+                                    @if (symbol.Enabled)
+                                    {
+                                        <span class="badge bg-green-lt">Enabled</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary-lt">Off</span>
+                                    }
+                                    <form method="post" class="ms-auto" asp-page-handler="@(symbol.Enabled ? "DisableSymbol" : "EnableSymbol")" asp-route-symbol="@symbol.Symbol">
+                                        <button type="submit" class="btn btn-sm @(symbol.Enabled ? "btn-outline-secondary" : "btn-outline-primary")">@(symbol.Enabled ? "Disable" : "Enable (asks for a code)")</button>
+                                    </form>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-header"><h3 class="card-title">Market order</h3></div>
                 <div class="card-body">
-                    @if (Model.UsableKeys.Count == 0)
+                    @if (state.AllowedSymbols.Length == 0)
+                    {
+                        <p class="text-secondary mb-0">No symbol is enabled for trading yet. Enable one above: a new position can only be opened in an enabled symbol.</p>
+                    }
+                    else if (Model.UsableKeys.Count == 0)
                     {
                         <p class="text-secondary mb-0">
                             You have no key that can trade. Add one on <a asp-page="/ExchangeKeys">Exchange keys</a> and wait until it shows <strong>Active</strong>.

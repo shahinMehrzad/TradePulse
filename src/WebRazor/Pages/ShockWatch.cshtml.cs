@@ -86,6 +86,22 @@ public class ShockWatchModel(TradePulseApiClient api, SessionTokenStore store) :
         return await LoadAsync(cancellationToken) ?? Page();
     }
 
+    /// <summary>The admin turns off the automatic watch of a traded symbol, on their own responsibility.</summary>
+    public async Task<IActionResult> OnPostSwitchOffTradedAsync(int listingId, CancellationToken cancellationToken)
+    {
+        ResetForm();
+        var result = await CallAsync(() => api.SwitchOffTradedWatchAsync(listingId, cancellationToken));
+        if (result.SessionRejected)
+            return await EndSessionAsync();
+
+        if (result.Success)
+            Saved = "The watch of that traded symbol is off. It stays off until you switch it on.";
+        else
+            Errors = result.Errors;
+
+        return await LoadAsync(cancellationToken) ?? Page();
+    }
+
     public async Task<IActionResult> OnPostDeleteAsync(int id, CancellationToken cancellationToken)
     {
         ResetForm();
