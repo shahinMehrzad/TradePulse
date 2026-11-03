@@ -39,8 +39,8 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     private record Step(string Stage, string? ChallengeToken);
     private record Enrollment(string SharedKey);
 
-    /// <summary>The key the API signs its tokens with in these tests; tests that make a token of their own use it too.</summary>
-    public const string JwtSecret = "signing-key-of-the-integration-tests-of-the-api-0123456789";
+    /// <summary>The key pair the API signs its tokens with in these tests; tests that make a token of their own use it too.</summary>
+    public static readonly Tests.Shared.JwtTestKeys SigningKeys = Tests.Shared.JwtTestKeys.New();
 
     /// <summary>The exchange's symbol list the API asks when a symbol is listed; no test reaches the real Binance.</summary>
     public FakeExchangeSymbolCatalog ExchangeCatalog { get; } = new();
@@ -99,7 +99,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:AuthConnection", connectionString);
         builder.UseSetting("ConnectionStrings:ConfigConnection", connectionString);
         builder.UseSetting("ConnectionStrings:Redis", "");
-        builder.UseSetting("JwtConfigurations:Secret", JwtSecret);
+        builder.UseSetting("JwtConfigurations:PrivateKey", SigningKeys.PrivateKey);
         builder.UseSetting("AdminConfigurations:Email", AdminEmail);
         builder.UseSetting("AdminConfigurations:Password", AdminPassword);
         // No collector runs next to the tests (the default address would find a real one on a developer machine).

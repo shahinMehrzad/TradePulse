@@ -85,6 +85,7 @@ Each of the first four: letters and digits only, 16 or more (`openssl rand -hex 
 ```bash
 cd /opt/tradepulse
 cp deploy/.env.example deploy/.env      # fill it in, including the five passwords above
+./deploy/make-jwt-keys.sh                # prints JWT_PRIVATE_KEY and JWT_PUBLIC_KEY: paste both lines into deploy/.env
 alias dc='docker compose -f deploy/docker-compose.yml --env-file deploy/.env'
 
 dc up -d postgres vault-db
@@ -113,7 +114,10 @@ git pull
 1. **Back up, and check that the file is there.** `./deploy/backup.sh`, then `ls -lh /opt/tradepulse-backups/`: a new `tradepulse-<date>.dump`
    of some megabytes must be in the list. (The script skips the vault's database until that exists.) **Do not go on without it.** Copy it off
    the server too (see [deploy/README.md](../deploy/README.md)). Keep it until step 10.
-2. **Add the four passwords** to `deploy/.env` (see Settings). `docker compose` will refuse to start anything without them.
+2. **Add the four passwords** to `deploy/.env` (see Settings), and **the key pair of the tokens:** `./deploy/make-jwt-keys.sh` prints `JWT_PRIVATE_KEY`
+   and `JWT_PUBLIC_KEY`; paste both lines, and delete the old `JWT_SECRET` line (it is not used any more). The private key goes only to the API, the public
+   key to the vault. `docker compose` will refuse to start anything without them. **After the deploy everybody has to sign in once more:** the old tokens were
+   signed another way. (The panel keeps working through its refresh tokens where it can; if a page shows an error, sign in again.)
 3. **Make the roles.** `./deploy/main-db-roles.sh`. This hands the tables to their owners and gives the grants. The running programs still
    connect as the superuser and notice nothing. It prints a notice that `config.traded_symbols` does not exist yet: right, the next step makes it.
 4. **Start the new API:** `dc up -d --build api`, and wait until `dc ps api` says `healthy`. It now connects as `tp_api` and its migration makes
@@ -368,8 +372,11 @@ Change it in `deploy/.env`, run `./deploy/main-db-roles.sh` (it sets the new pas
 
 ## What this does not cover
 
-- The trader still believes the **same `JWT_SECRET`** as the API. Whoever has the API's environment can make access and elevation tokens
-  and use the keys within the limits (order size, daily total, symbols, halt). The limits are in the trader's environment, not the database.
+- The tokens are signed with a key pair, and the trader has only the **public** half: a hacked trader cannot make a token, so it cannot sign in
+  as anybody on the API or the panel. The other direction is still open: whoever has the API's environment (the private key) can make access and
+  elevation tokens, and the trader believes them, so a hacked API can use the keys within the limits (order size, daily total, symbols, halt). The
+  limits are in the trader's environment, not the database. Closing that needs the second-factor code to be checked by the vault itself (a code of its
+  own, which the API never sees); that is not built.
 - Someone with a shell on the server who can read the trader's environment has the master key and the vault's password.
 - The superuser `postgres` can still log in from other containers with its password. No program has it, but a stronger setup would let it in only
   from the container itself (a `pg_hba.conf` of its own). Not done.

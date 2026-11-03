@@ -18,9 +18,11 @@ namespace Trader.IntegrationTests;
 public sealed class TraderFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string AdminRole = "Administrator";
-    public const string JwtSecret = "signing-key-of-the-integration-tests-of-the-trader-0123456789";
 
-    private static readonly JwtConfigurations Jwt = new() { Secret = JwtSecret, Issuer = "TradePulseApi", Audience = "TradePulseClient", DurationInMinutes = 30 };
+    /// <summary>The API's signing key pair in these tests. The Trader gets the public half only, like on a server; the private half makes the tokens here.</summary>
+    public static readonly Tests.Shared.JwtTestKeys SigningKeys = Tests.Shared.JwtTestKeys.New();
+
+    public static readonly JwtConfigurations Jwt = new() { PrivateKey = SigningKeys.PrivateKey, Issuer = "TradePulseApi", Audience = "TradePulseClient", DurationInMinutes = 30 };
 
     public string MasterKey { get; } = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
 
@@ -64,7 +66,7 @@ public sealed class TraderFixture : WebApplicationFactory<Program>, IAsyncLifeti
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:Vault", ConnectionString);
-        builder.UseSetting("JwtConfigurations:Secret", Jwt.Secret);
+        builder.UseSetting("JwtConfigurations:PublicKey", SigningKeys.PublicKey);
         builder.UseSetting("JwtConfigurations:Issuer", Jwt.Issuer);
         builder.UseSetting("JwtConfigurations:Audience", Jwt.Audience);
         builder.UseSetting("AdminConfigurations:Role", AdminRole);

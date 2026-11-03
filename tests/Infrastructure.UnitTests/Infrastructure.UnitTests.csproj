@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\SeededSymbol.cs" Link="Shared\SeededSymbol.cs" />
+    <Compile Include="..\Shared\JwtTestKeys.cs" Link="Shared\JwtTestKeys.cs" />
   </ItemGroup>
 
 </Project>

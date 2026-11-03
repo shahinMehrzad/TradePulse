@@ -66,7 +66,10 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
   Postgres). `./deploy/main-db-roles.sh` makes the roles and gives them their rights (run it **before** the API starts the first time and again
   **after** it, and after any restore); `./deploy/check-db-roles.sh` tries each role and says `ok` or `FAIL`. Setting up a new server,
   **upgrading a running one**, restoring, looking at the databases and defining a role yourself: [docs/database-security.md](../docs/database-security.md).
-- **Secrets** are only in `deploy/.env` (git-ignored). Use long random values; the signing key needs at least 32 characters.
+- **Secrets** are only in `deploy/.env` (git-ignored). Use long random values. The tokens are signed with a key pair (`./deploy/make-jwt-keys.sh` prints
+  `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY`): the private half only in the API's environment, the public half in the key vault's, which therefore cannot
+  make a token. A new pair signs everybody out of the panel once; the sessions come back by themselves from their refresh tokens, and the
+  10-minute confirmation of a second-factor code has to be given again.
 - **Sessions** of the panel are in its memory: restarting the panel signs everyone out (the cookie keys survive, the sessions do not).
 - **Backups.** The data is in the `pgdata` volume (and the key vault's in `vault-pgdata`; `backup.sh` dumps both). Liquidations, open interest and the like cannot be downloaded again from the
   exchange, so back it up: see "Watching the stack, and backups" below.

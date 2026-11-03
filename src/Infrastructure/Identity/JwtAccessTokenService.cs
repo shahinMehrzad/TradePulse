@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using Application.Interfaces;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Options;
@@ -11,6 +10,7 @@ namespace Infrastructure.Identity;
 public sealed class JwtAccessTokenService(IOptions<JwtConfigurations> options) : IAccessTokenService
 {
     private readonly JwtConfigurations _jwt = options.Value;
+    private readonly JwtKeys _keys = JwtKeys.From(options.Value);
 
     public AccessToken Create(AuthenticatedUser user)
     {
@@ -32,7 +32,8 @@ public sealed class JwtAccessTokenService(IOptions<JwtConfigurations> options) :
             Issuer = _jwt.Issuer,
             Audience = _jwt.Audience,
             SigningCredentials = new SigningCredentials(
-                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwt.Secret)), SecurityAlgorithms.HmacSha256Signature)
+                _keys.SigningKey ?? throw new InvalidOperationException("This program has no signing key (JwtConfigurations:PrivateKey): only the API makes tokens."),
+                JwtKeys.Algorithm)
         };
 
         return new AccessToken(tokenHandler.WriteToken(tokenHandler.CreateToken(descriptor)), expiresAt, _jwt.RefreshTokenDurationInDays);

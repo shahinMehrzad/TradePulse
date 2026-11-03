@@ -62,7 +62,7 @@ Binance's terms (clause 2.3) make the holder responsible for reporting a lost or
 
 - `VAULT_MASTER_KEY` in `deploy/.env`: `openssl rand -base64 32`. **Keep a copy somewhere that is not the server.** Without it every stored key is lost
   (users make new ones). Changing it later does not re-encrypt what is stored (a rotation tool is not written yet).
-- The vault is the `trader` service of `deploy/docker-compose.yml`; it needs the same `JWT_SECRET` as the API (it believes the same access tokens) and
+- The vault is the `trader` service of `deploy/docker-compose.yml`; it needs `JWT_PUBLIC_KEY`, the public half of the API's signing key (it believes the access tokens of the API and checks them with it; it cannot make one, and refuses to start if it is given the private key) and
   `ConnectionStrings__Vault`. It makes its own schema `vault` in its own Postgres (`vault-db`, password `VAULT_DB_PASSWORD`), which only it can
   reach. In the main database it has one role, `tp_trader`, that may only add to the audit log and publish the list of enabled symbols
   (`deploy/main-db-roles.sh`, which also makes the API's and the collector's roles). All of this, and how to move an existing server over, is in [database-security.md](database-security.md).
