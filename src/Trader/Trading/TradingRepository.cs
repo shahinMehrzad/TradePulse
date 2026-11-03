@@ -54,7 +54,35 @@ public sealed class TradingRepository(NpgsqlDataSource dataSource)
                 halted        boolean NOT NULL,
                 changed_at    timestamp NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS vault.trading_symbols (
+                symbol     text PRIMARY KEY,
+                enabled    boolean NOT NULL,
+                changed_by text NOT NULL,
+                changed_at timestamp NOT NULL
+            );
             """, cancellationToken: cancellationToken));
+    }
+
+    /// <summary>
+    /// The symbols an administrator has enabled for trading (upper case). A symbol with no row was never enabled: opening a position
+    /// is opt-in, so a new symbol on the server's list cannot be traded before somebody chooses it in the panel. The live price watch
+    /// reads this table too, to follow the symbols that are traded.
+    /// </summary>
+    public async Task<IReadOnlySet<string>> EnabledSymbolsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        return (await connection.QueryAsync<string>(new CommandDefinition(
+            "SELECT symbol FROM vault.trading_symbols WHERE enabled", cancellationToken: cancellationToken)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task SetSymbolEnabledAsync(string symbol, bool enabled, string changedBy, DateTime nowUtc, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition("""
+            INSERT INTO vault.trading_symbols (symbol, enabled, changed_by, changed_at) VALUES (@symbol, @enabled, @changedBy, @at)
+            ON CONFLICT (symbol) DO UPDATE SET enabled = @enabled, changed_by = @changedBy, changed_at = @at
+            """, new { symbol = symbol.ToUpperInvariant(), enabled, changedBy, at = Unspecified(nowUtc) }, cancellationToken: cancellationToken));
     }
 
     public async Task<bool> IsHaltedAsync(Guid owner, CancellationToken cancellationToken)

@@ -17,8 +17,12 @@ public sealed record OrderView(
     Guid Id, Guid KeyId, string Symbol, string Side, decimal Quantity, bool ReduceOnly, decimal NotionalUsd, string Status,
     long? ExchangeOrderId, string? Error, DateTime CreatedAt);
 
+/// <param name="AllowedSymbols">The symbols a new position can be opened in right now: on the server's list and enabled in the panel.</param>
 public sealed record TradingStateView(
     bool Halted, bool HaltedByServer, bool LiveAllowed, IReadOnlyList<string> AllowedSymbols, decimal MaxOrderUsd, decimal MaxDailyUsd, decimal OpenedTodayUsd);
+
+/// <summary>One symbol the server allows, and whether an administrator has enabled it for trading.</summary>
+public sealed record TradingSymbolView(string Symbol, bool Enabled);
 
 /// <summary>
 /// Market orders for the signed-in user's own keys, behind the limits in <see cref="TradingOptions"/> and a halt switch. Anything that
@@ -39,6 +43,12 @@ public static class TradingEndpoints
         // Stopping is one click with no extra code on purpose (an emergency); starting again asks for the second factor.
         trading.MapPost("halt", Halt);
         trading.MapPost("resume", Resume).AddEndpointFilter<RequireElevationFilter>();
+
+        // Which of the server's symbols may be opened. Same rule as the halt: switching off is one click, switching on asks for the
+        // second factor. Either way the server's own list stays the ceiling; nothing here can add a symbol to it.
+        trading.MapGet("symbols", Symbols);
+        trading.MapPost("symbols/{symbol}/enable", EnableSymbol).AddEndpointFilter<RequireElevationFilter>();
+        trading.MapPost("symbols/{symbol}/disable", DisableSymbol);
         return app;
     }
 
@@ -53,9 +63,39 @@ public static class TradingEndpoints
     {
         var owner = OwnerOf(user);
         var settings = options.Value;
+        var enabled = await repository.EnabledSymbolsAsync(cancellationToken);
         return Results.Ok(new TradingStateView(
-            settings.Halted || await repository.IsHaltedAsync(owner, cancellationToken), settings.Halted, settings.AllowLive, settings.AllowedSymbols,
+            settings.Halted || await repository.IsHaltedAsync(owner, cancellationToken), settings.Halted, settings.AllowLive,
+            settings.AllowedSymbols.Where(enabled.Contains).ToList(),
             settings.MaxOrderUsd, settings.MaxDailyUsd, await repository.OpenedSinceAsync(owner, DayStart(time), cancellationToken)));
+    }
+
+    private static async Task<IResult> Symbols(TradingRepository repository, IOptions<TradingOptions> options, CancellationToken cancellationToken)
+    {
+        var enabled = await repository.EnabledSymbolsAsync(cancellationToken);
+        return Results.Ok(options.Value.AllowedSymbols.Select(s => new TradingSymbolView(s.ToUpperInvariant(), enabled.Contains(s))));
+    }
+
+    private static Task<IResult> EnableSymbol(
+        string symbol, ClaimsPrincipal user, TradingRepository repository, IOptions<TradingOptions> options, AuditWriter audit, TimeProvider time, CancellationToken cancellationToken) =>
+        SetSymbolAsync(symbol, enabled: true, user, repository, options.Value, audit, time, cancellationToken);
+
+    private static Task<IResult> DisableSymbol(
+        string symbol, ClaimsPrincipal user, TradingRepository repository, IOptions<TradingOptions> options, AuditWriter audit, TimeProvider time, CancellationToken cancellationToken) =>
+        SetSymbolAsync(symbol, enabled: false, user, repository, options.Value, audit, time, cancellationToken);
+
+    private static async Task<IResult> SetSymbolAsync(
+        string symbol, bool enabled, ClaimsPrincipal user, TradingRepository repository, TradingOptions settings, AuditWriter audit, TimeProvider time,
+        CancellationToken cancellationToken)
+    {
+        // Only a symbol the server allows can be chosen: the panel works inside the ceiling the owner of the server set.
+        symbol = symbol.Trim().ToUpperInvariant();
+        if (!settings.AllowedSymbols.Contains(symbol, StringComparer.OrdinalIgnoreCase))
+            return Refuse(StatusCodes.Status422UnprocessableEntity, "Symbol not allowed", $"Only {string.Join(", ", settings.AllowedSymbols)} can be traded on this server.");
+
+        await repository.SetSymbolEnabledAsync(symbol, enabled, NameOf(user), time.GetUtcNow().UtcDateTime, cancellationToken);
+        await audit.RecordAsync(AuditAction.Updated, NameOf(user), "trading", $"{symbol} {(enabled ? "enabled for trading" : "disabled for trading")}", cancellationToken);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> Orders(ClaimsPrincipal user, TradingRepository repository, CancellationToken cancellationToken) =>
@@ -87,6 +127,11 @@ public static class TradingEndpoints
         var side = request.Side?.Trim().ToUpperInvariant() ?? "";
         if (!settings.AllowedSymbols.Contains(symbol, StringComparer.OrdinalIgnoreCase))
             return Refuse(StatusCodes.Status422UnprocessableEntity, "Symbol not allowed", $"Only {string.Join(", ", settings.AllowedSymbols)} can be traded.");
+
+        // A new position needs the symbol to be enabled in the panel as well. Closing one never does: switching a symbol off while a
+        // position is open must not lock the position in (the way out is never blocked).
+        if (!request.ReduceOnly && !(await repository.EnabledSymbolsAsync(cancellationToken)).Contains(symbol))
+            return Refuse(StatusCodes.Status422UnprocessableEntity, "Symbol not enabled", $"{symbol} is allowed on this server but has not been enabled for trading in the panel.");
         if (side is not ("BUY" or "SELL"))
             return Refuse(StatusCodes.Status400BadRequest, "Invalid side", "The side is BUY or SELL.");
         if (request.Quantity <= 0 || request.Quantity > 1_000_000m || Math.Round(request.Quantity, MaxQuantityDecimals) != request.Quantity)
