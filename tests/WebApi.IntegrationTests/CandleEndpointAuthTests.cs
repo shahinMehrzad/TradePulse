@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using Tests.Shared;
 
 namespace WebApi.IntegrationTests;
 
@@ -13,7 +14,6 @@ public class CandleEndpointAuthTests(ApiFixture api) : IClassFixture<ApiFixture>
     // Same values as appsettings.json / appsettings.Development.json.
     private const string Issuer = "TradePulseApi";
     private const string Audience = "TradePulseClient";
-    private const string Secret = ApiFixture.JwtSecret;
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -36,18 +36,25 @@ public class CandleEndpointAuthTests(ApiFixture api) : IClassFixture<ApiFixture>
         return (await response.Content.ReadFromJsonAsync<LoginResult>(Ct))!.AccessToken;
     }
 
+    /// <summary>A token as the API makes them (ES256, with the key of the test host) unless a test says otherwise.</summary>
     private static string Token(
-        string secret = Secret, string issuer = Issuer, string audience = Audience, TimeSpan? lifetime = null, string algorithm = SecurityAlgorithms.HmacSha256)
+        JwtTestKeys? keys = null, string issuer = Issuer, string audience = Audience, TimeSpan? lifetime = null, string algorithm = SecurityAlgorithms.EcdsaSha256)
+        => Sign(new SigningCredentials(new ECDsaSecurityKey((keys ?? ApiFixture.SigningKeys).Key), algorithm), issuer, audience, lifetime);
+
+    private static string Sign(SigningCredentials credentials, string issuer = Issuer, string audience = Audience, TimeSpan? lifetime = null)
     {
         var expires = DateTime.UtcNow + (lifetime ?? TimeSpan.FromMinutes(10));
         var notBefore = expires < DateTime.UtcNow ? expires.AddMinutes(-30) : DateTime.UtcNow.AddMinutes(-1);
 
         var token = new JwtSecurityToken(
-            issuer, audience, [new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())], notBefore, expires,
-            new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)), algorithm));
+            issuer, audience, [new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())], notBefore, expires, credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    /// <summary>The public key is not secret. Anyone who has it can sign an HS256 token with its bytes as the "secret": the API must not take that for a signature.</summary>
+    private static string HmacTokenWithThePublicKeyAsSecret(string algorithm) => Sign(new SigningCredentials(
+        new SymmetricSecurityKey(Convert.FromBase64String(ApiFixture.SigningKeys.PublicKey)), algorithm));
 
     [Theory]
     [InlineData(ApiFixture.CandleUrl)]
@@ -100,11 +107,13 @@ public class CandleEndpointAuthTests(ApiFixture api) : IClassFixture<ApiFixture>
 
     public static TheoryData<string, string> BadTokens() => new()
     {
-        { "signed with another key", Token(secret: "Another-signing-key-that-is-long-enough-0123456789") },
+        { "signed with another key", Token(keys: JwtTestKeys.New()) },
         { "wrong issuer", Token(issuer: "SomeoneElse") },
         { "wrong audience", Token(audience: "SomeoneElse") },
         { "expired", Token(lifetime: TimeSpan.FromMinutes(-10)) },
-        { "valid signature but a different HMAC algorithm", Token(algorithm: SecurityAlgorithms.HmacSha384) },
+        { "valid signature but a different ECDSA algorithm (ES384)", Token(algorithm: SecurityAlgorithms.EcdsaSha384) },
+        { "HS256 signed with the public key as the secret", HmacTokenWithThePublicKeyAsSecret(SecurityAlgorithms.HmacSha256) },
+        { "HS512 signed with the public key as the secret", HmacTokenWithThePublicKeyAsSecret(SecurityAlgorithms.HmacSha512) },
         { "garbage", "not.a.token" },
         { "unsigned (alg none)", UnsignedToken() },
     };

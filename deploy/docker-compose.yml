@@ -45,7 +45,10 @@ services:
       ConnectionStrings__DefaultConnection: &api-db Host=postgres;Database=tradepulse;Username=tp_api;Password=${API_DB_PASSWORD:?set API_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
       ConnectionStrings__AuthConnection: *api-db
       ConnectionStrings__ConfigConnection: *api-db
-      JwtConfigurations__Secret: ${JWT_SECRET:?set JWT_SECRET in deploy/.env (at least 32 characters)}
+      # The API alone signs the tokens (ES256), so it alone holds the private key. See deploy/make-jwt-keys.sh.
+      JwtConfigurations__PrivateKey: ${JWT_PRIVATE_KEY:?set JWT_PRIVATE_KEY in deploy/.env (run ./deploy/make-jwt-keys.sh and paste the two lines)}
+      # The public half too, only so that the API checks at start that the two lines belong together (the vault gets the same line).
+      JwtConfigurations__PublicKey: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY in deploy/.env (the other half of JWT_PRIVATE_KEY, from ./deploy/make-jwt-keys.sh)}
       AdminConfigurations__Email: ${ADMIN_EMAIL:?set ADMIN_EMAIL in deploy/.env}
       AdminConfigurations__Password: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/.env}
       Collector__HealthUrl: http://collector:8080/health
@@ -98,7 +101,8 @@ services:
       # The main database, through a role that may only add to the audit log and publish the copy of the enabled symbols
       # (made by deploy/main-db-roles.sh). If it cannot be reached, trading goes on and the problem is logged.
       ConnectionStrings__Main: Host=postgres;Database=tradepulse;Username=tp_trader;Password=${TRADER_MAIN_DB_PASSWORD:?set TRADER_MAIN_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
-      JwtConfigurations__Secret: ${JWT_SECRET}
+      # Only the PUBLIC key: the vault can check a token and cannot make one. It refuses to start if it is given the private key.
+      JwtConfigurations__PublicKey: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY in deploy/.env (the other half of JWT_PRIVATE_KEY, from ./deploy/make-jwt-keys.sh)}
       JwtConfigurations__Issuer: TradePulseApi
       JwtConfigurations__Audience: TradePulseClient
       AdminConfigurations__Role: Administrator

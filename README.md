@@ -88,7 +88,7 @@ kept as *user secrets* (in your Windows profile, not in a file of the project). 
 ```bash
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/WebApi
 dotnet user-secrets set "ConnectionStrings:AuthConnection"    "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/WebApi
-dotnet user-secrets set "JwtConfigurations:Secret"            "<at least 32 random characters>"                                          --project src/WebApi
+dotnet user-secrets set "JwtConfigurations:PrivateKey"        "<JWT_PRIVATE_KEY from deploy/make-jwt-keys.sh>"                            --project src/WebApi
 dotnet user-secrets set "AdminConfigurations:Email"           "admin@example.com"                                                        --project src/WebApi
 dotnet user-secrets set "AdminConfigurations:Password"        "<a temporary password, at least 12 characters>"                                                      --project src/WebApi
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/BackgroundWorker
