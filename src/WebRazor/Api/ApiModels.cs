@@ -10,7 +10,11 @@ public record AccountInfo(string UserName, string Email, string[] Roles, bool Tw
 
 public record TwoFactorEnrollment(string SharedKey, string AuthenticatorUri);
 
-public record UserRow(Guid Id, string UserName, string Email, string[] Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled);
+/// <param name="LockedUntil">Until when wrong passwords or codes keep the account from signing in (UTC); null when nothing locks it.</param>
+/// <param name="LockedAddresses">How many addresses are locked out of the account for wrong passwords.</param>
+public record UserRow(
+    Guid Id, string UserName, string Email, string[] Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled,
+    DateTime? LockedUntil = null, int LockedAddresses = 0);
 
 /// <summary>A one-time password the API generated; the panel shows it once.</summary>
 public record OneTimePassword(Guid UserId, string UserName, string TemporaryPassword);

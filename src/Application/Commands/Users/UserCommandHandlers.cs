@@ -14,6 +14,8 @@ public readonly record struct ResetUserTwoFactorCommand(Guid UserId, Guid Acting
 
 public readonly record struct SetUserDisabledCommand(Guid UserId, bool Disabled, Guid ActingUserId);
 
+public readonly record struct UnlockUserCommand(Guid UserId);
+
 /// <summary>The one-time password is shown to the administrator once and never stored in readable form.</summary>
 public sealed record TemporaryPasswordDto(Guid UserId, string UserName, string TemporaryPassword);
 
@@ -94,6 +96,20 @@ public sealed class SetUserDisabledCommandHandler(IUserAdministration users, IRe
 
         var user = (await users.ListAsync(cancellationToken)).First(u => u.Id == request.UserId);
         await audit.RecordAsync(AuditAction.Updated, AuditEntityTypes.User, 0, user.UserName, request.Disabled ? "disabled" : "enabled", cancellationToken);
+        return true;
+    }
+}
+
+/// <summary>Lifts the locks that wrong passwords or codes led to, for the administrator who is locked out and cannot wait for it to end.</summary>
+public sealed class UnlockUserCommandHandler(IUserAdministration users, AuditTrail audit) : ICommandHandler<UnlockUserCommand, bool>
+{
+    public async Task<bool> HandleAsync(UnlockUserCommand request, CancellationToken cancellationToken)
+    {
+        var user = (await users.ListAsync(cancellationToken)).FirstOrDefault(u => u.Id == request.UserId)
+                   ?? throw new ConfigurationNotFoundException("That user does not exist (anymore).");
+        UserChanges.ThrowUnlessDone(await users.UnlockAsync(request.UserId, cancellationToken));
+
+        await audit.RecordAsync(AuditAction.Updated, AuditEntityTypes.User, 0, user.UserName, "unlocked after wrong passwords or codes", cancellationToken);
         return true;
     }
 }

@@ -22,7 +22,7 @@ public class RefreshTokenCleanupTests(PostgresFixture postgres)
         await using (var admin = new NpgsqlConnection(postgres.ConnectionString))
             await admin.ExecuteAsync($"CREATE DATABASE {database}");
 
-        var connectionString = new NpgsqlConnectionStringBuilder(postgres.ConnectionString) { Database = database }.ConnectionString;
+        var connectionString = new NpgsqlConnectionStringBuilder(postgres.ConnectionString) { Database = database, Pooling = false }.ConnectionString;
         var options = new DbContextOptionsBuilder<AuthDbContext>()
             .UseNpgsql(connectionString, o => o.MigrationsHistoryTable("__EFMigrationsHistory", "auth")).Options;
         await using var context = new AuthDbContext(options);
