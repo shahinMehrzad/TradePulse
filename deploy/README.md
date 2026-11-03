@@ -100,9 +100,16 @@ time of 5 minutes, add Telegram or e-mail as the way to tell you, and put its pi
 its domain you can also let an uptime service (for example UptimeRobot) request `https://<domain>/Login` every 5 minutes.
 
 **`backup.sh`** runs `pg_dump -Fc` of the stack's databases (the main one, and the key vault's when `vault-db` runs) into `BACKUP_DIR` (`/opt/tradepulse-backups`, outside the git checkout),
-checks that the file is readable and not tiny (`BACKUP_MIN_BYTES`, 100000), and keeps the newest `BACKUP_KEEP` (4). **A backup on the
+checks that the file is readable and not tiny (`BACKUP_MIN_BYTES`, 100000), and keeps the newest `BACKUP_KEEP` (4) of each kind. **A backup on the
 same disk does not survive the disk**: set `BACKUP_RSYNC_TARGET` (`user@host:/path/`, rsync over ssh) or `BACKUP_RCLONE_REMOTE`
 (`remote:bucket/folder`) to copy each one off the server; the copies there are not pruned. A failure is reported to Telegram.
+
+**Encrypt the backups** (`BACKUP_AGE_RECIPIENT`, an [age](https://github.com/FiloSottile/age) public key): a dump holds every account, the
+audit log and everything else in the database, and it is copied to places that are less guarded than this server. With the key set, each file
+is encrypted before it is kept or copied (it then ends in `.age`), the plain dump exists only in memory while the script works, and the keys of
+data protection (which decrypt the authenticator keys) are saved in the same way as `api-keys-*.tgz.age`, so nothing has to be done by hand
+for them. Only the owner of the private key, which is not on the server, can read a backup. Set-up, the test to do once, and restoring:
+[docs/database-security.md](../docs/database-security.md#encrypted-backups).
 
 Restoring a backup into an empty database (this is how the data was moved to the server). After a restore of the main database run
 `./deploy/main-db-roles.sh` again (a restore with `--no-owner` makes `postgres` the owner of everything and drops the grants); the vault's dump (`vaultdb-*.dump`) is restored into `vault-db`, see
@@ -112,6 +119,7 @@ Restoring a backup into an empty database (this is how the data was moved to the
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d postgres
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec -T postgres   pg_restore -U postgres -d tradepulse --no-owner < /opt/tradepulse-backups/tradepulse-YYYYMMDD-HHMMSS.dump
 ```
+(A file that ends in `.age` has to be decrypted first, with the private key, on your computer: see "Encrypted backups" in the page above.)
 To go back over a database that is in use: stop `api`, `panel`, `trader` and `collector` first and add `--clean --if-exists`
 (that way is not tried here; try it on a copy first).
 

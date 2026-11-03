@@ -135,7 +135,7 @@ fi
 
 # ---- the backups (0 days turns this check off)
 if [ "$BACKUP_MAX_AGE_DAYS" -gt 0 ]; then
-  newest="$(ls -1t "$BACKUP_DIR"/tradepulse-*.dump 2>/dev/null | head -n 1)"
+  newest="$(ls -1t "$BACKUP_DIR"/tradepulse-*.dump "$BACKUP_DIR"/tradepulse-*.dump.age 2>/dev/null | head -n 1)"
   if [ -z "$newest" ]; then
     record backup 1 "no backup has been made yet (looked in $BACKUP_DIR)."
   else
@@ -150,7 +150,7 @@ fi
 
 # ---- the backup of the vault's database (once one exists: the stack may not have been upgraded to its own database yet)
 if [ "$BACKUP_MAX_AGE_DAYS" -gt 0 ]; then
-  newest_vault="$(ls -1t "$BACKUP_DIR"/vaultdb-*.dump 2>/dev/null | head -n 1)"
+  newest_vault="$(ls -1t "$BACKUP_DIR"/vaultdb-*.dump "$BACKUP_DIR"/vaultdb-*.dump.age 2>/dev/null | head -n 1)"
   if [ -n "$newest_vault" ]; then
     age_days=$(( (now - $(stat -c %Y "$newest_vault")) / 86400 ))
     if [ "$age_days" -gt "$BACKUP_MAX_AGE_DAYS" ]; then

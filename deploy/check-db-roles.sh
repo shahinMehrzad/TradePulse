@@ -37,7 +37,7 @@ cannot() {
   local out
   if out="$(run "$1" "$2" "$4")"; then
     fail "$1 must not be able to $3" "it was allowed"
-  elif echo "$out" | grep -q -E "permission denied|must be owner"; then
+  elif grep -q -E "permission denied|must be owner" <<<"$out"; then
     ok "$1 cannot $3"
   else
     fail "$1 cannot $3" "refused, but not for lack of rights: $(echo "$out" | head -n 1)"

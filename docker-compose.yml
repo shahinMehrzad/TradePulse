@@ -1,3 +1,5 @@
+# DEVELOPMENT infrastructure only (weak passwords on purpose). Every port is published on 127.0.0.1, so nothing here can be reached from the
+# network the computer is on. The real stack, with real passwords, is deploy/docker-compose.yml.
 services:  
   postgres:
     image: postgres:latest
@@ -7,7 +9,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - docker_pgdata:/var/lib/postgresql
     networks:
@@ -17,7 +19,7 @@ services:
     image: redis:latest
     container_name: market_redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     networks:
       - market-net
 
@@ -25,8 +27,8 @@ services:
     image: rabbitmq:3-management
     container_name: market_rabbitmq
     ports:
-      - "5672:5672"    # AMQP port the application connects to
-      - "15672:15672"  # management web UI (http://localhost:15672)
+      - "127.0.0.1:5672:5672"    # AMQP port the application connects to
+      - "127.0.0.1:15672:15672"  # management web UI (http://localhost:15672)
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
