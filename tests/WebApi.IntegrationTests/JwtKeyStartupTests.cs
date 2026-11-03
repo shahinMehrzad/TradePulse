@@ -37,7 +37,11 @@ public class JwtKeyStartupTests
     {
         // The API signs the tokens; with only the public key there would be nothing to sign with.
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseSetting("JwtConfigurations:PublicKey", Tests.Shared.JwtTestKeys.New().PublicKey));
+        {
+            builder.UseSetting("JwtConfigurations:PublicKey", Tests.Shared.JwtTestKeys.New().PublicKey);
+            // Not even the key that may be in the user secrets of the machine the tests run on.
+            builder.UseSetting("JwtConfigurations:PrivateKey", "");
+        });
 
         var failure = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
 

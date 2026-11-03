@@ -44,6 +44,8 @@ A key that fails is **Rejected** with the reasons in plain words; fix it at Bina
 | A key that can take the money out | Rejected by the check above. And withdrawals are never turned on by this program: it does not even ask for the right. |
 | Leaks through logs or the audit log | Neither the keys, the public key nor the API key is logged; the audit log (entity `ExchangeKey`) says who made, checked or deleted which named key. The HTTP client to Binance logs nothing (the address of a signed request holds the signature). The panel shows only the last four characters of an API key. |
 
+The vault cannot ask whether a user is still active (it has no access to the accounts), so it believes an access token until it expires: a user who is disabled or reset keeps the vault's trust for at most the 5 minutes of the token, and for as long as the 10-minute confirmation of a second-factor code they had already given. The API stops them at once (see [api.md](api.md)); the short life of the token is what limits the vault.
+
 Not protected against: somebody with a shell **on the server** and the vault's environment (he has the master key and the database). That is why the master
 key must be a secret of its own, the server's access must be small, and the keys must be restricted to the server's IP at Binance: a stolen key is then
 useless from anywhere else.
