@@ -213,7 +213,8 @@ In `\dp` the access column reads `role=privileges/grantor`: `r` is SELECT, `a` I
 ## Backups and restores
 
 `deploy/backup.sh` writes two kinds of file into `BACKUP_DIR`: `tradepulse-*.dump` (main) and `vaultdb-*.dump` (the vault's database),
-each pruned to the newest `BACKUP_KEEP`, and copied off the server like before. The vault dump holds the keys **encrypted**; the master
+each pruned to the newest `BACKUP_KEEP`, and copied off the server like before. With encryption on (next section) the names end in `.age`
+and a third kind, `api-keys-*.tgz.age`, is added. The vault dump holds the keys **encrypted**; the master
 key is in neither file. `deploy/watchdog.sh` also watches `vault-db` and the age of the newest vault dump.
 
 Restoring the **main** database: as in [deploy/README.md](../deploy/README.md), and **then run `./deploy/main-db-roles.sh` again**, and
@@ -229,6 +230,63 @@ dc restart trader
 ```
 
 A restored vault only works with the same `VAULT_MASTER_KEY` that encrypted its keys.
+
+## Encrypted backups
+
+A dump contains everything in the database: the accounts, the audit log, the configuration. It also travels: to a second place, to your
+computer. Encrypting it means a stolen or leaked file is only noise. The tool is [age](https://github.com/FiloSottile/age): a key pair, where
+the server only knows the **public** key (it can encrypt, never read back) and the **private** key stays with you.
+
+**Set it up once:**
+
+1. **On your computer**, get `age` from <https://github.com/FiloSottile/age/releases> (the Windows `.zip` has `age.exe` and `age-keygen.exe`; unzip it somewhere
+   and run the programs from there). Make the key pair:
+
+   ```powershell
+   .ge-keygen.exe -o age-key.txt
+   ```
+
+   It prints `Public key: age1...`. The file `age-key.txt` is the private key. **Keep it where you keep your passwords, and print one copy on paper.
+   Never put it on the server, and never in git.** Without it every backup is unreadable, and nobody, including me, can recover them.
+2. **On the server:** `sudo apt install age`, and put the public key in `deploy/.env`: `BACKUP_AGE_RECIPIENT=age1...`.
+3. **Run a backup by hand:** `./deploy/backup.sh`. The message ends with `encrypted` and `ls -lh /opt/tradepulse-backups/` shows files ending in `.age`
+   (`tradepulse-...dump.age`, `vaultdb-...dump.age`, `api-keys-...tgz.age`). If the message says the keys of data protection were **NOT saved**, the `api`
+   container was not running.
+4. **Test that you can read one, now, once, before you rely on it.** On your computer:
+
+   ```powershell
+   scp "deploy@tp.parsibin.com:/opt/tradepulse-backups/tradepulse-*.dump.age" .
+   .ge.exe -d -i age-key.txt -o test.dump (Get-ChildItem tradepulse-*.dump.age | Sort-Object LastWriteTime | Select-Object -Last 1).Name
+   [System.Text.Encoding]::ASCII.GetString((Get-Content test.dump -Encoding Byte -TotalCount 5))
+   ```
+
+   The last line must print `PGDMP` (the first bytes of every `pg_dump` archive). Then delete `test.dump` from your computer. A backup you
+   never tried to read is not a backup.
+5. **Delete the old plain backups** on the server and in the places you copied them to (they are the ones that can still be read by anybody).
+
+When `BACKUP_AGE_RECIPIENT` is empty the script works as before and writes plain files. Do not leave it empty on a server that copies backups
+elsewhere. The cron job (`deploy/README.md`) needs no change.
+
+**Restoring from an encrypted backup.** Decrypt on your computer, send the plain file to the server only for as long as the restore takes:
+
+```powershell
+.ge.exe -d -i age-key.txt -o restore.dump tradepulse-YYYYMMDD-HHMMSS.dump.age
+scp restore.dump deploy@tp.parsibin.com:/tmp/restore.dump
+```
+
+```bash
+# on the server (the main database; for the vault use vaultdb-... and the vault-db service as in "Backups and restores" above)
+dc exec -T postgres pg_restore -U postgres -d tradepulse --no-owner < /tmp/restore.dump
+rm /tmp/restore.dump          # and delete restore.dump on your computer too
+./deploy/main-db-roles.sh     # a restore leaves everything owned by postgres: this hands it back
+```
+
+The keys of data protection (needed for the authenticator keys in a restored main database to be readable): decrypt `api-keys-...tgz.age`
+the same way, copy it to the server, and `docker run --rm -i -v tradepulse-stack_api-keys:/keys alpine tar xzf - -C /keys < api-keys.tgz`
+(find the volume name with `docker volume ls | grep api-keys`), then `dc restart api`.
+
+**Which key to rotate when:** if the private key may have leaked, make a new pair, change `BACKUP_AGE_RECIPIENT`, and delete the old backups once a
+new one exists. Old files stay readable to whoever has the old private key, so they are only worth keeping if you trust it.
 
 ## Defining a role yourself
 
