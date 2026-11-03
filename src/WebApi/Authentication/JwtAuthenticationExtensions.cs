@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Infrastructure.Configurations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -26,10 +27,32 @@ public static class JwtAuthenticationExtensions
                 "JwtConfigurations:PrivateKey must be set (environment variable JwtConfigurations__PrivateKey, user-secrets or a secret store): " +
                 "the API signs the tokens. Make a key pair with deploy/make-jwt-keys.sh.");
 
+        services.AddOptions<AccessTokenGuardOptions>().BindConfiguration(AccessTokenGuardOptions.SectionName);
+        services.AddSingleton<AccessTokenGuard>();
+
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                // A valid signature is not enough: the user has to be the same one it was made for (not disabled, not reset, roles unchanged).
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async context =>
+                    {
+                        var principal = context.Principal;
+                        if (!Guid.TryParse(principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                        {
+                            context.Fail("The token names no user.");
+                            return;
+                        }
+
+                        var guard = context.HttpContext.RequestServices.GetRequiredService<AccessTokenGuard>();
+                        var roles = principal!.FindAll(ClaimTypes.Role).Select(claim => claim.Value);
+                        if (!await guard.StillAcceptsAsync(userId, roles, context.HttpContext.RequestAborted))
+                            context.Fail("The account is no longer active.");
+                    }
+                };
+
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,

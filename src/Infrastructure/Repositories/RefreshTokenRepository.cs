@@ -13,14 +13,14 @@ public class RefreshTokenRepository(AuthDbContext context) : IRefreshTokenReposi
         await context.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Removes the tokens that ran out. A token that was used up (or revoked) but has not expired stays: it still says that the token existed and
+    /// was spent, which is what a reuse of it has to be recognised by.
+    /// </summary>
     public async Task CleanUpExpiredTokensAsync(CancellationToken cancellationToken = default)
     {
-        var expiredTokens = await context.RefreshTokens
-            .Where(r => r.ExpiresOn < DateTime.UtcNow || r.IsRevoked)
-            .ToListAsync(cancellationToken);
-
-        context.RefreshTokens.RemoveRange(expiredTokens);
-        await context.SaveChangesAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        await context.RefreshTokens.Where(r => r.ExpiresOn < now).ExecuteDeleteAsync(cancellationToken);
     }
 
 

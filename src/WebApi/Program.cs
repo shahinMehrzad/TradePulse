@@ -40,6 +40,7 @@ if (builder.Configuration.GetValue("CandleCache:Enabled", true))
 }
 
 builder.Services.AddJwtAuthentication(builder.Configuration);
+builder.Services.AddHostedService<RefreshTokenCleanupService>();
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddBinanceSymbolCatalog();

@@ -18,6 +18,8 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problemDetails
             ConfigurationConflictException => (StatusCodes.Status409Conflict, "Configuration conflict"),
             ConfigurationNotFoundException => (StatusCodes.Status404NotFound, "Configuration not found"),
             ExchangeUnavailableException => (StatusCodes.Status503ServiceUnavailable, "Exchange unavailable"),
+            // A signed-in request whose account is gone or disabled (a token that is still valid, but not for long): not a server error.
+            UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Not signed in"),
             _ => (0, null)
         };
 
@@ -28,7 +30,12 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problemDetails
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = httpContext,
-            ProblemDetails = new ProblemDetails { Status = status, Title = title, Detail = exception.Message }
+            ProblemDetails = new ProblemDetails
+            {
+                Status = status,
+                Title = title,
+                Detail = status == StatusCodes.Status401Unauthorized ? "The session is no longer valid. Sign in again." : exception.Message
+            }
         });
     }
 }

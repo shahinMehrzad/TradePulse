@@ -100,6 +100,8 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:ConfigConnection", connectionString);
         builder.UseSetting("ConnectionStrings:Redis", "");
         builder.UseSetting("JwtConfigurations:PrivateKey", SigningKeys.PrivateKey);
+        // Ask the database at every request, so a test that disables a user sees the effect on the next one (the keeping is tested on its own).
+        builder.UseSetting("TokenRevocation:CacheSeconds", "0");
         builder.UseSetting("AdminConfigurations:Email", AdminEmail);
         builder.UseSetting("AdminConfigurations:Password", AdminPassword);
         // No collector runs next to the tests (the default address would find a real one on a developer machine).
