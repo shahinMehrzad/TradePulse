@@ -77,16 +77,16 @@ public static class TradingEndpoints
     }
 
     private static Task<IResult> EnableSymbol(
-        string symbol, ClaimsPrincipal user, TradingRepository repository, IOptions<TradingOptions> options, AuditWriter audit, TimeProvider time, CancellationToken cancellationToken) =>
-        SetSymbolAsync(symbol, enabled: true, user, repository, options.Value, audit, time, cancellationToken);
+        string symbol, ClaimsPrincipal user, TradingRepository repository, IOptions<TradingOptions> options, AuditWriter audit, TradedSymbolMirror mirror, TimeProvider time, CancellationToken cancellationToken) =>
+        SetSymbolAsync(symbol, enabled: true, user, repository, options.Value, audit, mirror, time, cancellationToken);
 
     private static Task<IResult> DisableSymbol(
-        string symbol, ClaimsPrincipal user, TradingRepository repository, IOptions<TradingOptions> options, AuditWriter audit, TimeProvider time, CancellationToken cancellationToken) =>
-        SetSymbolAsync(symbol, enabled: false, user, repository, options.Value, audit, time, cancellationToken);
+        string symbol, ClaimsPrincipal user, TradingRepository repository, IOptions<TradingOptions> options, AuditWriter audit, TradedSymbolMirror mirror, TimeProvider time, CancellationToken cancellationToken) =>
+        SetSymbolAsync(symbol, enabled: false, user, repository, options.Value, audit, mirror, time, cancellationToken);
 
     private static async Task<IResult> SetSymbolAsync(
-        string symbol, bool enabled, ClaimsPrincipal user, TradingRepository repository, TradingOptions settings, AuditWriter audit, TimeProvider time,
-        CancellationToken cancellationToken)
+        string symbol, bool enabled, ClaimsPrincipal user, TradingRepository repository, TradingOptions settings, AuditWriter audit, TradedSymbolMirror mirror,
+        TimeProvider time, CancellationToken cancellationToken)
     {
         // Only a symbol the server allows can be chosen: the panel works inside the ceiling the owner of the server set.
         symbol = symbol.Trim().ToUpperInvariant();
@@ -94,6 +94,7 @@ public static class TradingEndpoints
             return Refuse(StatusCodes.Status422UnprocessableEntity, "Symbol not allowed", $"Only {string.Join(", ", settings.AllowedSymbols)} can be traded on this server.");
 
         await repository.SetSymbolEnabledAsync(symbol, enabled, NameOf(user), time.GetUtcNow().UtcDateTime, cancellationToken);
+        await mirror.PublishAsync(cancellationToken);
         await audit.RecordAsync(AuditAction.Updated, NameOf(user), "trading", $"{symbol} {(enabled ? "enabled for trading" : "disabled for trading")}", cancellationToken);
         return Results.NoContent();
     }

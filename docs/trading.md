@@ -34,7 +34,7 @@ be opened (it is opt-in: a new symbol on the server's list is not traded until s
 - `GET /trading/symbols` lists the server's symbols and whether each is enabled. `POST /trading/symbols/{symbol}/enable` asks for a **second-factor code entered in
   the last 10 minutes**; `POST /trading/symbols/{symbol}/disable` is one click, like the halt. A symbol outside the server's list is refused (`422`), whatever the code.
 - Closing never needs it: an order that only reduces a position still goes through for a symbol that has been switched off, so a position cannot be locked in.
-- Every choice is written to the audit log (who, which symbol, enabled or disabled). The choice is the same for every administrator; it is kept in `vault.trading_symbols`.
+- Every choice is written to the audit log (who, which symbol, enabled or disabled). The choice is the same for every administrator; it is kept in `vault.trading_symbols` in the vault's own database, and the enabled symbols are copied to `config.traded_symbols` in the main one for the watch to read (see [database-security.md](database-security.md)). Nothing about trading is decided from the copy.
 - The live price watch follows the enabled symbols automatically (see [research.md](research.md)); an administrator can switch the watch of one off on their own responsibility.
 
 ## Halt (kill switch)
