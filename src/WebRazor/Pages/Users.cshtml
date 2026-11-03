@@ -56,8 +56,23 @@
                                     {
                                         <span class="badge bg-blue-lt">2FA</span>
                                     }
+                                    @if (user.LockedUntil is { } lockedUntil)
+                                    {
+                                        <span class="badge bg-orange-lt" title="Wrong passwords from many addresses, or wrong two-factor codes: nobody signs in to this account until then.">Locked until @lockedUntil.ToString("yyyy-MM-dd HH:mm") UTC</span>
+                                    }
+                                    @if (user.LockedAddresses > 0)
+                                    {
+                                        <span class="badge bg-orange-lt" title="Wrong passwords: these addresses cannot try this account until their locks end. Other addresses are not affected.">@user.LockedAddresses address@(user.LockedAddresses == 1 ? "" : "es") locked</span>
+                                    }
                                 </td>
                                 <td class="text-nowrap">
+                                    @if (user.LockedUntil is not null || user.LockedAddresses > 0)
+                                    {
+                                        <form method="post" class="d-inline" asp-page-handler="Unlock" asp-route-id="@user.Id"
+                                              data-confirm="Lift the locks on @user.UserName? Their wrong passwords and codes are forgotten.">
+                                            <button type="submit" class="btn btn-sm btn-outline-warning">Unlock</button>
+                                        </form>
+                                    }
                                     @if (!self)
                                     {
                                         <form method="post" class="d-inline" asp-page-handler="ResetPassword" asp-route-id="@user.Id"

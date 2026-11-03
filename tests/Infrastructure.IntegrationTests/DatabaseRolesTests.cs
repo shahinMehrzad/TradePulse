@@ -149,6 +149,7 @@ public class DatabaseRolesTests(PostgresFixture postgres)
         // And what it must not be able to do.
         await AssertDeniedAsync(asCollector, "SELECT * FROM auth.users");
         await AssertDeniedAsync(asCollector, "SELECT * FROM auth.user_tokens");
+        await AssertDeniedAsync(asCollector, "SELECT * FROM auth.login_throttles");
         await AssertDeniedAsync(asCollector, "SELECT * FROM config.audit_log");
         await AssertDeniedAsync(asCollector, "SELECT * FROM config.traded_symbols");
         await AssertDeniedAsync(asCollector, "SELECT * FROM research.market_events");

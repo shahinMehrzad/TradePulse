@@ -52,6 +52,11 @@ services:
       AdminConfigurations__Email: ${ADMIN_EMAIL:?set ADMIN_EMAIL in deploy/.env}
       AdminConfigurations__Password: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/.env}
       Collector__HealthUrl: http://collector:8080/health
+      # A bot of its own for "somebody is trying to get into an account" (wrong two-factor codes, many wrong passwords). Not the collector's bot:
+      # its token stays out of this container. Empty: such alerts are only written to the audit log.
+      SecurityAlerts__InstanceName: ${ALERT_INSTANCE_NAME:-tradepulse}
+      SecurityAlerts__Telegram__BotToken: ${SECURITY_TELEGRAM_BOT_TOKEN:-}
+      SecurityAlerts__Telegram__ChatId: ${SECURITY_TELEGRAM_CHAT_ID:-}
       # The same mail server as the collector's alerts. Without SMTP_HOST and SMTP_FROM the API offers no sign-in codes by email.
       Email__Host: ${SMTP_HOST:-}
       Email__Port: ${SMTP_PORT:-587}

@@ -33,6 +33,9 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>The mails the API sends in these tests (it has no mail server): sign-in codes are read from here.</summary>
     public FakeMailSender Mail { get; } = new();
 
+    /// <summary>The security alerts the API raises in these tests (it has no Telegram bot): a lock after wrong codes or passwords is read from here.</summary>
+    public FakeSecurityAlerts Alerts { get; } = new();
+
     private readonly SemaphoreSlim _adminSetup = new(1, 1);
     private string? _adminAuthenticatorKey;
 
@@ -112,6 +115,8 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<IMailSender>();
             services.AddSingleton<IMailSender>(Mail);
+            services.RemoveAll<Application.Notifications.ISecurityAlerts>();
+            services.AddSingleton<Application.Notifications.ISecurityAlerts>(Alerts);
         });
         builder.ConfigureTestServices(services => services.AddSingleton<IExchangeSymbolCatalog>(ExchangeCatalog));
     }

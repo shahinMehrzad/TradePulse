@@ -32,6 +32,10 @@ public sealed class ApiAuthHandler(
             tokens = await RefreshAsync(sessionId, cancellationToken) ?? tokens;
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+        // The API sees only this server as the caller; the visitor's address goes with every call, so that what is held against an address
+        // (wrong passwords, the login limit) is the visitor's and not the panel's. The API believes it only from the stack's own network.
+        if (httpContextAccessor.HttpContext?.Connection.RemoteIpAddress is { } visitor)
+            request.Headers.TryAddWithoutValidation("X-Forwarded-For", visitor.ToString());
         // Says which device is asking, so "sign out my other devices" leaves this one alone.
         request.Headers.TryAddWithoutValidation(DeviceHeader, sessionId);
         // The proof of a recent second-factor code, when the session has one. The API asks for it only where it matters.

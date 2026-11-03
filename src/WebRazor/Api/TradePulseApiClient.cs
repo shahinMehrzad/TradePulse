@@ -493,6 +493,12 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await ToResultAsync(response, NotFoundUser, cancellationToken);
     }
 
+    public async Task<ApiResult> UnlockUserAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{UsersRoot}/{id}/unlock", content: null, cancellationToken);
+        return await ToResultAsync(response, NotFoundUser, cancellationToken);
+    }
+
     public async Task<ApiResult> SetUserDisabledAsync(Guid id, bool disabled, CancellationToken cancellationToken)
     {
         using var response = await http.PostAsync($"{UsersRoot}/{id}/{(disabled ? "disable" : "enable")}", content: null, cancellationToken);

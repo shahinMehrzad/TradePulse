@@ -81,6 +81,7 @@ can    tp_collector "$collector_pw" "read the symbol listings"            "selec
 can    tp_collector "$collector_pw" "make a data table"                   "begin; create table public.check_tmp (x int); rollback"
 cannot tp_collector "$collector_pw" "read the accounts"                   "select count(*) from auth.users"
 cannot tp_collector "$collector_pw" "read the second-factor secrets"      "select count(*) from auth.user_tokens"
+cannot tp_collector "$collector_pw" "read the counts of wrong passwords"  "select count(*) from auth.login_throttles"
 cannot tp_collector "$collector_pw" "read the audit log"                  "select count(*) from config.audit_log"
 cannot tp_collector "$collector_pw" "read the research tables"            "select count(*) from research.market_events"
 cannot tp_collector "$collector_pw" "change the configuration"            "begin; delete from config.candle_worker_configurations; rollback"

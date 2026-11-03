@@ -2,12 +2,19 @@ using Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Infrastructure.Persistence;
 
 public class AuthDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>
 {
+    /// <summary>Written as "unspecified" (Npgsql refuses UTC for a <c>timestamp</c> column), read back as UTC.</summary>
+    private static readonly ValueConverter<DateTime, DateTime> UtcTimestamp =
+        new(v => DateTime.SpecifyKind(v, DateTimeKind.Unspecified), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
+    public DbSet<LoginThrottle> LoginThrottles => Set<LoginThrottle>();
 
     public AuthDbContext(DbContextOptions<AuthDbContext> options) : base(options)
     {
@@ -27,6 +34,20 @@ public class AuthDbContext : IdentityDbContext<ApplicationUser, ApplicationRole,
         builder.Entity<IdentityRoleClaim<Guid>>().ToTable("role_claims", "auth");
         builder.Entity<IdentityUserToken<Guid>>().ToTable("user_tokens", "auth");
         builder.Entity<RefreshToken>().ToTable("refresh_tokens", "auth");
+
+        builder.Entity<LoginThrottle>(e =>
+        {
+            e.ToTable("login_throttles", "auth");
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Address).HasMaxLength(64).IsRequired();
+            // One row per user, kind and address: the unique index is also what makes two first wrong guesses at once safe.
+            e.HasIndex(t => new { t.UserId, t.Kind, t.Address }).IsUnique();
+
+            // Time columns are "timestamp" (no zone) and always UTC, like everywhere else: Npgsql refuses Kind=Utc for them.
+            e.Property(t => t.FirstFailureAt).HasColumnType("timestamp").HasConversion(UtcTimestamp);
+            e.Property(t => t.LockedUntil).HasColumnType("timestamp").HasConversion(UtcTimestamp);
+            e.Property(t => t.UpdatedAt).HasColumnType("timestamp").HasConversion(UtcTimestamp);
+        });
     }
 }
 

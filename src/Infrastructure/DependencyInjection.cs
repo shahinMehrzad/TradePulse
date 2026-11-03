@@ -8,6 +8,7 @@ using Infrastructure.Identity;
 using Domain.Repositories;
 using Infrastructure.Configurations;
 using Infrastructure.Monitoring;
+using Infrastructure.Notifications;
 using Infrastructure.Persistence;
 using Infrastructure.ReadModels;
 using Infrastructure.Repositories;
@@ -105,8 +106,8 @@ public static class DependencyInjection
             {
                 options.Password.RequiredLength = 12;
                 options.User.RequireUniqueEmail = true;
-                options.Lockout.MaxFailedAccessAttempts = 5;
-                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+                // Identity's lockout is only what disables an account (a lockout that never ends). The wrong guesses are not counted by it but
+                // by LoginGuard: per address for passwords, per account for codes, with locks that grow (see LoginThrottlePolicy).
             })
             .AddRoles<ApplicationRole>()
             .AddSignInManager<SignInManager<ApplicationUser>>()
@@ -116,6 +117,20 @@ public static class DependencyInjection
             .AddDefaultTokenProviders();
 
         services.AddScoped<IIdentityService, IdentityService>();
+        services.AddScoped<ILoginThrottle, LoginThrottleService>();
+        // Where a request comes from, for the wrong passwords held against an address; the API replaces this with the visitor's address.
+        services.TryAddScoped<IClientAddress, LocalClientAddress>();
+
+        // Alerts about somebody trying to get in, to a bot of their own. Without its settings they are only written to the audit log.
+        services.Configure<SecurityAlertsOptions>(configuration.GetSection(SecurityAlertsOptions.SectionName));
+        services.AddSingleton<SecurityAlertQueue>();
+        services.AddSingleton<Application.Notifications.ISecurityAlerts>(provider => provider.GetRequiredService<SecurityAlertQueue>());
+        services.AddHttpClient(SecurityAlertDispatcher.HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri("https://api.telegram.org/");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        }).RemoveAllLoggers(); // the bot token is part of the address
+        services.AddHostedService<SecurityAlertDispatcher>();
         services.AddScoped<IUserAdministration, UserAdministration>();
         services.Configure<Notifications.MailOptions>(configuration.GetSection(Notifications.MailOptions.SectionName));
         services.AddSingleton<IMailSender, Notifications.SmtpMailSender>();

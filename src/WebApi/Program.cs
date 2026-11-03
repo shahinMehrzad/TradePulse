@@ -40,7 +40,7 @@ if (builder.Configuration.GetValue("CandleCache:Enabled", true))
 }
 
 builder.Services.AddJwtAuthentication(builder.Configuration);
-builder.Services.AddHostedService<RefreshTokenCleanupService>();
+builder.Services.AddHostedService<AuthCleanupService>();
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddBinanceSymbolCatalog();
@@ -49,6 +49,8 @@ builder.Services.AddCollectorHealthClient();
 // The audit log names the signed-in user; this replaces the collector's default ("system") that the line above registers.
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+// The wrong passwords are held against the visitor's address, not the proxy's (this replaces the command line's default registered above).
+builder.Services.AddScoped<IClientAddress, HttpContextClientAddress>();
 
 // Login is the one anonymous door to the admin account: throttle it per client IP.
 builder.Services.AddRateLimiter(options =>
