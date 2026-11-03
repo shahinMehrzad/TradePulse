@@ -50,6 +50,7 @@ public static class DependencyInjection
         // The config schema (series the admin chose) is read by the worker and written by WebApi, so it lives here, not with auth.
         // ConfigConnection is optional: the schema normally sits in the same database as everything else.
         var configConnectionString = configuration.GetConnectionString("ConfigConnection") ?? connectionString;
+        services.AddSingleton<ITradedSymbolSource>(_ => new TradedSymbolSource(configConnectionString));
         services.AddDbContext<ConfigDbContext>(options =>
             options.UseNpgsql(configConnectionString, npgsqlOptions =>
             {
