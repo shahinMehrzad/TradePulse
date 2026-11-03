@@ -1,6 +1,8 @@
 using Application.Dtos.AuditLog;
 using Application.Dtos.CandleWorkerConfigurations;
 using Application.Interfaces;
+using Application.Research;
+using Application.Research.Watch;
 using Domain.Entities;
 using Infrastructure.Identity;
 using Domain.Repositories;
@@ -10,6 +12,7 @@ using Infrastructure.Persistence;
 using Infrastructure.ReadModels;
 using Infrastructure.Repositories;
 using Infrastructure.Repositories.TimeSeries;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -37,6 +40,10 @@ public static class DependencyInjection
         services.AddScoped<IReadModel<CandleWorkerConfigurationListItem>, CandleWorkerConfigurationReadModel>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IReadModel<AuditLogListItem>, AuditLogReadModel>();
+        services.AddScoped<IMarketEventStore, MarketEventStore>();
+        services.AddScoped<IShockAlertStore, ShockAlertStore>();
+        services.AddScoped<IShockWatchConfigurationRepository, ShockWatchConfigurationRepository>();
+        services.AddScoped<IWatchedSymbolSource, ConfiguredWatchedSymbols>();
 
         // Work without a signed-in user (the collector) is done by "system"; the API registers the user of the request after this.
         services.TryAddScoped<ICurrentUser, SystemUser>();
@@ -44,10 +51,19 @@ public static class DependencyInjection
         // The config schema (series the admin chose) is read by the worker and written by WebApi, so it lives here, not with auth.
         // ConfigConnection is optional: the schema normally sits in the same database as everything else.
         var configConnectionString = configuration.GetConnectionString("ConfigConnection") ?? connectionString;
+        services.AddSingleton<ITradedSymbolSource>(_ => new TradedSymbolSource(configConnectionString));
         services.AddDbContext<ConfigDbContext>(options =>
             options.UseNpgsql(configConnectionString, npgsqlOptions =>
             {
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "config");
+            }));
+
+        // Like ConfigConnection, ResearchConnection is optional: the research schema normally sits in the same database as everything else.
+        var researchConnectionString = configuration.GetConnectionString("ResearchConnection") ?? connectionString;
+        services.AddDbContext<ResearchDbContext>(options =>
+            options.UseNpgsql(researchConnectionString, npgsqlOptions =>
+            {
+                npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "research");
             }));
 
         services.Configure<JwtConfigurations>(configuration.GetSection(nameof(JwtConfigurations)));
@@ -95,6 +111,8 @@ public static class DependencyInjection
             .AddRoles<ApplicationRole>()
             .AddSignInManager<SignInManager<ApplicationUser>>()
             .AddEntityFrameworkStores<AuthDbContext>()
+            // Registered after the EF stores so it replaces their user store: second-factor secrets are not kept as plain text.
+            .AddUserStore<ProtectedUserStore>()
             .AddDefaultTokenProviders();
 
         services.AddScoped<IIdentityService, IdentityService>();
@@ -118,11 +136,18 @@ public static class DependencyInjection
         {
             var context = services.GetRequiredService<AuthDbContext>();
             var contextConfig = services.GetRequiredService<ConfigDbContext>();
+            var contextResearch = services.GetRequiredService<ResearchDbContext>();
             var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
             var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
 
             await context.Database.MigrateAsync();
             await contextConfig.Database.MigrateAsync();
+            await contextResearch.Database.MigrateAsync();
+
+            var converted = await UserTokenProtection.ProtectStoredAsync(context,
+                services.GetRequiredService<IDataProtectionProvider>(), services.GetRequiredService<IPasswordHasher<ApplicationUser>>(), CancellationToken.None);
+            if (converted > 0)
+                Console.WriteLine($"Protected {converted} two-factor secret(s) that were stored as plain text.");
 
             string? adminRoleName = configuration["AdminConfigurations:Role"];
             if (string.IsNullOrEmpty(adminRoleName))

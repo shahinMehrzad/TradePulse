@@ -16,7 +16,10 @@ public sealed class TradingOptions
     /// <summary>Stops every opening order of every user (closing, reduce-only, orders still go through). Needs a restart to change.</summary>
     public bool Halted { get; set; }
 
-    /// <summary>Exchange names of the symbols that may be traded, e.g. <c>BTCUSDT</c>.</summary>
+    /// <summary>
+    /// Exchange names of the symbols that may ever be traded, e.g. <c>BTCUSDT</c>: the ceiling the owner of the server sets. The panel
+    /// chooses among these which are enabled for trading (<c>vault.trading_symbols</c>), and can never go beyond them.
+    /// </summary>
     public string[] AllowedSymbols { get; set; } = ["BTCUSDT", "ETHUSDT"];
 
     /// <summary>The largest single opening order, in USDT (quantity x mark price).</summary>

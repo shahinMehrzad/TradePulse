@@ -34,7 +34,8 @@ public class GetMarketDataSupportQueryHandlerTests
             futures["OpenInterest"].TimeFrameIds);
         Assert.Null(futures["FundingRate"].TimeFrameIds);
         Assert.Null(futures["Liquidation"].TimeFrameIds);
-        Assert.Equal(Enum.GetValues<TimeFrameEnum>().Select(t => (int)t), futures["Candle"].TimeFrameIds);
+        // Binance Futures klines start at 1 minute; the 1 second interval is refused there.
+        Assert.Equal(Enum.GetValues<TimeFrameEnum>().Where(t => t != TimeFrameEnum._1S).Select(t => (int)t), futures["Candle"].TimeFrameIds);
     }
 
     [Fact]

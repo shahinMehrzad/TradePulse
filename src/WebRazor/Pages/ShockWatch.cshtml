@@ -1,0 +1,207 @@
+@page
+@model ShockWatchModel
+@{
+    ViewData["Title"] = "Price watch";
+}
+
+<div class="alert alert-info" role="alert">
+    @* An alert is a flex row in this theme: without one wrapper, every piece of text and the link become columns of their own. *@
+    <div>
+        The watch follows the live trades of the symbols below and sends a message (the watch's own Telegram bot, and email if set) within seconds when the price moves far more than it usually does.
+        It says what happened, never what to do or what comes next.
+        <strong>Every symbol enabled for trading is watched on its own</strong> (<a asp-page="/Trading">Trading</a>). You can switch the watch of one off, on your own responsibility.
+        You can also add a symbol by hand to study it before you trade it.
+        This list is apart from what the collector collects: a symbol can be collected for months and never watched, so you are only told about the ones you choose.
+        The watch looks at this list every 30 seconds, so a change applies within about half a minute, without a restart.
+        A symbol added by hand needs its 1 minute candles to be collected (<a asp-page="/Series">Collector series</a>): the watch starts from them. Without them it would sit silent for an hour after every start, and it tells you so.
+    </div>
+</div>
+
+@if (Model.Saved is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.Saved</div>
+}
+@if (Model.Errors.Count > 0)
+{
+    <div class="alert alert-danger" role="alert">
+        <ul class="mb-0">
+            @foreach (var error in Model.Errors)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="row row-cards">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Symbols on the list (@Model.Items.Count, @Model.WatchedCount watched)</h3>
+            </div>
+            @if (Model.Items.Count == 0)
+            {
+                <div class="card-body text-secondary">No symbol is watched yet. Enable one for trading, or add the first one on the right.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table card-table table-vcenter">
+                        <thead>
+                            <tr><th>Exchange</th><th>Market</th><th>Symbol</th><th>Why it is here</th><th>Watch</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in Model.Items)
+                            {
+                                var automatic = item.Id == 0;
+                                <tr>
+                                    <td>@Model.ExchangeName(item.ExchangeId)</td>
+                                    <td><span class="badge @(Model.MarketName(item.MarketId) == "Futures" ? "bg-purple-lt" : "bg-blue-lt")">@Model.MarketName(item.MarketId)</span></td>
+                                    <td class="fw-bold">@item.ExchangeSymbol</td>
+                                    <td>
+                                        @if (item.Reason == "Trading")
+                                        {
+                                            @if (item.IsTradedNow)
+                                            {
+                                                <span class="badge bg-orange-lt">Enabled for trading</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary-lt" title="The symbol was enabled for trading when you switched its watch off. It is not any more, so the watch would not follow it anyway.">No longer traded</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-lt">Added by hand</span>
+                                            @if (item.IsTradedNow)
+                                            {
+                                                <span class="badge bg-orange-lt">Enabled for trading</span>
+                                            }
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (item.IsEnabled)
+                                        {
+                                            <span class="badge bg-green-lt">On</span>
+                                            @if (automatic)
+                                            {
+                                                <span class="text-secondary small ms-1">automatic</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-lt">Off</span>
+                                            @if (item.Reason == "Trading" && item.IsTradedNow)
+                                            {
+                                                <div class="text-warning small">Switched off by you while it is traded</div>
+                                            }
+                                        }
+                                        @if (!item.HasMinuteCandles)
+                                        {
+                                            <div class="text-warning small" title="The watch starts from the last hour of 1 minute candles. Without them it is silent for an hour after every start, and it sends a message saying so.">1 minute candles are not collected</div>
+                                        }
+                                    </td>
+                                    <td class="text-nowrap text-end">
+                                        @if (automatic)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#off-@item.SymbolListingId">Switch off</button>
+                                        }
+                                        else
+                                        {
+                                            <form method="post" asp-page-handler="Switch" asp-route-id="@item.Id" asp-route-enabled="@(!item.IsEnabled)" class="d-inline">
+                                                <button type="submit" class="btn btn-sm @(item.IsEnabled ? "btn-outline-secondary" : "btn-outline-primary")">@(item.IsEnabled ? "Switch off" : "Switch on")</button>
+                                            </form>
+                                            @if (item.Reason != "Trading")
+                                            {
+                                                <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-@item.Id">Remove</button>
+                                            }
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @foreach (var item in Model.Items.Where(i => i.Id == 0))
+                {
+                <div class="modal modal-blur fade text-start" id="off-@item.SymbolListingId" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-sm modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-body">
+                                <div class="modal-title">Switch off the watch of @item.ExchangeSymbol?</div>
+                                <div class="text-secondary">
+                                    This symbol is enabled for trading. With its watch off, you will not be told when its price moves suddenly.
+                                    That is your decision and your responsibility. It stays off until you switch it on here again.
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
+                                <form method="post" asp-page-handler="SwitchOffTraded" asp-route-listingId="@item.SymbolListingId">
+                                    <button type="submit" class="btn btn-warning">Switch off</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                }
+                @foreach (var item in Model.Items.Where(i => i.Id != 0 && i.Reason != "Trading"))
+                {
+                <div class="modal modal-blur fade text-start" id="delete-@item.Id" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-sm modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-body">
+                                <div class="modal-title">Take this symbol off the list?</div>
+                                <div class="text-secondary">
+                                    @item.ExchangeSymbol, @Model.MarketName(item.MarketId).
+                                    The watch stops following it@(item.IsTradedNow ? ", unless it is enabled for trading, in which case it is watched on its own again" : ""). Its candles keep being collected, and the alerts it already sent stay in the history.
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
+                                <form method="post" asp-page-handler="Delete" asp-route-id="@item.Id">
+                                    <button type="submit" class="btn btn-danger">Remove</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Watch a symbol to study it</h3>
+            </div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="Add" autocomplete="off">
+                    <div class="mb-3">
+                        <label asp-for="Input.ExchangeId" class="form-label">Exchange</label>
+                        <select asp-for="Input.ExchangeId" asp-items="Model.ExchangeItems" class="form-select">
+                            <option value="0">Select...</option>
+                        </select>
+                        <span asp-validation-for="Input.ExchangeId" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.MarketId" class="form-label">Market</label>
+                        <select asp-for="Input.MarketId" asp-items="Model.MarketItems" class="form-select">
+                            <option value="0">Select...</option>
+                        </select>
+                        <span asp-validation-for="Input.MarketId" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Input.SymbolId" class="form-label">Symbol</label>
+                        <select asp-for="Input.SymbolId" asp-items="Model.SymbolItems" class="form-select">
+                            <option value="0">Select...</option>
+                        </select>
+                        <span asp-validation-for="Input.SymbolId" class="text-danger"></span>
+                        <div class="form-hint mt-1">The 1 minute candles of this symbol on this market must be collected first. Symbols enabled for trading do not need to be added: they are watched on their own.</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Add to the watch list</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

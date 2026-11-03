@@ -14,7 +14,7 @@ internal sealed class FakeCandleWorkerConfigurationRepository : ICandleWorkerCon
         throw new NotSupportedException();
 
     public Task<CandleWorkerConfiguration?> GetConfiguration(int symbolListingId, int timeFrameId, CancellationToken cancellationToken) =>
-        throw new NotSupportedException();
+        Task.FromResult(Configurations.FirstOrDefault(c => c.SymbolListingId == symbolListingId && c.TimeFrameId == timeFrameId));
 
     public Task<int> AddNewCandleWorkerConfiguration(CandleWorkerConfiguration configuration, CancellationToken cancellationToken) =>
         throw new NotSupportedException();

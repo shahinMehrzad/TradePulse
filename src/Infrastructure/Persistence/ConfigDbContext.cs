@@ -26,6 +26,7 @@ public class ConfigDbContext : DbContext
     public DbSet<TimeFrameLookup> TimeFrames => Set<TimeFrameLookup>();
     public DbSet<CandleWorkerConfiguration> CandleWorkerConfigurations => Set<CandleWorkerConfiguration>();
     public DbSet<SymbolDataConfiguration> SymbolDataConfigurations => Set<SymbolDataConfiguration>();
+    public DbSet<ShockWatchConfiguration> ShockWatchConfigurations => Set<ShockWatchConfiguration>();
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -115,6 +116,23 @@ public class ConfigDbContext : DbContext
 
             e.Property(x => x.CollectFundingRate).HasDefaultValue(false);
             e.Property(x => x.CollectLiquidation).HasDefaultValue(false);
+
+            // A listing with a setting must never silently disappear.
+            e.HasOne(x => x.SymbolListing).WithMany().HasForeignKey(x => x.SymbolListingId).OnDelete(DeleteBehavior.Restrict);
+
+            // One row per symbol of an exchange market.
+            e.HasIndex(x => x.SymbolListingId).IsUnique();
+        });
+
+        // The symbols the live watch follows. Apart from the collection settings on purpose: a symbol can be collected for months and never watched.
+        builder.Entity<ShockWatchConfiguration>(e =>
+        {
+            e.ToTable("shock_watch_configurations", "config");
+
+            // Time columns are timestamp (no zone), always UTC.
+            e.Property(x => x.CreateDate).HasColumnType("timestamp").HasDefaultValueSql("now() at time zone 'utc'");
+
+            e.Property(x => x.Reason).HasConversion<int>();
 
             // A listing with a setting must never silently disappear.
             e.HasOne(x => x.SymbolListing).WithMany().HasForeignKey(x => x.SymbolListingId).OnDelete(DeleteBehavior.Restrict);

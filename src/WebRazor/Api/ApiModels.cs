@@ -139,6 +139,19 @@ public record SymbolDataSetting(
 public record SymbolDataRequest(
     int ExchangeId, int MarketId, int SymbolId, bool CollectFundingRate, DateTime? FundingStartDate, bool CollectLiquidation);
 
+/// <summary>
+/// One symbol of the watch list (the live watch that tells the admin about a sudden price move). <c>Reason</c> is <c>Manual</c> (added by
+/// hand, to study it) or <c>Trading</c> (it is enabled for trading, so it is watched on its own); <c>IsEnabled</c> is the watch switch;
+/// <c>IsTradedNow</c> says whether the symbol is enabled for trading right now; <c>HasMinuteCandles</c> says whether the 1 minute
+/// candles the watch starts from are being collected. <c>Id</c> 0 is a traded symbol that has no row (nothing was changed by the admin).
+/// </summary>
+public record ShockWatchItem(
+    int Id, int SymbolListingId, int ExchangeId, int MarketId, int SymbolId, string ExchangeSymbol,
+    string Reason, bool IsEnabled, bool IsTradedNow, bool HasMinuteCandles, DateTime? CreateDate);
+
+/// <summary>A symbol the server allows for trading, and whether an administrator has enabled it.</summary>
+public record TradingSymbol(string Symbol, bool Enabled);
+
 /// <summary>The dashboard's answer: one card per exchange market symbol (names are lowercase, as in the candle routes).</summary>
 public record DashboardResponse(DateTime GeneratedAt, IReadOnlyList<DashboardCard> Items);
 

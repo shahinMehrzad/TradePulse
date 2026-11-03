@@ -26,6 +26,7 @@ public static class BinanceExchangeRegistration
 
         services.AddSingleton<ILiveCandleStream, BinanceLiveCandleStream>();
         services.AddSingleton<ILiquidationStream, BinanceLiquidationStream>();
+        services.AddSingleton<ILiveTradeStream, BinanceTradeStream>();
 
         services.AddSingleton<IExchangeProbe, BinanceExchangeProbe>();
 

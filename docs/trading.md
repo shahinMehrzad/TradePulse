@@ -20,11 +20,22 @@ in `deploy/.env` and restarts the `trader` service.
 | `TRADING_ALLOW_LIVE` | `false` | Live keys may trade. |
 | `TRADING_MAX_ORDER_USD` | `100` | The largest single opening order (quantity x mark price, USDT). |
 | `TRADING_MAX_DAILY_USD` | `500` | The most one user may open per UTC day. Orders Binance refused do not count; orders whose result is unknown do. |
-| `TRADING_SYMBOL_1`, `_2` | `BTCUSDT`, `ETHUSDT` | The symbols that may be traded. |
+| `TRADING_SYMBOL_1`, `_2` | `BTCUSDT`, `ETHUSDT` | The symbols that may **ever** be traded: the ceiling. The panel chooses among them which are enabled (below); it cannot add one. |
 | `TRADING_HALTED` | `false` | Stops every new position for every user. |
 
 An order whose size cannot be checked (no price from Binance) is not sent. The daily budget is reserved in the database *before* Binance is asked, in one
 statement, so two orders at the same moment cannot both fit and a crash in between cannot lose the spending.
+
+## Which symbols are enabled
+
+The server's symbol list above is a ceiling. Inside it, an administrator **enables** the symbols that may be traded, and a symbol nobody has enabled cannot
+be opened (it is opt-in: a new symbol on the server's list is not traded until somebody chooses it, and after an update nothing is open until it is chosen).
+
+- `GET /trading/symbols` lists the server's symbols and whether each is enabled. `POST /trading/symbols/{symbol}/enable` asks for a **second-factor code entered in
+  the last 10 minutes**; `POST /trading/symbols/{symbol}/disable` is one click, like the halt. A symbol outside the server's list is refused (`422`), whatever the code.
+- Closing never needs it: an order that only reduces a position still goes through for a symbol that has been switched off, so a position cannot be locked in.
+- Every choice is written to the audit log (who, which symbol, enabled or disabled). The choice is the same for every administrator; it is kept in `vault.trading_symbols`.
+- The live price watch follows the enabled symbols automatically (see [research.md](research.md)); an administrator can switch the watch of one off on their own responsibility.
 
 ## Halt (kill switch)
 

@@ -43,6 +43,10 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
 - **Real client addresses.** Caddy passes the visitor's address on; the panel passes it to the API, which counts the login rate limit
   (`RateLimiting:LoginPermitsPerMinute`, per client) by it. The programs believe `X-Forwarded-For` only from a private network, never from the internet.
 - **Keys of data protection** live in the volumes `api-keys` and `panel-keys`. Do not delete them with `down -v` unless you want everyone signed out.
+  The keys in `api-keys` also encrypt every user's authenticator key in the database (the recovery codes are stored as hashes). Without
+  those keys nobody can sign in with their authenticator app. Each user then needs a two-factor reset by another administrator, or
+  `reset-access` for the last one. Keep a copy of the `api-keys` volume next to the database backups, but not in the same place: a
+  database dump is only useless to a thief while it is stored apart from these keys.
 - **Even safer.** The panel can place real trades, so consider not exposing it to everyone: keep `--profile public` off and reach
   `127.0.0.1:8088` through a VPN or an SSH tunnel (`ssh -L 8088:127.0.0.1:8088 server`). Then HTTPS and a domain are not needed for the admins.
 

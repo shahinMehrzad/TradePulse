@@ -369,6 +369,49 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await ToResultAsync(response, NotFoundSymbolData, cancellationToken);
     }
 
+    private const string ShockWatchRoot = "api/admin/shock-watch";
+    private const string NotFoundShockWatch = "That symbol is not on the watch list (anymore). Reload the page.";
+
+    /// <returns>The watch list, or null when the session is no longer accepted by the API.</returns>
+    public async Task<IReadOnlyList<ShockWatchItem>?> GetShockWatchAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync(ShockWatchRoot, cancellationToken);
+        if (IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<ShockWatchItem>>(cancellationToken) ?? [];
+    }
+
+    public async Task<ApiResult> AddShockWatchAsync(int exchangeId, int marketId, int symbolId, CancellationToken cancellationToken)
+    {
+        var (listingId, failure) = await ResolveListingAsync(exchangeId, marketId, symbolId, cancellationToken);
+        if (failure is not null)
+            return failure;
+
+        using var response = await http.PostAsJsonAsync(ShockWatchRoot, new { symbolListingId = listingId }, cancellationToken);
+        return await ToResultAsync(response, NotFoundShockWatch, cancellationToken);
+    }
+
+    public async Task<ApiResult> SetShockWatchEnabledAsync(int id, bool enabled, CancellationToken cancellationToken)
+    {
+        using var response = await http.PutAsJsonAsync($"{ShockWatchRoot}/{id}/enabled", new { enabled }, cancellationToken);
+        return await ToResultAsync(response, NotFoundShockWatch, cancellationToken);
+    }
+
+    /// <summary>Turns off the automatic watch of a symbol that is enabled for trading (the admin's own decision; remembered).</summary>
+    public async Task<ApiResult> SwitchOffTradedWatchAsync(int symbolListingId, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{ShockWatchRoot}/traded/{symbolListingId}/off", content: null, cancellationToken);
+        return await ToResultAsync(response, NotFoundShockWatch, cancellationToken);
+    }
+
+    public async Task<ApiResult> DeleteShockWatchAsync(int id, CancellationToken cancellationToken)
+    {
+        using var response = await http.DeleteAsync($"{ShockWatchRoot}/{id}", cancellationToken);
+        return await ToResultAsync(response, NotFoundShockWatch, cancellationToken);
+    }
+
     private const string UsersRoot = "api/admin/users";
 
     /// <returns>The signed-in user's own account, or null when the session is no longer accepted by the API.</returns>

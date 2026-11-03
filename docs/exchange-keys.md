@@ -17,6 +17,9 @@ On **Exchange keys** (asks for a second-factor code first):
 
 The user never types or sees a secret. The private half is made inside the vault and never leaves it.
 
+**One key, one purpose.** Binance's API Key Terms (clause 4a) ask for a key to be used for a single application. Make a key pair here only for the
+vault and the trading service; do not reuse it in another program, and do not reuse a key of another program here.
+
 ## What the vault checks before it accepts a key
 
 Two read-only calls, both signed with the key:
@@ -44,6 +47,16 @@ Not protected against: somebody with a shell **on the server** and the vault's e
 key must be a secret of its own, the server's access must be small, and the keys must be restricted to the server's IP at Binance: a stolen key is then
 useless from anywhere else.
 
+## If a key may have leaked
+
+Binance's terms (clause 2.3) make the holder responsible for reporting a lost or misused key at once. In this order:
+
+1. **Stop trading**: use the halt switch (see [trading.md](trading.md)).
+2. **Delete the key at Binance** (*API Management → Delete*). This is the step that actually closes the door.
+3. **Delete the key in the panel** (needs a fresh second-factor code), and make a new pair if trading should go on.
+4. If the master key or the server may be exposed, treat every stored key as leaked: do 2 and 3 for all of them, then change `VAULT_MASTER_KEY`.
+5. Look at the audit log (entity `ExchangeKey`) and at Binance's order and trade history for anything nobody asked for.
+
 ## Setting it up
 
 - `VAULT_MASTER_KEY` in `deploy/.env`: `openssl rand -base64 32`. **Keep a copy somewhere that is not the server.** Without it every stored key is lost
@@ -58,10 +71,19 @@ useless from anywhere else.
 
 A key is made for **Demo** or **Live**, for good. Trading with the keys, the limits and the halt switch are in [trading.md](trading.md).
 
+## Binance's terms
+
+The design follows Binance's *API Key Terms* (version 2.0, effective 9 July 2026): IP whitelist (4d), no unneeded permissions (4b), RSA keys (4h), no keys
+in source (4e), keys not shared with third parties (4g). The terms are the holder's responsibility and Binance may change them without notice (clause 10),
+so they should be read again from time to time. **Last read: 2026-11-01.** Two clauses are about where and for whom the program runs, not about code:
+the platform may not be reached from a country on Binance's list of prohibited countries (9.3), and taking fees for trading with other people's keys
+would make the operator an order management system provider (2.6). Neither is checked by the program.
+
 ## Honest limits
 
-- **Not tried against the real Binance.** The signing and the checks are tested against a stand-in that verifies the signature with the public key the way
-  Binance documents it (RSASSA-PKCS1-v1_5, SHA-256, base64, URL-encoded). Binance's documentation does not say whether `apiRestrictions` answers for
-  self-generated keys, nor how the Demo environment behaves. **The first real run must be watched.**
+- **Tried against the real Binance (Live and Demo, 2026-11-01).** A self-generated RSA key was accepted: the signature verified, and `apiRestrictions`
+  answers for self-generated keys (withdrawals and transfers off, IP restriction on, futures on), so the key became Active. A Demo key was accepted the same day:
+  Binance answered to the signature (Demo has no permission check). The signing and the checks are also tested against a stand-in that verifies the signature with the public key the way Binance
+  documents it (RSASSA-PKCS1-v1_5, SHA-256, base64, URL-encoded). Pasting the public key into Binance needs the whole PEM, with the BEGIN and END lines.
 - **RSA, not Ed25519.** Ed25519 is documented for Binance's WebSocket API and for Spot, not for Futures REST. The vault is written so that another key
   type is one more `KeyAlgorithm` and signer once Binance documents it (and `tools/binance-key-check` can test it).
