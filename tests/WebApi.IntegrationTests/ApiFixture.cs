@@ -115,6 +115,8 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<IMailSender>();
             services.AddSingleton<IMailSender>(Mail);
+            services.RemoveAll<ITwoFactorReplayGuard>();
+            services.AddSingleton<ITwoFactorReplayGuard, AnyCodeAnyNumberOfTimes>();
             services.RemoveAll<Application.Notifications.ISecurityAlerts>();
             services.AddSingleton<Application.Notifications.ISecurityAlerts>(Alerts);
         });

@@ -72,7 +72,10 @@ public static class JwtAuthenticationExtensions
         if (string.IsNullOrWhiteSpace(adminRole))
             throw new InvalidOperationException("AdminConfigurations:Role must be set; the admin policy has nothing to match without it.");
 
+        // Anything that does not say who may use it needs a signed-in user: a new endpoint cannot go live open by forgetting an attribute. What is open
+        // says so ([AllowAnonymous]), and a test pins the list.
         services.AddAuthorizationBuilder()
+            .SetFallbackPolicy(new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
             .AddPolicy(AdminPolicy, policy => policy.RequireAuthenticatedUser().RequireRole(adminRole));
 
         return services;
