@@ -83,6 +83,17 @@ public class ShockAlertMessageTests
     }
 
     [Fact]
+    public void TheWarmUpMessageSaysWhichSymbolHowLongAndWhatToDoAboutIt()
+    {
+        var message = ShockAlertMessage.WarmingUp("ETHUSDT", TimeSpan.FromSeconds(3600));
+
+        Assert.Equal("Watch is warming up: ETHUSDT", message.Title);
+        Assert.Contains("ETHUSDT", message.Body);
+        Assert.Contains("60 minutes", message.Body);
+        Assert.Contains("Collect its 1 minute candles", message.Body);
+    }
+
+    [Fact]
     public void AMessageAboutTheWatchItselfSaysWhatWasNotSeen()
     {
         var blind = ShockAlertMessage.Blind("BTCUSDT, ETHUSDT", TimeSpan.FromSeconds(20));

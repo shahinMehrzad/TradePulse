@@ -41,6 +41,8 @@ public static class DependencyInjection
         services.AddScoped<IReadModel<AuditLogListItem>, AuditLogReadModel>();
         services.AddScoped<IMarketEventStore, MarketEventStore>();
         services.AddScoped<IShockAlertStore, ShockAlertStore>();
+        services.AddScoped<IShockWatchConfigurationRepository, ShockWatchConfigurationRepository>();
+        services.AddScoped<IWatchedSymbolSource, ConfiguredWatchedSymbols>();
 
         // Work without a signed-in user (the collector) is done by "system"; the API registers the user of the request after this.
         services.TryAddScoped<ICurrentUser, SystemUser>();

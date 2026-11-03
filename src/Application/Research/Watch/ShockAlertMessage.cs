@@ -41,6 +41,14 @@ public static class ShockAlertMessage
         new("Watch is blind", string.Create(CultureInfo.InvariantCulture,
             $"No trades from the exchange for {offlineFor.TotalSeconds:0} s ({symbols}). Quiet now does not mean a calm market."));
 
+    /// <summary>
+    /// The symbol has no recent 1 minute candles to start from, so for a while the watch only listens. Without this message that time
+    /// would look like a calm market.
+    /// </summary>
+    public static Alert WarmingUp(string symbol, TimeSpan silentFor) =>
+        new($"Watch is warming up: {symbol}", string.Create(CultureInfo.InvariantCulture,
+            $"There are no recent 1 minute candles of {symbol} to start from, so the watch cannot judge it for about {silentFor.TotalMinutes:0} minutes and will say nothing until then. Collect its 1 minute candles to start at once."));
+
     public static Alert Restored(string symbols, TimeSpan offlineFor) =>
         new("Watch sees the market again", string.Create(CultureInfo.InvariantCulture,
             $"The trade stream is back after {offlineFor.TotalSeconds:0} s ({symbols}). Moves during that time were not seen."));

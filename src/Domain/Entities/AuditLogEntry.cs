@@ -13,6 +13,9 @@ public static class AuditEntityTypes
     public const string CandleSeries = "CandleSeries";
     public const string SymbolData = "SymbolData";
 
+    /// <summary>A symbol on the list of the live watch (see <see cref="ShockWatchConfiguration"/>).</summary>
+    public const string ShockWatch = "ShockWatch";
+
     /// <summary>A panel account. Users have a Guid, not an int id, so these entries carry <c>EntityId</c> 0 and name the user in the summary.</summary>
     public const string User = "User";
 

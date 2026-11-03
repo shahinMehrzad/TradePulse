@@ -12,7 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 // Run-and-exit analysis of the stored market data (not a service):
 //   dotnet run --project src/Research -- detect --symbol BTCUSDT --from 2026-01-01 [--to 2026-11-01]
 //   dotnet run --project src/Research -- list   --symbol BTCUSDT --from 2026-01-01 [--to 2026-11-01]
-//   dotnet run --project src/Research -- watch  --symbols BTCUSDT[,ETHUSDT] [--market futures|spot]   (runs until Ctrl+C)
+//   dotnet run --project src/Research -- watch  [--symbols BTCUSDT[,ETHUSDT] [--market futures|spot]]   (runs until Ctrl+C; without --symbols it follows the panel list)
 // Connection strings come from user secrets or the environment (ConnectionStrings__DefaultConnection), like the other programs.
 // Only Binance Futures is looked at for now.
 
@@ -22,7 +22,7 @@ if (args is ["watch", ..var watchArgs])
 if (args is not [("detect" or "list") and var command, ..var options])
 {
     Console.Error.WriteLine("Usage: Research <detect|list> --symbol BTCUSDT --from yyyy-MM-dd [--to yyyy-MM-dd]");
-    Console.Error.WriteLine("       Research watch --symbols BTCUSDT[,ETHUSDT] [--market futures|spot]");
+    Console.Error.WriteLine("       Research watch [--symbols BTCUSDT[,ETHUSDT] [--market futures|spot]]");
     return 2;
 }
 

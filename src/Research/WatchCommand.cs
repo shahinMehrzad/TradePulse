@@ -15,8 +15,13 @@ using Microsoft.Extensions.Logging;
 namespace Research;
 
 /// <summary>
-/// <c>watch --symbols BTCUSDT[,ETHUSDT] [--market futures|spot]</c>: follows the live trades and tells the admin about sudden moves.
-/// Runs until Ctrl+C. It is its own process, apart from the collector, so nothing it does can slow the collector down.
+/// <c>watch</c>: follows the live trades and tells the admin about sudden moves. Runs until Ctrl+C. It is its own process, apart from
+/// the collector, so nothing it does can slow the collector down.
+/// <para>
+/// Which symbols: the ones switched on in the admin panel (the watch list in the database), looked at again every 30 seconds, so
+/// the admin changes them without restarting anything. <c>--symbols BTCUSDT[,ETHUSDT] [--market futures|spot]</c> gives a fixed list
+/// instead, for trying it out by hand; the panel's list is then not read.
+/// </para>
 /// <para>
 /// Settings (user secrets or environment, never appsettings): the rule under <c>Watch:Rule</c> (every field of
 /// <see cref="ShockWatchOptions"/>), the alert channels under <c>Watch:Alerts</c> with the same shape as the collector's
@@ -26,7 +31,7 @@ namespace Research;
 /// </summary>
 internal static class WatchCommand
 {
-    private const string Usage = "Usage: Research watch --symbols BTCUSDT[,ETHUSDT] [--market futures|spot]";
+    private const string Usage = "Usage: Research watch [--symbols BTCUSDT[,ETHUSDT] [--market futures|spot]]";
 
     public static async Task<int> RunAsync(string[] args)
     {
@@ -34,8 +39,9 @@ internal static class WatchCommand
         for (var i = 0; i + 1 < args.Length; i += 2)
             values[args[i].TrimStart('-')] = args[i + 1];
 
+        // Without --symbols the list is the panel's. A --symbols with nothing in it is a mistake, not "the panel's list".
         var names = values.GetValueOrDefault("symbols")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (names is not { Length: > 0 })
+        if (args.Length % 2 != 0 || (values.ContainsKey("symbols") && names is not { Length: > 0 }))
         {
             Console.Error.WriteLine(Usage);
             return 2;
@@ -89,34 +95,47 @@ internal static class WatchCommand
             cancellation.Cancel();
         };
 
-        var listings = await scope.ServiceProvider.GetRequiredService<ISymbolCatalogRepository>().GetListings(cancellation.Token);
-        var watched = new List<WatchedSymbol>();
-        foreach (var name in names)
+        IWatchedSymbolSource source;
+        string following;
+        if (names is { Length: > 0 })
         {
-            var listing = listings.FirstOrDefault(l =>
-                l.ExchangeId == (int)ExchangeEnum.Binance && l.MarketId == (int)market
-                && string.Equals(l.ExchangeSymbol, name, StringComparison.OrdinalIgnoreCase));
-            if (listing is null)
+            var listings = await scope.ServiceProvider.GetRequiredService<ISymbolCatalogRepository>().GetListings(cancellation.Token);
+            var watched = new List<WatchedSymbol>();
+            foreach (var name in names)
             {
-                Console.Error.WriteLine($"{name} is not listed on Binance {market}.");
-                return 1;
+                var listing = listings.FirstOrDefault(l =>
+                    l.ExchangeId == (int)ExchangeEnum.Binance && l.MarketId == (int)market
+                    && string.Equals(l.ExchangeSymbol, name, StringComparison.OrdinalIgnoreCase));
+                if (listing is null)
+                {
+                    Console.Error.WriteLine($"{name} is not listed on Binance {market}.");
+                    return 1;
+                }
+
+                watched.Add(new WatchedSymbol(ExchangeEnum.Binance, market.Value, listing.Id, new ExchangeSymbol(listing.ExchangeSymbol)));
             }
 
-            watched.Add(new WatchedSymbol(ExchangeEnum.Binance, market.Value, listing.Id, new ExchangeSymbol(listing.ExchangeSymbol)));
+            source = new FixedWatchedSymbols(watched);
+            following = $"{string.Join(", ", watched.Select(w => w.Symbol.Value))} on Binance {market} (fixed list)";
+        }
+        else
+        {
+            source = scope.ServiceProvider.GetRequiredService<IWatchedSymbolSource>();
+            following = "the symbols switched on in the admin panel (looked at again every 30 s)";
         }
 
-        await TellStartedAsync(scope.ServiceProvider.GetServices<INotifier>(), watched, market.Value, rule);
+        await TellStartedAsync(scope.ServiceProvider.GetServices<INotifier>(), following, rule);
 
-        await scope.ServiceProvider.GetRequiredService<ShockWatcher>().RunAsync(watched, cancellation.Token);
+        await scope.ServiceProvider.GetRequiredService<ShockWatcher>().RunAsync(source, cancellation.Token);
         return 0;
     }
 
     /// <summary>One message when the watch starts, so the admin sees restarts too. A channel that fails is skipped.</summary>
-    private static async Task TellStartedAsync(IEnumerable<INotifier> notifiers, IReadOnlyList<WatchedSymbol> watched, MarketTypeEnum market, ShockWatchOptions rule)
+    private static async Task TellStartedAsync(IEnumerable<INotifier> notifiers, string following, ShockWatchOptions rule)
     {
         var culture = CultureInfo.InvariantCulture;
         var message = new Alert("Watch started", string.Join(Environment.NewLine,
-            $"{string.Join(", ", watched.Select(w => w.Symbol.Value))} on Binance {market}",
+            following,
             string.Create(culture, $"Attention: {rule.AttentionMove:P2} in {rule.WindowSeconds} s, alarm: {rule.AlarmMove:P2}, z >= {rule.MinZScore}"),
             $"Rule: {rule.Version}"));
 
