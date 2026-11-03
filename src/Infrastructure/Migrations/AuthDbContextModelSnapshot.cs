@@ -89,6 +89,9 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("UserAgent")
                         .IsRequired()
                         .HasColumnType("text");
@@ -99,6 +102,33 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("refresh_tokens", "auth");
+                });
+
+            modelBuilder.Entity("Domain.Entities.UsedTwoFactorCode", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("UsedAt")
+                        .HasColumnType("timestamp");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CodeHash")
+                        .IsUnique();
+
+                    b.ToTable("used_two_factor_codes", "auth");
                 });
 
             modelBuilder.Entity("Infrastructure.Persistence.ApplicationRole", b =>

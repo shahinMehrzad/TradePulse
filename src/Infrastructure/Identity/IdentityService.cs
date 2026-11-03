@@ -10,9 +10,12 @@ namespace Infrastructure.Identity;
 /// time for the whole account, which lets anybody who knows a user name keep that user out): <see cref="LoginGuard"/> does it, per address for
 /// passwords and per account for codes, with locks that grow. "Locked out" of Identity is left for what it is used for here: a disabled account.
 /// </summary>
-public sealed class IdentityService(UserManager<ApplicationUser> userManager, LoginGuard guard) : IIdentityService
+public sealed class IdentityService(UserManager<ApplicationUser> userManager, LoginGuard guard, ITwoFactorReplayGuard replay) : IIdentityService
 {
     private enum PasswordCheck { Ok, Wrong, Locked }
+
+    /// <summary>A hash made once with the same hasher as the real ones, so that comparing against it costs the same time.</summary>
+    private static string? _timeSpender;
 
     private const string Issuer = "TradePulse";
     private const int RecoveryCodeCount = 10;
@@ -21,7 +24,12 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Lo
     {
         var user = await userManager.FindByEmailAsync(email) ?? await userManager.FindByNameAsync(username);
         if (user is null)
+        {
+            // Without this a user that does not exist is answered in a fraction of the time a wrong password takes (no hash to compare),
+            // and the time alone says which names exist.
+            SpendTheTimeOfAHash(password);
             return new CredentialsResult(CredentialsOutcome.Invalid);
+        }
 
         return await CheckPasswordAsync(user, password, cancellationToken) switch
         {
@@ -54,6 +62,11 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Lo
             TwoFactorMethod.Email => await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider, Normalize(code)),
             _ => await userManager.VerifyTwoFactorTokenAsync(user, userManager.Options.Tokens.AuthenticatorTokenProvider, Normalize(code))
         };
+
+        // The codes of the app and of the mail stay valid for a minute or two and Identity lets them be used over and over in that time: here a
+        // code works once. (A recovery code is used up by being used.) A repeated one is neither a success nor a wrong guess.
+        if (valid && method != TwoFactorMethod.Recovery && !await replay.TryUseAsync(user.Id, Normalize(code), cancellationToken))
+            return TwoFactorOutcome.AlreadyUsed;
 
         return await CountAsync(user, valid, cancellationToken);
     }
@@ -185,6 +198,13 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Lo
             : TwoFactorOutcome.Invalid;
     }
 
+    private void SpendTheTimeOfAHash(string password)
+    {
+        var dummy = new ApplicationUser();
+        _timeSpender ??= userManager.PasswordHasher.HashPassword(dummy, Guid.NewGuid().ToString("N"));
+        userManager.PasswordHasher.VerifyHashedPassword(dummy, _timeSpender, password);
+    }
+
     /// <summary>No code is taken while the account is disabled or locked for wrong codes.</summary>
     private async Task<bool> TwoFactorClosedAsync(ApplicationUser user, CancellationToken cancellationToken) =>
         await userManager.IsLockedOutAsync(user) || await guard.TwoFactorLockedAsync(user.Id, cancellationToken);
@@ -196,7 +216,10 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Lo
     private async Task<PasswordCheck> CheckPasswordAsync(ApplicationUser user, string password, CancellationToken cancellationToken)
     {
         if (await userManager.IsLockedOutAsync(user) || await guard.PasswordLockedAsync(user.Id, cancellationToken))
+        {
+            SpendTheTimeOfAHash(password);   // a locked answer must not come faster than a wrong one
             return PasswordCheck.Locked;
+        }
 
         if (await userManager.CheckPasswordAsync(user, password))
         {

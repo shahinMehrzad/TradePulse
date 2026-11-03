@@ -92,7 +92,15 @@ public class SignInHandlersTests
     private sealed class FakeRefreshTokens : IRefreshTokenRepository
     {
         public List<Guid> RevokedUsers { get; } = [];
-        public Task<Guid?> ConsumeAsync(string tokenHash, string deviceId, CancellationToken cancellationToken = default) => Task.FromResult<Guid?>(UserId);
+        public List<(Guid User, string Device)> RevokedDevices { get; } = [];
+        /// <summary>What presenting the token comes to; a good token of the user unless a test says otherwise.</summary>
+        public RefreshTokenUse Next { get; set; } = new(UserId);
+        public Task<RefreshTokenUse> ConsumeAsync(string tokenHash, string deviceId, CancellationToken cancellationToken = default) => Task.FromResult(Next);
+        public Task RevokeDeviceAsync(Guid userId, string deviceId, CancellationToken cancellationToken = default)
+        {
+            RevokedDevices.Add((userId, deviceId));
+            return Task.CompletedTask;
+        }
         public Task AddAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RevokeAllAsync(Guid userId, CancellationToken cancellationToken = default, string? exceptDeviceId = null)
         {
@@ -112,6 +120,17 @@ public class SignInHandlersTests
         }
     }
 
+    private sealed class FakeAlerts : Application.Notifications.ISecurityAlerts
+    {
+        public List<Application.Notifications.SecurityAlert> Raised { get; } = [];
+        public void Raise(Application.Notifications.SecurityAlert alert) => Raised.Add(alert);
+    }
+
+    private sealed class Visitor : IClientAddress
+    {
+        public string Address => "203.0.113.7";
+    }
+
     private sealed class Anonymous : ICurrentUser
     {
         public string Name => "unknown";
@@ -119,6 +138,9 @@ public class SignInHandlersTests
 
     private readonly FakeIdentity _identity = new();
     private readonly FakeRefreshTokens _refreshTokens = new();
+    private readonly FakeAlerts _alerts = new();
+
+    private ValidateRefreshTokenCommandHandler Refresher => new(_refreshTokens, _identity, new FakeAccessTokens(), Audit, _alerts, new Visitor());
     private readonly FakeAuditLog _auditLog = new();
 
     private readonly FakeMail _mail = new();
@@ -290,8 +312,33 @@ public class SignInHandlersTests
         _identity.Account = new Account(User, mustChange, twoFactorOn);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            new ValidateRefreshTokenCommandHandler(_refreshTokens, _identity, new FakeAccessTokens())
-                .HandleAsync(new ValidateRefreshTokenCommand("token", "device"), Ct));
+            Refresher.HandleAsync(new ValidateRefreshTokenCommand("token", "device"), Ct));
+    }
+
+    [Fact]
+    public async Task ATokenThatIsNotKnownGivesNothingAndRaisesNoAlarm()
+    {
+        _refreshTokens.Next = RefreshTokenUse.Nothing;
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Refresher.HandleAsync(new ValidateRefreshTokenCommand("token", "device"), Ct));
+
+        Assert.Empty(_alerts.Raised);
+        Assert.Empty(_refreshTokens.RevokedDevices);
+    }
+
+    [Fact]
+    public async Task ATokenThatWasAlreadyRenewedAndIsShownAgainEndsThatDevicesSessionsAndSaysSo()
+    {
+        _refreshTokens.Next = new RefreshTokenUse(null, UserId, "laptop");
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Refresher.HandleAsync(new ValidateRefreshTokenCommand("token", "laptop"), Ct));
+
+        Assert.Equal([(UserId, "laptop")], _refreshTokens.RevokedDevices);
+        var alert = Assert.Single(_alerts.Raised);
+        Assert.Contains("203.0.113.7", alert.Body);
+        var entry = Assert.Single(_auditLog.Entries);
+        Assert.Equal("system", entry.UserName);
+        Assert.Contains("already used", entry.Details);
     }
 
     [Fact]
@@ -300,8 +347,7 @@ public class SignInHandlersTests
         _identity.Account = null;
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            new ValidateRefreshTokenCommandHandler(_refreshTokens, _identity, new FakeAccessTokens())
-                .HandleAsync(new ValidateRefreshTokenCommand("token", "device"), Ct));
+            Refresher.HandleAsync(new ValidateRefreshTokenCommand("token", "device"), Ct));
     }
 
     [Theory]

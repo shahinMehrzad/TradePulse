@@ -32,6 +32,8 @@ public sealed class StepUpCommandHandler(IIdentityService identityService, IElev
         {
             case TwoFactorOutcome.LockedOut:
                 throw new ConfigurationConflictException("Too many wrong codes. Try again later.");
+            case TwoFactorOutcome.AlreadyUsed:
+                throw new ConfigurationValidationException("That code was already used (you just signed in with it). Wait for the next one, it changes every 30 seconds.");
             case not TwoFactorOutcome.Valid:
                 throw new ConfigurationValidationException("The code is incorrect.");
         }
