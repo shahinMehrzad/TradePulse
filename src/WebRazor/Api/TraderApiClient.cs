@@ -64,6 +64,24 @@ public sealed class TraderApiClient(HttpClient http)
         return await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
     }
 
+    /// <returns>The symbols the server allows and whether each is enabled, or null when the session is no longer accepted.</returns>
+    public async Task<IReadOnlyList<TradingSymbol>?> GetSymbolsAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("trading/symbols", cancellationToken);
+        if (TradePulseApiClient.IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<TradingSymbol>>(cancellationToken) ?? [];
+    }
+
+    /// <summary>Enabling asks for the second factor (the Trader says so); disabling is one click, like the halt.</summary>
+    public async Task<ApiResult> SetSymbolEnabledAsync(string symbol, bool enabled, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"trading/symbols/{Uri.EscapeDataString(symbol)}/{(enabled ? "enable" : "disable")}", content: null, cancellationToken);
+        return await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
+    }
+
     public async Task<ApiResult> HaltAsync(CancellationToken cancellationToken)
     {
         using var response = await http.PostAsync("trading/halt", content: null, cancellationToken);

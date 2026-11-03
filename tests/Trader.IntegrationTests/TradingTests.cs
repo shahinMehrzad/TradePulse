@@ -8,13 +8,26 @@ namespace Trader.IntegrationTests;
 /// Orders from the outside: Demo against Live, the caps, the halt switch, and what is written down when Binance says no or says nothing.
 /// Each test uses its own users, so budgets and halt switches do not leak between them.
 /// </summary>
-public class TradingTests(TraderFixture trader) : IClassFixture<TraderFixture>
+public class TradingTests(TraderFixture trader) : IClassFixture<TraderFixture>, IAsyncLifetime
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private record KeyView(Guid Id, string Status, string PublicKeyPem, string Environment);
     private record OrderView(Guid Id, string Symbol, string Side, decimal Quantity, bool ReduceOnly, decimal NotionalUsd, string Status, long? ExchangeOrderId, string? Error);
     private record StateView(bool Halted, bool HaltedByServer, bool LiveAllowed, decimal MaxOrderUsd, decimal MaxDailyUsd, decimal OpenedTodayUsd);
+
+    /// <summary>
+    /// Opening a position is opt-in: a symbol must be enabled in the panel. These tests are about orders, not about that choice
+    /// (see <see cref="TradingSymbolTests"/>), so the two symbols of the server's list are enabled first.
+    /// </summary>
+    public async ValueTask InitializeAsync()
+    {
+        var admin = trader.Administrator("symbol-chooser");
+        foreach (var symbol in new[] { "BTCUSDT", "ETHUSDT" })
+            Assert.Equal(HttpStatusCode.NoContent, (await trader.SendAsync(HttpMethod.Post, $"/trading/symbols/{symbol}/enable", admin)).StatusCode);
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static string NewApiKey() => Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
 

@@ -19,6 +19,9 @@ public class TradingModel(TraderApiClient trader, IOptions<TraderOptions> option
 
     public TradingState? State { get; private set; }
 
+    /// <summary>Every symbol the server allows, and whether it is enabled: the choice is the same for every administrator.</summary>
+    public IReadOnlyList<TradingSymbol> Symbols { get; private set; } = [];
+
     public IReadOnlyList<string> Errors { get; private set; } = [];
 
     public string? Done { get; private set; }
@@ -62,6 +65,15 @@ public class TradingModel(TraderApiClient trader, IOptions<TraderOptions> option
             "The order was sent. See its result in the list below.", cancellationToken);
     }
 
+    /// <summary>Enabling a symbol for trading asks for a code (the Trader says so); disabling is one click, like the halt.</summary>
+    public async Task<IActionResult> OnPostEnableSymbolAsync(string symbol, CancellationToken cancellationToken) =>
+        await FinishAsync(await trader.SetSymbolEnabledAsync(symbol, true, cancellationToken),
+            $"{symbol} is enabled for trading. Its price watch is on, too: you are told about sudden moves.", cancellationToken);
+
+    public async Task<IActionResult> OnPostDisableSymbolAsync(string symbol, CancellationToken cancellationToken) =>
+        await FinishAsync(await trader.SetSymbolEnabledAsync(symbol, false, cancellationToken),
+            $"{symbol} is no longer enabled for trading: no new position can be opened in it. A position you hold can still be closed.", cancellationToken);
+
     public async Task<IActionResult> OnPostHaltAsync(CancellationToken cancellationToken) =>
         await FinishAsync(await trader.HaltAsync(cancellationToken), "Trading is halted: no new positions can be opened.", cancellationToken);
 
@@ -95,6 +107,8 @@ public class TradingModel(TraderApiClient trader, IOptions<TraderOptions> option
             State = await trader.GetTradingStateAsync(cancellationToken);
             if (State is null)
                 return await EndSessionAsync();
+
+            Symbols = await trader.GetSymbolsAsync(cancellationToken) ?? [];
 
             // Only a key Binance has accepted can trade, and a live one only when the server owner allows it.
             UsableKeys = (await trader.GetKeysAsync(cancellationToken) ?? [])

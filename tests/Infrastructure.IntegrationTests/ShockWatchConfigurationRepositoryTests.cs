@@ -1,4 +1,5 @@
 using Application.Research.Watch;
+using Dapper;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Exceptions;
@@ -133,12 +134,19 @@ public class ShockWatchConfigurationRepositoryTests(PostgresFixture postgres)
         Assert.Empty(context.ChangeTracker.Entries());
     }
 
+
+    private sealed class NoTradedSymbols : ITradedSymbolSource
+    {
+        public Task<IReadOnlySet<string>> GetEnabledAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlySet<string>>(new HashSet<string>());
+    }
+
     [Fact]
     public async Task ASwitchMadeInThePanelIsSeenByTheNextLookOfTheWatch()
     {
         var options = await NewDatabaseAsync();
         await using var watchContext = new ConfigDbContext(options);
-        var source = new ConfiguredWatchedSymbols(new ShockWatchConfigurationRepository(watchContext));
+        var source = new ConfiguredWatchedSymbols(new ShockWatchConfigurationRepository(watchContext), new NoTradedSymbols(), new SymbolCatalogRepository(watchContext));
         Assert.Empty(await source.GetAsync(Ct));
 
         var btc = await RepositoryOn(options).Add(Row(BtcListing), Ct);
@@ -150,5 +158,34 @@ public class ShockWatchConfigurationRepositoryTests(PostgresFixture postgres)
         await RepositoryOn(options).SetEnabled(btc, false, Ct);
         Assert.Equal(["ETHUSDT"], (await source.GetAsync(Ct)).Select(s => s.Symbol.Value));
         Assert.Equal(EthListing, Assert.Single(await source.GetAsync(Ct)).SymbolListingId);
+    }
+
+    [Fact]
+    public async Task ATradedSymbolIsWatchedOnItsOwnAndTheAdminsSwitchOffAndOnAgainAreSeenByTheNextLook()
+    {
+        var options = await NewDatabaseAsync();
+        await using var watchContext = new ConfigDbContext(options);
+        var connectionString = watchContext.Database.GetConnectionString()!;
+
+        // The trading service made its table and the admin enabled bitcoin for trading there.
+        await using (var connection = new NpgsqlConnection(connectionString))
+        {
+            await connection.ExecuteAsync("""
+                CREATE SCHEMA IF NOT EXISTS vault;
+                CREATE TABLE IF NOT EXISTS vault.trading_symbols (symbol text PRIMARY KEY, enabled boolean NOT NULL, changed_by text NOT NULL, changed_at timestamp NOT NULL);
+                INSERT INTO vault.trading_symbols VALUES ('BTCUSDT', true, 'admin', now() at time zone 'utc');
+                """);
+        }
+
+        var source = new ConfiguredWatchedSymbols(
+            new ShockWatchConfigurationRepository(watchContext), new TradedSymbolSource(connectionString), new SymbolCatalogRepository(watchContext));
+
+        Assert.Equal(["BTCUSDT"], (await source.GetAsync(Ct)).Select(s => s.Symbol.Value));      // no row at all: trading decides
+
+        var off = await RepositoryOn(options).Add(Row(BtcListing, WatchReasonEnum.Trading, enabled: false), Ct);
+        Assert.Empty(await source.GetAsync(Ct));                                                  // the admin's row decides
+
+        await RepositoryOn(options).Remove(off, Ct);
+        Assert.Equal(BtcListing, Assert.Single(await source.GetAsync(Ct)).SymbolListingId);       // back to automatic
     }
 }
