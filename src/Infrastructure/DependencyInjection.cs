@@ -12,6 +12,7 @@ using Infrastructure.Persistence;
 using Infrastructure.ReadModels;
 using Infrastructure.Repositories;
 using Infrastructure.Repositories.TimeSeries;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -110,6 +111,8 @@ public static class DependencyInjection
             .AddRoles<ApplicationRole>()
             .AddSignInManager<SignInManager<ApplicationUser>>()
             .AddEntityFrameworkStores<AuthDbContext>()
+            // Registered after the EF stores so it replaces their user store: second-factor secrets are not kept as plain text.
+            .AddUserStore<ProtectedUserStore>()
             .AddDefaultTokenProviders();
 
         services.AddScoped<IIdentityService, IdentityService>();
@@ -140,6 +143,11 @@ public static class DependencyInjection
             await context.Database.MigrateAsync();
             await contextConfig.Database.MigrateAsync();
             await contextResearch.Database.MigrateAsync();
+
+            var converted = await UserTokenProtection.ProtectStoredAsync(context,
+                services.GetRequiredService<IDataProtectionProvider>(), services.GetRequiredService<IPasswordHasher<ApplicationUser>>(), CancellationToken.None);
+            if (converted > 0)
+                Console.WriteLine($"Protected {converted} two-factor secret(s) that were stored as plain text.");
 
             string? adminRoleName = configuration["AdminConfigurations:Role"];
             if (string.IsNullOrEmpty(adminRoleName))
