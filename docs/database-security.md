@@ -43,6 +43,7 @@ how to look at and check the databases, and how to define a role yourself.
 | collector | main | `tp_collector` | Owns the data tables in `public`, and may create new ones there. `SELECT` on `config.candle_worker_configurations`, `config.symbol_data_configurations`, `config.exchange_symbols`, `config.symbols`. Nothing else. |
 | trader | vault (`vault-db` service, database `vault`) | `vault` | Everything in its own database. It is the only one that has the password, and nothing else is stored there. |
 | trader | main | `tp_trader` | `INSERT` on `config.audit_log`; `INSERT`, `DELETE` on `config.traded_symbols`; `USAGE` on schema `config`. It cannot `SELECT` anything, `UPDATE`, or create tables. |
+| price watch | main | `tp_watch` | `SELECT` on `config.shock_watch_configurations`, `config.exchange_symbols`, `config.symbols`, `config.exchanges`, `config.markets`, `config.traded_symbols` and on the data tables in `public`; `SELECT`, `INSERT`, `UPDATE` on `research.shock_alerts`. It cannot see `auth` or the audit log, change the watch list or the configuration, or create tables. |
 | panel | none | none | The panel has no database. It asks the API and the trader. |
 | backups, this script | main | `postgres` (superuser) | Used inside the postgres container only (`pg_dump`, `psql` by `docker exec`). No program has its password. |
 
@@ -75,9 +76,10 @@ What lives where:
 | `API_DB_PASSWORD` | Password of the role `tp_api`. |
 | `COLLECTOR_DB_PASSWORD` | Password of the role `tp_collector`. |
 | `TRADER_MAIN_DB_PASSWORD` | Password of the role `tp_trader` in the main database. |
+| `WATCH_DB_PASSWORD` | Password of the role `tp_watch` (the price watch). |
 | `POSTGRES_PASSWORD` | As before: the main database's superuser. No program uses it. |
 
-Each of the first four: letters and digits only, 16 or more (`openssl rand -hex 24` makes one), and all five different from each other.
+Each of the first five: letters and digits only, 16 or more (`openssl rand -hex 24` makes one), and all six different from each other.
 `main-db-roles.sh` refuses anything else. `docker compose` refuses to start without them.
 
 ## Setting up a new server
@@ -149,7 +151,7 @@ git pull
 7. **Start the rest on the new version:** `dc --profile public up -d --build` (without `--profile public` if you do not use Caddy). The collector
    and the trader now connect with their own roles. `dc logs trader --tail 30` and `dc logs collector --tail 30` show no error.
 8. **Check the roles:** `./deploy/check-db-roles.sh`. Every line must say `ok`, and the list of connections at the end shows who is connected
-   (`tp_api`, `tp_collector`, `tp_trader`, and no program as `postgres`).
+   (`tp_api`, `tp_collector`, `tp_trader`, `tp_watch`, and no program as `postgres`).
 9. **Check the panel.** `dc ps` shows every service `healthy`. **Exchange keys** lists your keys; **Trading** shows the same symbols enabled as before;
    **Price watch** still shows the traded symbols; switching a symbol on or off makes an entry in the audit log. The commands in
    [Looking at the databases](#looking-at-the-databases) show the same from the database side.
@@ -191,7 +193,7 @@ docker ps --format '{{.Names}}\t{{.Status}}'             # the same, with the re
 # Main database
 dc exec -T postgres psql -U postgres -d tradepulse -c '\l'      # the databases of that server
 dc exec -T postgres psql -U postgres -d tradepulse -c '\dn'     # schemas: auth, config, research, public; "vault" only until step 10
-dc exec -T postgres psql -U postgres -d tradepulse -c '\du'     # the roles: tp_api, tp_collector, tp_trader (and postgres); none of the tp_* has "Superuser"
+dc exec -T postgres psql -U postgres -d tradepulse -c '\du'     # the roles: tp_api, tp_collector, tp_trader, tp_watch (and postgres); none of the tp_* has "Superuser"
 dc exec -T postgres psql -U postgres -d tradepulse -c '\dt *.*' | grep -v pg_catalog | grep -v information_schema   # tables with their owner
 dc exec -T postgres psql -U postgres -d tradepulse -c 'select "Name", left("Value", 4) as starts_with from auth.user_tokens'
                                                          # AuthenticatorKey must start with dp1: and RecoveryCodes with h1:

@@ -20,7 +20,7 @@ set -u
 STATE_DIR="$(setting WATCHDOG_STATE_DIR /var/tmp/tradepulse-watchdog)"
 THRESHOLD="$(setting WATCHDOG_FAILS 3)"
 REPEAT_MINUTES="$(setting WATCHDOG_REPEAT_MINUTES 360)"
-SERVICES="$(setting WATCHDOG_SERVICES 'postgres vault-db api trader panel collector')"
+SERVICES="$(setting WATCHDOG_SERVICES 'postgres vault-db api trader panel collector watch')"
 DISK_LIMIT="$(setting WATCHDOG_DISK_PERCENT 85)"
 HEALTH_PORT="$(setting HEALTH_PORT 8089)"
 BACKUP_DIR="$(setting BACKUP_DIR /opt/tradepulse-backups)"
