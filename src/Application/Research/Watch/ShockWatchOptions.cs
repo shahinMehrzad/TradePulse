@@ -16,6 +16,9 @@ namespace Application.Research.Watch;
 /// </summary>
 public sealed record ShockWatchOptions
 {
+    /// <summary>The last hour, in minutes: what the gradual check compares with, and what the usual size of a second is estimated from at the start.</summary>
+    public const int HourMinutes = 60;
+
     /// <summary>The window of the sudden check, in seconds.</summary>
     public int WindowSeconds { get; init; } = 30;
 

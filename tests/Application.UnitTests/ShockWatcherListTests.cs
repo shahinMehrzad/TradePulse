@@ -97,8 +97,8 @@ public class ShockWatcherListTests
 
         Feed(eth, Eth, 30, 260, jumpAt: 200);
         await WaitForAsync(() => _telegram.Sent.Count > 0, "the alert");
-        Assert.StartsWith("ALARM: ETHUSDT rose", Assert.Single(_telegram.Sent).Title);
-        Assert.Equal(3, Assert.Single(_store.Saved).SymbolListingId);
+        Assert.StartsWith("ETHUSDT +", Assert.Single(_telegram.Sent).Title);
+        Assert.All(_store.Saved, a => Assert.Equal(3, a.SymbolListingId));   // a jump is seen by both checks, and both are kept
         Assert.Equal(2, _stream.SubscribeCalls);                  // bitcoin was not subscribed again
         await StopAsync(run);
     }
@@ -117,7 +117,7 @@ public class ShockWatcherListTests
         await WaitForAsync(() => _telegram.Sent.Count > 0, "the warm-up message");
         await PassAsync(3);
 
-        Assert.Equal("Watch is warming up: ETHUSDT", Assert.Single(_telegram.Sent).Title);
+        Assert.Equal("ETHUSDT warming up", Assert.Single(_telegram.Sent).Title);
         await StopAsync(run);
     }
 
@@ -136,7 +136,7 @@ public class ShockWatcherListTests
         Assert.False(_stream.WasUnsubscribed("BTCUSDT"));
         Feed(btc, Btc, 30, 260, jumpAt: 200);
         await WaitForAsync(() => _telegram.Sent.Count > 0, "the alert");
-        Assert.StartsWith("ALARM: BTCUSDT rose", Assert.Single(_telegram.Sent).Title);
+        Assert.StartsWith("BTCUSDT +", Assert.Single(_telegram.Sent).Title);
         await StopAsync(run);
     }
 
@@ -214,7 +214,7 @@ public class ShockWatcherListTests
         var btc = await ListenerOfAsync("BTCUSDT");
         Assert.Equal(2, _stream.SubscribeCalls);
         Feed(btc, Btc, 30, 260, jumpAt: 200);
-        await WaitForAsync(() => _telegram.Sent.Any(m => m.Title.StartsWith("ALARM")), "the alert");
+        await WaitForAsync(() => _telegram.Sent.Any(m => m.Title.Contains(" +")), "the alert");
         await StopAsync(run);
     }
 }

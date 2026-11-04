@@ -237,7 +237,7 @@ public sealed class ShockWatcher(
             var candles = await candleRepository.GetLatestAsync(table, options.SeedMinutes + 1, null, cancellationToken);
 
             // The usual second is estimated from the last hour of candles; the 24 hours are what the gradual check starts from.
-            var lastHour = candles.OrderBy(c => c.TimeRange.OpenTime).TakeLast(options.BaselineSeconds / 60 + 1);
+            var lastHour = candles.OrderBy(c => c.TimeRange.OpenTime).TakeLast(ShockWatchOptions.HourMinutes + 1);
             if (ShockSeed.TryEstimate(lastHour, time.GetUtcNow().UtcDateTime, options.SeedMaxAge, options.SeedMinReturns, out var volatility))
             {
                 detector.Seed(volatility);

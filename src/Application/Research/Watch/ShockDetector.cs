@@ -29,7 +29,7 @@ public sealed record ShockSignal(ShockSignalKind Kind, ShockAlert Alert);
 /// </summary>
 public sealed class ShockDetector(int symbolListingId, ShockWatchOptions options)
 {
-    private const int HourMinutes = 60;
+    private const int HourMinutes = ShockWatchOptions.HourMinutes;
     private const int GraceSeconds = 2;
 
     private readonly int _baseline = options.BaselineSeconds;

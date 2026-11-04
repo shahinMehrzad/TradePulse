@@ -63,7 +63,7 @@ public static class ShockAlertMessage
     }
 
     /// <summary>The window as the admin thinks of it: seconds below two minutes, minutes above.</summary>
-    internal static string Window(int seconds) => seconds < 120 ? $"{seconds} s" : $"{seconds / 60} min";
+    public static string Window(int seconds) => seconds < 120 ? $"{seconds} s" : $"{seconds / 60} min";
 
     /// <summary>
     /// A price with six significant digits, so a cheap coin keeps what matters (<c>0.906</c>, not <c>0.91</c>) and an expensive one is not
