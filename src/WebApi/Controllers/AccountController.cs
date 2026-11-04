@@ -28,6 +28,20 @@ public class AccountController(ICommandDispatcher dispatcher) : BaseController
             ? Ok(await dispatcher.SendAsync<GetAccountQuery, AccountDto>(new GetAccountQuery(userId), cancellationToken))
             : Unauthorized();
 
+    /// <summary>
+    /// Ends the session of the device that sends <c>X-Device-Id</c>: its refresh token stops working at once. The user's other devices stay signed in,
+    /// and the access token that was already issued runs out by itself within minutes.
+    /// </summary>
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(GetUserId(), out var userId))
+            return Unauthorized();
+
+        await dispatcher.SendAsync<LogoutCommand, bool>(new LogoutCommand(userId, GetDeviceId()), cancellationToken);
+        return NoContent();
+    }
+
     /// <summary>Other devices are signed out; the one sending <c>X-Device-Id</c> stays.</summary>
     [HttpPost("change-password")]
     [EnableRateLimiting(AuthController.LoginRateLimitPolicy)]

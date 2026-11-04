@@ -21,6 +21,7 @@ public class VerifyTwoFactorCommandHandler(IIdentityService identityService, Log
         {
             TwoFactorOutcome.Valid => steps.Authenticated(account),
             TwoFactorOutcome.LockedOut => throw new UnauthorizedAccessException("Too many wrong codes. Try again later."),
+            TwoFactorOutcome.AlreadyUsed => throw new UnauthorizedAccessException("That code was already used. Wait for the next one (it changes every 30 seconds)."),
             _ => throw new UnauthorizedAccessException("The code is incorrect.")
         };
     }

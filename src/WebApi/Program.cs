@@ -82,7 +82,7 @@ app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.MapOpenApi().AllowAnonymous();
 }
 
 await Infrastructure.DependencyInjection.SeedAsync(app.Services, app.Configuration);

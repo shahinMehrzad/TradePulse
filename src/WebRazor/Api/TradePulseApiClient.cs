@@ -493,6 +493,12 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await ToResultAsync(response, NotFoundUser, cancellationToken);
     }
 
+    /// <summary>Ends this session's refresh token at the API. The answer does not matter: the panel's own session ends either way.</summary>
+    public async Task LogoutAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("api/account/logout", content: null, cancellationToken);
+    }
+
     public async Task<ApiResult> UnlockUserAsync(Guid id, CancellationToken cancellationToken)
     {
         using var response = await http.PostAsync($"{UsersRoot}/{id}/unlock", content: null, cancellationToken);

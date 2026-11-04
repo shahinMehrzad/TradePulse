@@ -13,7 +13,8 @@ public enum CredentialsOutcome { Valid, Invalid, LockedOut }
 
 public sealed record CredentialsResult(CredentialsOutcome Outcome, Account? Account = null);
 
-public enum TwoFactorOutcome { Valid, Invalid, LockedOut }
+/// <summary><see cref="AlreadyUsed"/>: the code is right but was accepted a moment ago (it works once). It is not a wrong guess and does not count as one.</summary>
+public enum TwoFactorOutcome { Valid, Invalid, LockedOut, AlreadyUsed }
 
 /// <summary>What the second factor is: the code of the authenticator app, a one-time recovery code, or a code sent by email (if the user turned that on).</summary>
 public enum TwoFactorMethod { Authenticator, Recovery, Email }

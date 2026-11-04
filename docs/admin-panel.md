@@ -24,6 +24,8 @@ Pages that change what matters (the **Users** page today) first ask for a code: 
 
 The **Exchange keys** page (only when the key vault is part of the installation) is where an administrator makes and checks their own Binance Futures keys; it asks for a code first, like **Users**. The private key never reaches the panel. See [Exchange keys](exchange-keys.md).
 
+**Sign out** (top right) ends the session at the API too: its refresh token stops working at once (the other devices stay signed in).
+
 The **My account** page (the user name at the top right) changes the password (the other devices are signed out, this one stays) and makes new recovery codes after asking for the password again (the new codes are shown once), and, when the server has mail settings, turns sign-in codes by email on (a test code is mailed first) and off. With it on, the code step of the sign-in has an **Email me a code** button and a choice of where the code is from.
 
 The **Collector health** page shows what the collector says about itself: the overall status and each component (database, the exchange REST and WebSocket connections, whether the candle tables are up to date, which series have gaps the exchange has no candles for, ...), the ones with a problem first, with the details the collector reports. It needs `Collector:HealthUrl` in the API's settings, see [Collector health](api.md#collector-health); without it, or with a collector that is down, the page says so instead of showing an empty table.

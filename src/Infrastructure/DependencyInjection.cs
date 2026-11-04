@@ -118,6 +118,7 @@ public static class DependencyInjection
 
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<ILoginThrottle, LoginThrottleService>();
+        services.AddScoped<ITwoFactorReplayGuard, TwoFactorReplayGuard>();
         // Where a request comes from, for the wrong passwords held against an address; the API replaces this with the visitor's address.
         services.TryAddScoped<IClientAddress, LocalClientAddress>();
 

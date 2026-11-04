@@ -16,6 +16,8 @@ public class AuthDbContext : IdentityDbContext<ApplicationUser, ApplicationRole,
 
     public DbSet<LoginThrottle> LoginThrottles => Set<LoginThrottle>();
 
+    public DbSet<UsedTwoFactorCode> UsedTwoFactorCodes => Set<UsedTwoFactorCode>();
+
     public AuthDbContext(DbContextOptions<AuthDbContext> options) : base(options)
     {
     }
@@ -34,6 +36,16 @@ public class AuthDbContext : IdentityDbContext<ApplicationUser, ApplicationRole,
         builder.Entity<IdentityRoleClaim<Guid>>().ToTable("role_claims", "auth");
         builder.Entity<IdentityUserToken<Guid>>().ToTable("user_tokens", "auth");
         builder.Entity<RefreshToken>().ToTable("refresh_tokens", "auth");
+
+        builder.Entity<UsedTwoFactorCode>(e =>
+        {
+            e.ToTable("used_two_factor_codes", "auth");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.CodeHash).HasMaxLength(64).IsRequired();
+            // The unique index is what lets only one of two uses of the same code at the same moment through.
+            e.HasIndex(c => new { c.UserId, c.CodeHash }).IsUnique();
+            e.Property(c => c.UsedAt).HasColumnType("timestamp").HasConversion(UtcTimestamp);
+        });
 
         builder.Entity<LoginThrottle>(e =>
         {
