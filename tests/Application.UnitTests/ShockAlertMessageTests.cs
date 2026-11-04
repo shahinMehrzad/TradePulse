@@ -6,50 +6,70 @@ namespace Application.UnitTests;
 
 public class ShockAlertMessageTests
 {
-    private static ShockAlert Alert(decimal move = 0.0062m, AlertLevelEnum level = AlertLevelEnum.Alarm) => new()
+    private static ShockAlert Alert(decimal move = 0.0062m, int window = 30, decimal z = 26.4m) => new()
     {
         SymbolListingId = 1,
-        TriggeredAt = new DateTime(2026, 10, 29, 20, 34, 15, DateTimeKind.Utc),
+        TriggeredAt = new DateTime(2026, 10, 29, 20, 5, 47, DateTimeKind.Utc),
         Direction = move > 0 ? EventDirectionEnum.Up : EventDirectionEnum.Down,
-        Level = level,
-        WindowSeconds = 30,
+        Level = AlertLevelEnum.Attention,
+        WindowSeconds = window,
         Move = move,
-        ZScore = move > 0 ? 6.8m : -6.8m,
+        ZScore = move > 0 ? z : -z,
         StartPrice = 79893.4m,
         EndPrice = 79398.1m,
         Volume = 123.456m,
         FlaggedSeconds = 4,
-        RuleVersion = "s30-0.003-0.005-z6-v1",
+        RuleVersion = "s30-z20-v2",
     };
 
     [Fact]
-    public void ATitleSaysLevelSymbolDirectionAndSize()
+    public void ATitleSaysSymbolDirectionSizeAndWindow()
     {
-        var up = ShockAlertMessage.Create(Alert(0.0062m), "BTCUSDT", ShockSignalKind.Started);
-        var down = ShockAlertMessage.Create(Alert(-0.0031m, AlertLevelEnum.Attention), "BTCUSDT", ShockSignalKind.Started);
+        var up = ShockAlertMessage.Create(Alert(0.0062m), "BTCUSDT");
+        var down = ShockAlertMessage.Create(Alert(-0.0202m, window: 900), "SUIUSDT");
 
-        Assert.Equal("ALARM: BTCUSDT rose 0.62 % in 30 s", up.Title);
-        Assert.Equal("Attention: BTCUSDT fell 0.31 % in 30 s", down.Title);
+        Assert.Equal("BTCUSDT +0.62 % in 30 s", up.Title);
+        Assert.Equal("SUIUSDT -2.02 % in 15 min", down.Title);
+    }
+
+    [Theory]
+    [InlineData(30, "30 s")]
+    [InlineData(90, "90 s")]
+    [InlineData(120, "2 min")]
+    [InlineData(300, "5 min")]
+    [InlineData(900, "15 min")]
+    [InlineData(3600, "60 min")]
+    public void TheWindowIsInSecondsBelowTwoMinutesAndInMinutesAbove(int seconds, string expected)
+    {
+        Assert.Equal(expected, ShockAlertMessage.Window(seconds));
     }
 
     [Fact]
-    public void TheTitleSaysWhenTheAlertWasRaisedOrIsOver()
+    public void TheBodyGivesPricesHowManyTimesUsualAndWhen()
     {
-        Assert.EndsWith("(raised)", ShockAlertMessage.Create(Alert(), "BTCUSDT", ShockSignalKind.Escalated).Title);
-        Assert.EndsWith("(over)", ShockAlertMessage.Create(Alert(), "BTCUSDT", ShockSignalKind.Closed).Title);
+        var body = ShockAlertMessage.Create(Alert(), "BTCUSDT").Body;
+
+        Assert.Equal("79893.4 -> 79398.1, 26.4x its usual move, 20:05 UTC", body);
     }
 
     [Fact]
-    public void TheBodyGivesTimePricesZScoreVolumeAndRule()
+    public void TheTelegramTextHasTheSymbolInBoldAndAnEmojiForTheDirection()
     {
-        var body = ShockAlertMessage.Create(Alert(), "BTCUSDT", ShockSignalKind.Started).Body;
+        var up = ShockAlertMessage.Create(Alert(0.0062m), "BTCUSDT").Html;
+        var down = ShockAlertMessage.Create(Alert(-0.0202m, window: 900, z: 5.3m), "SUIUSDT").Html;
 
-        Assert.Contains("Since: 2026-10-29 20:34:15 UTC", body);
-        Assert.Contains("Price: 79893.4 -> 79398.1", body);
-        Assert.Contains("Unusual by: 6.8 standard deviations", body);
-        Assert.Contains("Traded in the window: 123.456 BTC", body);
-        Assert.Contains("Flagged seconds: 4", body);
-        Assert.Contains("Rule: s30-0.003-0.005-z6-v1", body);
+        Assert.Equal("🟢⬆️ <b>BTCUSDT</b> +0.62 % in 30 s\n79893.4 → 79398.1 · 26.4x usual · 20:05 UTC", up);
+        Assert.StartsWith("🔴⬇️ <b>SUIUSDT</b> -2.02 % in 15 min", down);
+        Assert.Contains("5.3x usual", down);
+    }
+
+    [Fact]
+    public void ThePlainTextHasNoFormattingAndNoEmoji()
+    {
+        var message = ShockAlertMessage.Create(Alert(), "BTCUSDT");
+
+        Assert.DoesNotContain("<", message.Title + message.Body);
+        Assert.All(message.Title + message.Body, c => Assert.True(c < 0x2000, "plain text for the console and the mail"));
     }
 
     [Theory]
@@ -68,38 +88,22 @@ public class ShockAlertMessageTests
     }
 
     [Fact]
-    public void ACheapCoinShowsThePricesThatMakeTheMoveAndTheVolumeInItsOwnCoin()
+    public void ACheapCoinShowsThePricesThatMakeTheMove()
     {
-        var alert = Alert(0.0044m, AlertLevelEnum.Attention);
+        var alert = Alert(0.0044m);
         alert.StartPrice = 0.9061m;
         alert.EndPrice = 0.9101m;
-        alert.Volume = 82607.9m;
 
-        var body = ShockAlertMessage.Create(alert, "SUIUSDT", ShockSignalKind.Started).Body;
+        var message = ShockAlertMessage.Create(alert, "SUIUSDT");
 
-        Assert.Contains("Price: 0.9061 -> 0.9101", body);
-        Assert.Contains("Traded in the window: 82607.9 SUI", body);
-    }
-
-    [Theory]
-    [InlineData("ETHUSDT", " ETH")]
-    [InlineData("BTCUSDC", " BTC")]
-    [InlineData("XAUUSDT", " XAU")]
-    [InlineData("SOLUSD", " SOL")]
-    [InlineData("1000PEPEUSDT", " 1000PEPE")]
-    [InlineData("USDT", "")]       // nothing is left of it
-    [InlineData("BTCEUR", "")]     // an unknown quote asset gets no unit rather than a wrong one
-    public void TheVolumeNamesTheBaseAssetOnlyWhenTheQuoteAssetIsKnown(string symbol, string unit)
-    {
-        var body = ShockAlertMessage.Create(Alert(), symbol, ShockSignalKind.Started).Body;
-
-        Assert.Contains("Traded in the window: 123.456" + unit + Environment.NewLine, body);
+        Assert.Contains("0.9061 -> 0.9101", message.Body);
+        Assert.Contains("0.9061 → 0.9101", message.Html);
     }
 
     [Fact]
     public void TheWordsDoNotAdviseOrPredict()
     {
-        var message = ShockAlertMessage.Create(Alert(), "BTCUSDT", ShockSignalKind.Started);
+        var message = ShockAlertMessage.Create(Alert(), "BTCUSDT");
         var text = (message.Title + " " + message.Body).ToLowerInvariant();
 
         Assert.DoesNotContain("buy", text);
@@ -115,10 +119,11 @@ public class ShockAlertMessageTests
         try
         {
             Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("fa-IR");
-            var message = ShockAlertMessage.Create(Alert(), "BTCUSDT", ShockSignalKind.Started);
+            var message = ShockAlertMessage.Create(Alert(), "BTCUSDT");
 
-            Assert.Equal("ALARM: BTCUSDT rose 0.62 % in 30 s", message.Title);
+            Assert.Equal("BTCUSDT +0.62 % in 30 s", message.Title);
             Assert.Contains("79893.4", message.Body);
+            Assert.Contains("26.4x", message.Html);
         }
         finally
         {
@@ -127,14 +132,22 @@ public class ShockAlertMessageTests
     }
 
     [Fact]
+    public void AnythingThatCouldBeTakenForMarkupIsEscapedInTheTelegramText()
+    {
+        var message = ShockAlertMessage.Create(Alert(), "A<B>&C");
+
+        Assert.Contains("<b>A&lt;B&gt;&amp;C</b>", message.Html);
+    }
+
+    [Fact]
     public void TheWarmUpMessageSaysWhichSymbolHowLongAndWhatToDoAboutIt()
     {
         var message = ShockAlertMessage.WarmingUp("ETHUSDT", TimeSpan.FromSeconds(3600));
 
-        Assert.Equal("Watch is warming up: ETHUSDT", message.Title);
-        Assert.Contains("ETHUSDT", message.Body);
-        Assert.Contains("60 minutes", message.Body);
-        Assert.Contains("Collect its 1 minute candles", message.Body);
+        Assert.Equal("ETHUSDT warming up", message.Title);
+        Assert.Contains("60 min", message.Body);
+        Assert.Contains("Collect them", message.Body);
+        Assert.StartsWith("⏳ <b>ETHUSDT</b> warming up", message.Html);
     }
 
     [Fact]
@@ -146,7 +159,23 @@ public class ShockAlertMessageTests
         Assert.Equal("Watch is blind", blind.Title);
         Assert.Contains("BTCUSDT, ETHUSDT", blind.Body);
         Assert.Contains("20 s", blind.Body);
+        Assert.StartsWith("⚠️ <b>Watch is blind</b>", blind.Html);
         Assert.Equal("Watch sees the market again", restored.Title);
         Assert.Contains("95 s", restored.Body);
+        Assert.StartsWith("✅ <b>Watch sees the market again</b>", restored.Html);
+    }
+
+    [Fact]
+    public void TheStartMessageSaysWhatIsFollowedAndTheTwoChecks()
+    {
+        var message = ShockAlertMessage.Started("the symbols switched on in the admin panel", new ShockWatchOptions());
+
+        Assert.Equal("Watch started", message.Title);
+        Assert.Contains("the symbols switched on in the admin panel", message.Body);
+        Assert.Contains("Sudden: 30 s at 20x", message.Body);
+        Assert.Contains("Gradual: 15 min at 4.5x", message.Body);
+        Assert.Contains("s30-z20-v2", message.Body);
+        Assert.Contains("m15-z4.5-v2", message.Body);
+        Assert.StartsWith("👀 <b>Watch started</b>", message.Html);
     }
 }
