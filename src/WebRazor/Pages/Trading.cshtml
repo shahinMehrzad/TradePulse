@@ -41,7 +41,7 @@
                     <dl class="row mb-3">
                         <dt class="col-6">Largest single order</dt><dd class="col-6">@state.MaxOrderUsd.ToString("0.##") USDT</dd>
                         <dt class="col-6">Opened today (UTC)</dt><dd class="col-6">@state.OpenedTodayUsd.ToString("0.##") of @state.MaxDailyUsd.ToString("0.##") USDT</dd>
-                        <dt class="col-6">Symbols</dt><dd class="col-6">@string.Join(", ", state.AllowedSymbols)</dd>
+                        <dt class="col-6">Symbols</dt><dd class="col-6">@(state.AllowedSymbols.Length == 0 ? "none enabled" : string.Join(", ", state.AllowedSymbols))</dd>
                         <dt class="col-6">Live keys</dt><dd class="col-6">@(state.LiveAllowed ? "allowed" : "off (Demo only)")</dd>
                     </dl>
                     <p class="text-secondary small">
