@@ -21,10 +21,13 @@
                 <div class="card-header"><h3 class="card-title">The trading code is set up</h3></div>
                 <div class="card-body">
                     <div class="alert alert-warning" role="alert">
-                        <h4 class="alert-title">Keep these recovery codes</h4>
-                        <p>They are shown <strong>only now</strong>. If you lose your phone, one of them (each works once) lets you set the trading code up again.
-                            Nobody else can: not another administrator, not the API. Put them where you keep your passwords, not on this server.</p>
-                        <pre class="mb-0 fs-4 user-select-all">@string.Join('\n', Model.RecoveryCodes)</pre>
+                        @* An alert is a flex row: without this wrapper the title, the text and the codes sit side by side, and the codes get a sliver. *@
+                        <div class="w-100">
+                            <h4 class="alert-title">Keep these recovery codes</h4>
+                            <p>They are shown <strong>only now</strong>. If you lose your phone, one of them (each works once) lets you set the trading code up again.
+                                Nobody else can: not another administrator, not the API. Put them where you keep your passwords, not on this server.</p>
+                            <pre class="mb-0 fs-4 user-select-all">@string.Join('\n', Model.RecoveryCodes)</pre>
+                        </div>
                     </div>
                     <a class="btn btn-primary" href="@(Url.IsLocalUrl(Model.ReturnUrl) ? Model.ReturnUrl : "/ExchangeKeys")">I saved them, continue</a>
                 </div>
