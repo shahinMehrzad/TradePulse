@@ -47,9 +47,53 @@ public class ShockAlertMessageTests
         Assert.Contains("Since: 2026-10-29 20:34:15 UTC", body);
         Assert.Contains("Price: 79893.4 -> 79398.1", body);
         Assert.Contains("Unusual by: 6.8 standard deviations", body);
-        Assert.Contains("Traded in the window: 123.456", body);
+        Assert.Contains("Traded in the window: 123.456 BTC", body);
         Assert.Contains("Flagged seconds: 4", body);
         Assert.Contains("Rule: s30-0.003-0.005-z6-v1", body);
+    }
+
+    [Theory]
+    [InlineData(79893.4, "79893.4")]
+    [InlineData(0.906, "0.906")]
+    [InlineData(0.9, "0.9")]
+    [InlineData(0.91, "0.91")]
+    [InlineData(1.2345678, "1.23457")]
+    [InlineData(0.00001234567, "0.00001235")]
+    [InlineData(2500, "2500")]
+    [InlineData(123456.789, "123457")]
+    [InlineData(0, "0")]
+    public void APriceKeepsSixSignificantDigitsSoACheapCoinIsNotRoundedAwayAndNothingIsPadded(double price, string expected)
+    {
+        Assert.Equal(expected, ShockAlertMessage.Price((decimal)price));
+    }
+
+    [Fact]
+    public void ACheapCoinShowsThePricesThatMakeTheMoveAndTheVolumeInItsOwnCoin()
+    {
+        var alert = Alert(0.0044m, AlertLevelEnum.Attention);
+        alert.StartPrice = 0.9061m;
+        alert.EndPrice = 0.9101m;
+        alert.Volume = 82607.9m;
+
+        var body = ShockAlertMessage.Create(alert, "SUIUSDT", ShockSignalKind.Started).Body;
+
+        Assert.Contains("Price: 0.9061 -> 0.9101", body);
+        Assert.Contains("Traded in the window: 82607.9 SUI", body);
+    }
+
+    [Theory]
+    [InlineData("ETHUSDT", " ETH")]
+    [InlineData("BTCUSDC", " BTC")]
+    [InlineData("XAUUSDT", " XAU")]
+    [InlineData("SOLUSD", " SOL")]
+    [InlineData("1000PEPEUSDT", " 1000PEPE")]
+    [InlineData("USDT", "")]       // nothing is left of it
+    [InlineData("BTCEUR", "")]     // an unknown quote asset gets no unit rather than a wrong one
+    public void TheVolumeNamesTheBaseAssetOnlyWhenTheQuoteAssetIsKnown(string symbol, string unit)
+    {
+        var body = ShockAlertMessage.Create(Alert(), symbol, ShockSignalKind.Started).Body;
+
+        Assert.Contains("Traded in the window: 123.456" + unit + Environment.NewLine, body);
     }
 
     [Fact]

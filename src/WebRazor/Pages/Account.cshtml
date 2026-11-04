@@ -16,9 +16,12 @@
 @if (Model.RecoveryCodes is not null)
 {
     <div class="alert alert-warning" role="alert">
-        <h4 class="alert-title">Your new recovery codes</h4>
-        <p class="mb-2">Each one signs you in once instead of the app code. The old codes no longer work. They are shown <strong>only now</strong>: store them somewhere safe.</p>
-        <pre class="mb-0 fs-4 user-select-all">@string.Join('\n', Model.RecoveryCodes)</pre>
+        @* An alert is a flex row: without this wrapper the title, the text and the codes sit side by side. *@
+        <div class="w-100">
+            <h4 class="alert-title">Your new recovery codes</h4>
+            <p class="mb-2">Each one signs you in once instead of the app code. The old codes no longer work. They are shown <strong>only now</strong>: store them somewhere safe.</p>
+            <pre class="mb-0 fs-4 user-select-all">@string.Join('\n', Model.RecoveryCodes)</pre>
+        </div>
     </div>
 }
 
