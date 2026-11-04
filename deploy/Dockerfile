@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# One file for the four programs. The build context is the repository root:
+# One file for the five programs. The build context is the repository root:
 #   docker build -f deploy/Dockerfile --target collector -t tradepulse-collector .
 # (docker compose does this; see deploy/docker-compose.yml)
 
@@ -13,17 +13,20 @@ COPY src/BackgroundWorker/BackgroundWorker.csproj src/BackgroundWorker/
 COPY src/WebApi/WebApi.csproj src/WebApi/
 COPY src/WebRazor/WebRazor.csproj src/WebRazor/
 COPY src/Trader/Trader.csproj src/Trader/
+COPY src/Research/Research.csproj src/Research/
 RUN dotnet restore src/BackgroundWorker/BackgroundWorker.csproj \
  && dotnet restore src/WebApi/WebApi.csproj \
  && dotnet restore src/WebRazor/WebRazor.csproj \
- && dotnet restore src/Trader/Trader.csproj
+ && dotnet restore src/Trader/Trader.csproj \
+ && dotnet restore src/Research/Research.csproj
 
 FROM restore AS build
 COPY src ./src
 RUN dotnet publish src/BackgroundWorker/BackgroundWorker.csproj -c Release --no-restore -p:UseAppHost=false -o /out/collector \
  && dotnet publish src/WebApi/WebApi.csproj -c Release --no-restore -p:UseAppHost=false -o /out/api \
  && dotnet publish src/WebRazor/WebRazor.csproj -c Release --no-restore -p:UseAppHost=false -o /out/panel \
- && dotnet publish src/Trader/Trader.csproj -c Release --no-restore -p:UseAppHost=false -o /out/trader
+ && dotnet publish src/Trader/Trader.csproj -c Release --no-restore -p:UseAppHost=false -o /out/trader \
+ && dotnet publish src/Research/Research.csproj -c Release --no-restore -p:UseAppHost=false -o /out/watch
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
@@ -48,6 +51,11 @@ ENTRYPOINT ["dotnet", "WebApi.dll"]
 FROM runtime AS trader
 COPY --from=build /out/trader .
 ENTRYPOINT ["dotnet", "Trader.dll"]
+
+# The price watch: Research's `watch` command, which follows the symbols switched on in the panel until it is stopped.
+FROM runtime AS watch
+COPY --from=build /out/watch .
+ENTRYPOINT ["dotnet", "Research.dll", "watch"]
 
 FROM runtime AS panel
 COPY --from=build /out/panel .
