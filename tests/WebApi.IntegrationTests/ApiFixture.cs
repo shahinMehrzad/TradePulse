@@ -33,14 +33,17 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>The mails the API sends in these tests (it has no mail server): sign-in codes are read from here.</summary>
     public FakeMailSender Mail { get; } = new();
 
+    /// <summary>The security alerts the API raises in these tests (it has no Telegram bot): a lock after wrong codes or passwords is read from here.</summary>
+    public FakeSecurityAlerts Alerts { get; } = new();
+
     private readonly SemaphoreSlim _adminSetup = new(1, 1);
     private string? _adminAuthenticatorKey;
 
     private record Step(string Stage, string? ChallengeToken);
     private record Enrollment(string SharedKey);
 
-    /// <summary>The key the API signs its tokens with in these tests; tests that make a token of their own use it too.</summary>
-    public const string JwtSecret = "signing-key-of-the-integration-tests-of-the-api-0123456789";
+    /// <summary>The key pair the API signs its tokens with in these tests; tests that make a token of their own use it too.</summary>
+    public static readonly Tests.Shared.JwtTestKeys SigningKeys = Tests.Shared.JwtTestKeys.New();
 
     /// <summary>The exchange's symbol list the API asks when a symbol is listed; no test reaches the real Binance.</summary>
     public FakeExchangeSymbolCatalog ExchangeCatalog { get; } = new();
@@ -99,7 +102,9 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:AuthConnection", connectionString);
         builder.UseSetting("ConnectionStrings:ConfigConnection", connectionString);
         builder.UseSetting("ConnectionStrings:Redis", "");
-        builder.UseSetting("JwtConfigurations:Secret", JwtSecret);
+        builder.UseSetting("JwtConfigurations:PrivateKey", SigningKeys.PrivateKey);
+        // Ask the database at every request, so a test that disables a user sees the effect on the next one (the keeping is tested on its own).
+        builder.UseSetting("TokenRevocation:CacheSeconds", "0");
         builder.UseSetting("AdminConfigurations:Email", AdminEmail);
         builder.UseSetting("AdminConfigurations:Password", AdminPassword);
         // No collector runs next to the tests (the default address would find a real one on a developer machine).
@@ -110,6 +115,10 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<IMailSender>();
             services.AddSingleton<IMailSender>(Mail);
+            services.RemoveAll<ITwoFactorReplayGuard>();
+            services.AddSingleton<ITwoFactorReplayGuard, AnyCodeAnyNumberOfTimes>();
+            services.RemoveAll<Application.Notifications.ISecurityAlerts>();
+            services.AddSingleton<Application.Notifications.ISecurityAlerts>(Alerts);
         });
         builder.ConfigureTestServices(services => services.AddSingleton<IExchangeSymbolCatalog>(ExchangeCatalog));
     }

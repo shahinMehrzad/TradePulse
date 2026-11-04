@@ -1,6 +1,10 @@
 namespace Application.Interfaces;
 
-public sealed record UserSummary(Guid Id, string UserName, string Email, IReadOnlyList<string> Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled);
+/// <param name="LockedUntil">Until when the account takes no password or code because of wrong guesses (UTC); null when it is not locked. Not the same as disabled.</param>
+/// <param name="LockedAddresses">How many addresses are locked out of the account for wrong passwords.</param>
+public sealed record UserSummary(
+    Guid Id, string UserName, string Email, IReadOnlyList<string> Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled,
+    DateTime? LockedUntil = null, int LockedAddresses = 0);
 
 public sealed record CreatedUser(UserSummary? User, string? TemporaryPassword, IReadOnlyList<string> Errors);
 
@@ -29,4 +33,7 @@ public interface IUserAdministration
     Task<(UserSummary User, string TemporaryPassword)?> RecoverAccessAsync(string userNameOrEmail, CancellationToken cancellationToken);
 
     Task<UserChangeOutcome> SetDisabledAsync(Guid userId, bool disabled, Guid actingUserId, CancellationToken cancellationToken);
+
+    /// <summary>Forgets the wrong passwords and codes counted against the user and lifts every lock they led to. Does not enable a disabled account.</summary>
+    Task<UserChangeOutcome> UnlockAsync(Guid userId, CancellationToken cancellationToken);
 }

@@ -9,8 +9,11 @@
         <div class="card">
             <div class="card-body">
                 <p class="text-secondary">
-                    Enter the 6-digit code your authenticator app shows@(Model.EmailCodeAvailable ? " (or ask for one by email)" : "").
+                    Enter the 6-digit code of the entry named <strong>TradePulse</strong> in your authenticator app, the one you sign in with@(Model.EmailCodeAvailable ? " (or ask for one by email)" : "").
                     It is good for ten minutes, so you can do several things in a row.
+                </p>
+                <p class="text-secondary small">
+                    Not the entry named <em>TradePulse trading</em>: that one is only for the exchange keys and the orders.
                 </p>
                 @if (Model.Notice is not null)
                 {

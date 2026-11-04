@@ -58,6 +58,9 @@ public class UsersModel(TradePulseApiClient api, SessionTokenStore store) : Admi
     public async Task<IActionResult> OnPostResetTwoFactorAsync(Guid id, CancellationToken cancellationToken) =>
         await FinishAsync(await api.ResetTwoFactorAsync(id, cancellationToken), null, "Two-factor authentication was reset; the user sets it up again at the next sign-in.", cancellationToken);
 
+    public async Task<IActionResult> OnPostUnlockAsync(Guid id, CancellationToken cancellationToken) =>
+        await FinishAsync(await api.UnlockUserAsync(id, cancellationToken), null, "The locks were lifted.", cancellationToken);
+
     public async Task<IActionResult> OnPostDisableAsync(Guid id, CancellationToken cancellationToken) =>
         await FinishAsync(await api.SetUserDisabledAsync(id, true, cancellationToken), null, "The user was disabled and signed out.", cancellationToken);
 

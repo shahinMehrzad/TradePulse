@@ -1,3 +1,5 @@
+using Application.Commands.Auth;
+
 namespace Application.Dtos.Auth;
 
 public enum LoginStage
@@ -10,7 +12,7 @@ public enum LoginStage
     SetupRequired
 }
 
-public record LoginStepDto(LoginStage Stage, AuthResponseDto? Session, string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, bool EmailCodeAvailable = false);
+public record LoginStepDto(LoginStage Stage, AuthResponseDto? Session, string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, bool EmailCodeAvailable = false, ElevationDto? Elevation = null);
 
 public record TwoFactorEnrollmentDto(string SharedKey, string AuthenticatorUri);
 

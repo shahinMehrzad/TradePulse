@@ -4,13 +4,18 @@ namespace WebRazor.Api;
 /// <summary>The answer of every sign-in step. <c>Stage</c> is Authenticated (the tokens are set), TwoFactorRequired or SetupRequired (a challenge token is).</summary>
 public record LoginResponse(
     string Stage, string? AccessToken, DateTime? ExpiresAt, string? UserName, string? RefreshToken,
-    string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string[]? RecoveryCodes, bool EmailCodeAvailable);
+    string? ChallengeToken, bool MustChangePassword, bool NeedsTwoFactorSetup, string[]? RecoveryCodes, bool EmailCodeAvailable,
+    string? ElevationToken = null, DateTime? ElevationExpiresAt = null);
 
 public record AccountInfo(string UserName, string Email, string[] Roles, bool TwoFactorEnabled, int RecoveryCodesLeft, bool EmailCodesEnabled, bool EmailAvailable);
 
 public record TwoFactorEnrollment(string SharedKey, string AuthenticatorUri);
 
-public record UserRow(Guid Id, string UserName, string Email, string[] Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled);
+/// <param name="LockedUntil">Until when wrong passwords or codes keep the account from signing in (UTC); null when nothing locks it.</param>
+/// <param name="LockedAddresses">How many addresses are locked out of the account for wrong passwords.</param>
+public record UserRow(
+    Guid Id, string UserName, string Email, string[] Roles, bool TwoFactorEnabled, bool MustChangePassword, bool IsDisabled,
+    DateTime? LockedUntil = null, int LockedAddresses = 0);
 
 /// <summary>A one-time password the API generated; the panel shows it once.</summary>
 public record OneTimePassword(Guid UserId, string UserName, string TemporaryPassword);
@@ -86,13 +91,13 @@ public record SymbolListingItem(int Id, int ExchangeId, string Exchange, int Mar
 /// <summary>Where a symbol is listed: one exchange market, under the name that exchange uses for it.</summary>
 public record SymbolMarket(int ListingId, string Exchange, string Market, string ExchangeSymbol);
 
-/// <summary>One symbol with every market it is listed on; <c>SeriesCount</c> and <c>SettingsCount</c> say what uses each listing.</summary>
+/// <summary>One symbol with every market it is listed on; <c>SeriesCount</c>, <c>SettingsCount</c> and <c>WatchCount</c> say what uses each listing, and <c>Traded</c> that its symbol is enabled for trading.</summary>
 public record SymbolDetail(int Id, string Name, string? Description, IReadOnlyList<SymbolDetailMarket> Markets);
 
 public record SymbolDetailMarket(
-    int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount)
+    int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount, int WatchCount, bool Traded)
 {
-    public bool InUse => SeriesCount + SettingsCount > 0;
+    public bool InUse => SeriesCount + SettingsCount + WatchCount > 0 || Traded;
 }
 
 /// <summary>One symbol of the Symbols page, with the markets it is listed on.</summary>
@@ -106,6 +111,17 @@ public record SymbolsPage(IReadOnlyList<SymbolRow> Items, int PageNumber, int Pa
 
 /// <summary>Outcome of a write. <see cref="SessionRejected"/> means the API no longer accepts the signed-in session.</summary>
 /// <param name="StepUpRequired">The API wants a fresh second-factor confirmation for this (not a lack of rights): see the StepUp page.</param>
+/// <summary>Where a user stands with the trading code of the key vault.</summary>
+/// <param name="LockedUntil">Until when wrong codes keep them from confirming (UTC); null when nothing does.</param>
+public record TradingCodeStatus(bool Enrolled, DateTime? LockedUntil, int RecoveryCodesLeft, DateTime? ConfirmedUntil);
+
+public record TradingCodeSetup(string SharedKey, string AuthenticatorUri);
+
+/// <summary>The recovery codes are in this answer and nowhere else.</summary>
+public record TradingCodeEnrolled(string[] RecoveryCodes, string ConfirmationToken, DateTime ExpiresAt);
+
+public record TradingConfirmation(string Token, DateTime ExpiresAt);
+
 public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false, bool StepUpRequired = false);
 
 public record ElevationGrant(string Token, DateTime ExpiresAt);

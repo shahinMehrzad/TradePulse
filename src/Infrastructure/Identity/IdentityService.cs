@@ -1,11 +1,22 @@
 using Application.Interfaces;
+using Application.Services;
 using Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 
 namespace Infrastructure.Identity;
 
-public sealed class IdentityService(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) : IIdentityService
+/// <summary>
+/// Identity does the work of users, hashes and tokens; the counting of wrong guesses is not Identity's (its lockout is one count and one fixed
+/// time for the whole account, which lets anybody who knows a user name keep that user out): <see cref="LoginGuard"/> does it, per address for
+/// passwords and per account for codes, with locks that grow. "Locked out" of Identity is left for what it is used for here: a disabled account.
+/// </summary>
+public sealed class IdentityService(UserManager<ApplicationUser> userManager, LoginGuard guard, ITwoFactorReplayGuard replay) : IIdentityService
 {
+    private enum PasswordCheck { Ok, Wrong, Locked }
+
+    /// <summary>A hash made once with the same hasher as the real ones, so that comparing against it costs the same time.</summary>
+    private static string? _timeSpender;
+
     private const string Issuer = "TradePulse";
     private const int RecoveryCodeCount = 10;
 
@@ -13,15 +24,19 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
     {
         var user = await userManager.FindByEmailAsync(email) ?? await userManager.FindByNameAsync(username);
         if (user is null)
+        {
+            // Without this a user that does not exist is answered in a fraction of the time a wrong password takes (no hash to compare),
+            // and the time alone says which names exist.
+            SpendTheTimeOfAHash(password);
             return new CredentialsResult(CredentialsOutcome.Invalid);
+        }
 
-        var result = await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
-        if (result.IsLockedOut)
-            return new CredentialsResult(CredentialsOutcome.LockedOut);
-
-        return result.Succeeded
-            ? new CredentialsResult(CredentialsOutcome.Valid, await ToAccountAsync(user))
-            : new CredentialsResult(CredentialsOutcome.Invalid);
+        return await CheckPasswordAsync(user, password, cancellationToken) switch
+        {
+            PasswordCheck.Locked => new CredentialsResult(CredentialsOutcome.LockedOut),
+            PasswordCheck.Ok => new CredentialsResult(CredentialsOutcome.Valid, await ToAccountAsync(user)),
+            _ => new CredentialsResult(CredentialsOutcome.Invalid)
+        };
     }
 
     public async Task<Account?> FindActiveAccountAsync(Guid userId, CancellationToken cancellationToken)
@@ -35,7 +50,7 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         var user = await userManager.FindByIdAsync(userId.ToString());
         if (user is null || user.IsDisabled() || !user.TwoFactorEnabled)
             return TwoFactorOutcome.Invalid;
-        if (await userManager.IsLockedOutAsync(user))
+        if (await TwoFactorClosedAsync(user, cancellationToken))
             return TwoFactorOutcome.LockedOut;
 
         if (method == TwoFactorMethod.Email && !user.EmailCodesEnabled)
@@ -48,7 +63,12 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
             _ => await userManager.VerifyTwoFactorTokenAsync(user, userManager.Options.Tokens.AuthenticatorTokenProvider, Normalize(code))
         };
 
-        return await CountAsync(user, valid);
+        // The codes of the app and of the mail stay valid for a minute or two and Identity lets them be used over and over in that time: here a
+        // code works once. (A recovery code is used up by being used.) A repeated one is neither a success nor a wrong guess.
+        if (valid && method != TwoFactorMethod.Recovery && !await replay.TryUseAsync(user.Id, Normalize(code), cancellationToken))
+            return TwoFactorOutcome.AlreadyUsed;
+
+        return await CountAsync(user, valid, cancellationToken);
     }
 
     public async Task<PasswordChangeResult> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken)
@@ -57,10 +77,10 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         if (user is null)
             return new PasswordChangeResult(false, ["The user does not exist."]);
 
-        // A wrong current password counts towards the lockout like at sign-in: a stolen access token must not be a free password oracle.
-        var check = await signInManager.CheckPasswordSignInAsync(user, currentPassword, lockoutOnFailure: true);
-        if (!check.Succeeded)
-            return new PasswordChangeResult(false, [check.IsLockedOut ? "Too many wrong passwords. Try again later." : "The current password is incorrect."]);
+        // A wrong current password is counted like one at sign-in: a stolen access token must not be a free password oracle.
+        var check = await CheckPasswordAsync(user, currentPassword, cancellationToken);
+        if (check != PasswordCheck.Ok)
+            return new PasswordChangeResult(false, [check == PasswordCheck.Locked ? "Too many wrong passwords. Try again later." : "The current password is incorrect."]);
 
         var result = await userManager.ChangePasswordAsync(user, currentPassword, newPassword);
         if (!result.Succeeded)
@@ -88,11 +108,11 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
     public async Task<bool> EnableEmailCodesAsync(Guid userId, string code, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByIdAsync(userId.ToString());
-        if (user is null || user.IsDisabled() || !user.TwoFactorEnabled || await userManager.IsLockedOutAsync(user))
+        if (user is null || user.IsDisabled() || !user.TwoFactorEnabled || await TwoFactorClosedAsync(user, cancellationToken))
             return false;
 
         var valid = await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider, Normalize(code));
-        if (await CountAsync(user, valid) != TwoFactorOutcome.Valid)
+        if (await CountAsync(user, valid, cancellationToken) != TwoFactorOutcome.Valid)
             return false;
 
         // The code reached the mailbox: the address is proven, and the codes may be used to sign in.
@@ -106,7 +126,7 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         var user = await userManager.FindByIdAsync(userId.ToString());
         if (user is null || user.IsDisabled())
             return false;
-        if (!(await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true)).Succeeded)
+        if (await CheckPasswordAsync(user, password, cancellationToken) != PasswordCheck.Ok)
             return false;
 
         user.EmailCodesEnabled = false;
@@ -124,7 +144,7 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         var user = await userManager.FindByIdAsync(userId.ToString());
         if (user is null || user.IsDisabled() || !user.TwoFactorEnabled)
             return null;
-        if (!(await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true)).Succeeded)
+        if (await CheckPasswordAsync(user, password, cancellationToken) != PasswordCheck.Ok)
             return null;
 
         var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, RecoveryCodeCount);
@@ -152,11 +172,11 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
     public async Task<IReadOnlyList<string>?> ConfirmTwoFactorEnrollmentAsync(Guid userId, string code, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByIdAsync(userId.ToString());
-        if (user is null || user.IsDisabled() || user.TwoFactorEnabled || await userManager.IsLockedOutAsync(user))
+        if (user is null || user.IsDisabled() || user.TwoFactorEnabled || await TwoFactorClosedAsync(user, cancellationToken))
             return null;
 
         var valid = await userManager.VerifyTwoFactorTokenAsync(user, userManager.Options.Tokens.AuthenticatorTokenProvider, Normalize(code));
-        if (await CountAsync(user, valid) != TwoFactorOutcome.Valid)
+        if (await CountAsync(user, valid, cancellationToken) != TwoFactorOutcome.Valid)
             return null;
 
         await userManager.SetTwoFactorEnabledAsync(user, true);
@@ -164,17 +184,51 @@ public sealed class IdentityService(UserManager<ApplicationUser> userManager, Si
         return [.. codes ?? []];
     }
 
-    /// <summary>A wrong code counts towards the lockout; a right one clears the count.</summary>
-    private async Task<TwoFactorOutcome> CountAsync(ApplicationUser user, bool valid)
+    /// <summary>A wrong code is counted against the account (and locks it for longer each round); a right one clears the count.</summary>
+    private async Task<TwoFactorOutcome> CountAsync(ApplicationUser user, bool valid, CancellationToken cancellationToken)
     {
         if (valid)
         {
-            await userManager.ResetAccessFailedCountAsync(user);
+            await guard.TwoFactorSucceededAsync(user.Id, cancellationToken);
             return TwoFactorOutcome.Valid;
         }
 
-        await userManager.AccessFailedAsync(user);
-        return await userManager.IsLockedOutAsync(user) ? TwoFactorOutcome.LockedOut : TwoFactorOutcome.Invalid;
+        return await guard.TwoFactorFailedAsync(user.Id, user.UserName ?? string.Empty, cancellationToken)
+            ? TwoFactorOutcome.LockedOut
+            : TwoFactorOutcome.Invalid;
+    }
+
+    private void SpendTheTimeOfAHash(string password)
+    {
+        var dummy = new ApplicationUser();
+        _timeSpender ??= userManager.PasswordHasher.HashPassword(dummy, Guid.NewGuid().ToString("N"));
+        userManager.PasswordHasher.VerifyHashedPassword(dummy, _timeSpender, password);
+    }
+
+    /// <summary>No code is taken while the account is disabled or locked for wrong codes.</summary>
+    private async Task<bool> TwoFactorClosedAsync(ApplicationUser user, CancellationToken cancellationToken) =>
+        await userManager.IsLockedOutAsync(user) || await guard.TwoFactorLockedAsync(user.Id, cancellationToken);
+
+    /// <summary>
+    /// A password, with the wrong ones counted. A disabled account (Identity's lockout) and an address that is locked out of the account are not
+    /// even looked at: the password is not compared, so a locked address cannot go on guessing and learn nothing from the time it takes.
+    /// </summary>
+    private async Task<PasswordCheck> CheckPasswordAsync(ApplicationUser user, string password, CancellationToken cancellationToken)
+    {
+        if (await userManager.IsLockedOutAsync(user) || await guard.PasswordLockedAsync(user.Id, cancellationToken))
+        {
+            SpendTheTimeOfAHash(password);   // a locked answer must not come faster than a wrong one
+            return PasswordCheck.Locked;
+        }
+
+        if (await userManager.CheckPasswordAsync(user, password))
+        {
+            await guard.PasswordSucceededAsync(user.Id, cancellationToken);
+            return PasswordCheck.Ok;
+        }
+
+        await guard.PasswordFailedAsync(user.Id, user.UserName ?? string.Empty, cancellationToken);
+        return PasswordCheck.Wrong;
     }
 
     /// <summary>Apps show the code as <c>123 456</c>; people type it that way.</summary>

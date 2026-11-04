@@ -39,8 +39,8 @@ public class ExchangeKeysModel(TraderApiClient trader, IOptions<TraderOptions> o
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
-        if (Configured && !IsConfirmed())
-            return ConfirmFirst(Path);
+        if (Configured && !IsTraderConfirmed())
+            return ConfirmWithTradingCode(Path);
 
         Done = TempData["Done"] as string;
         return await LoadAsync(cancellationToken) ?? Page();
@@ -70,7 +70,7 @@ public class ExchangeKeysModel(TraderApiClient trader, IOptions<TraderOptions> o
         if (result.SessionRejected)
             return await EndSessionAsync();
         if (result.StepUpRequired)
-            return ConfirmFirst(Path);
+            return ConfirmWithTradingCode(Path);
 
         if (!result.Success)
         {

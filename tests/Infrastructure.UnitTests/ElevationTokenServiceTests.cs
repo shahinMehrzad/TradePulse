@@ -3,20 +3,26 @@ using Infrastructure.Configurations;
 using Infrastructure.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using Tests.Shared;
 
 namespace Infrastructure.UnitTests;
 
 public class ElevationTokenServiceTests
 {
-    private const string Secret = "elevation-test-secret-elevation-test-secret-0123";
+    private static readonly JwtTestKeys Main = JwtTestKeys.New();
+    private static readonly JwtTestKeys Other = JwtTestKeys.New();
     private static readonly Guid UserId = Guid.NewGuid();
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
 
-    private static IOptions<JwtConfigurations> Options(string secret = Secret) =>
-        Microsoft.Extensions.Options.Options.Create(new JwtConfigurations { Secret = secret, Issuer = "issuer", Audience = "audience", DurationInMinutes = 30 });
+    private static IOptions<JwtConfigurations> Options(JwtTestKeys? keys = null) =>
+        Microsoft.Extensions.Options.Options.Create(new JwtConfigurations { PrivateKey = (keys ?? Main).PrivateKey, Issuer = "issuer", Audience = "audience", DurationInMinutes = 30 });
 
-    private JwtElevationTokenService Elevation(string secret = Secret) => new(Options(secret), _time);
+    /// <summary>What the key vault has: the public key only.</summary>
+    private static IOptions<JwtConfigurations> PublicOnly(JwtTestKeys? keys = null) =>
+        Microsoft.Extensions.Options.Options.Create(new JwtConfigurations { PublicKey = (keys ?? Main).PublicKey, Issuer = "issuer", Audience = "audience" });
+
+    private JwtElevationTokenService Elevation(JwtTestKeys? keys = null) => new(Options(keys), _time);
 
     [Fact]
     public void ATokenNamesTheUserItWasIssuedTo()
@@ -39,9 +45,48 @@ public class ElevationTokenServiceTests
     [Fact]
     public void ATokenFromAnotherKeyIsRefused()
     {
-        var forged = Elevation("another-secret-another-secret-another-secret-01").Create(UserId);
+        var forged = Elevation(Other).Create(UserId);
 
         Assert.Null(Elevation().Validate(forged.Token));
+    }
+
+    [Fact]
+    public void AProgramWithOnlyThePublicKeyChecksTheTokenAndCannotMakeOne()
+    {
+        var made = Elevation().Create(UserId);
+        var vault = new JwtElevationTokenService(PublicOnly(), _time);
+
+        Assert.Equal(UserId, vault.Validate(made.Token));
+        Assert.Throws<InvalidOperationException>(() => vault.Create(UserId));
+    }
+
+    [Fact]
+    public void TheVaultsPublicKeyOfAnotherPairRefusesTheToken()
+    {
+        var made = Elevation().Create(UserId);
+
+        Assert.Null(new JwtElevationTokenService(PublicOnly(Other), _time).Validate(made.Token));
+    }
+
+    [Fact]
+    public void ATokenSignedWithHmacUsingThePublicKeyAsTheSecretIsRefused()
+    {
+        // The classic mix-up: the public key is not secret, so whoever has it makes an HS256 token with it. Only ES256 is accepted.
+        var key = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Convert.FromBase64String(Main.PublicKey));
+        var descriptor = new Microsoft.IdentityModel.Tokens.SecurityTokenDescriptor
+        {
+            Subject = new System.Security.Claims.ClaimsIdentity([new System.Security.Claims.Claim("uid", UserId.ToString())]),
+            NotBefore = _time.GetUtcNow().UtcDateTime,
+            Expires = _time.GetUtcNow().UtcDateTime.AddMinutes(5),
+            Issuer = "issuer",
+            Audience = "audience:elevation",
+            SigningCredentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(key, Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256)
+        };
+        var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+        var forged = handler.WriteToken(handler.CreateToken(descriptor));
+
+        Assert.Null(new JwtElevationTokenService(PublicOnly(), _time).Validate(forged));
+        Assert.Null(Elevation().Validate(forged));
     }
 
     [Fact]

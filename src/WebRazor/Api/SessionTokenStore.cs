@@ -48,6 +48,31 @@ public sealed class SessionTokenStore(TimeProvider time)
     {
         _sessions.TryRemove(sessionId, out _);
         _elevations.TryRemove(sessionId, out _);
+        _traderConfirmations.TryRemove(sessionId, out _);
+    }
+
+    private readonly ConcurrentDictionary<string, (string Token, DateTimeOffset ExpiresAt)> _traderConfirmations = new();
+
+    /// <summary>Keeps the confirmation the key vault gave after the trading code (it is the vault's own, see <see cref="TraderConfirmationHandler"/>).</summary>
+    public void SetTraderConfirmation(string sessionId, string token, DateTime expiresAt)
+    {
+        if (_sessions.ContainsKey(sessionId))
+            _traderConfirmations[sessionId] = (token, new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc)));
+    }
+
+    public void ClearTraderConfirmation(string sessionId) => _traderConfirmations.TryRemove(sessionId, out _);
+
+    /// <returns>True while the session holds a confirmation of the vault that has not run out.</returns>
+    public bool TryGetTraderConfirmation(string sessionId, out string token)
+    {
+        if (_traderConfirmations.TryGetValue(sessionId, out var held) && held.ExpiresAt - time.GetUtcNow() > TimeSpan.FromSeconds(5))
+        {
+            token = held.Token;
+            return true;
+        }
+
+        token = string.Empty;
+        return false;
     }
 
     private readonly ConcurrentDictionary<string, (string Token, DateTimeOffset ExpiresAt)> _elevations = new();

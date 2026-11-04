@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.16.0" />
   </ItemGroup>
 
@@ -15,6 +16,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\SeededSymbol.cs" Link="Shared\SeededSymbol.cs" />
+    <Compile Include="..\Shared\JwtTestKeys.cs" Link="Shared\JwtTestKeys.cs" />
   </ItemGroup>
 
 </Project>

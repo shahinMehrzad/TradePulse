@@ -31,24 +31,24 @@ statement, so two orders at the same moment cannot both fit and a crash in betwe
 The server's symbol list above is a ceiling. Inside it, an administrator **enables** the symbols that may be traded, and a symbol nobody has enabled cannot
 be opened (it is opt-in: a new symbol on the server's list is not traded until somebody chooses it, and after an update nothing is open until it is chosen).
 
-- `GET /trading/symbols` lists the server's symbols and whether each is enabled. `POST /trading/symbols/{symbol}/enable` asks for a **second-factor code entered in
+- `GET /trading/symbols` lists the server's symbols and whether each is enabled. `POST /trading/symbols/{symbol}/enable` asks for a **trading code (see exchange-keys.md) entered in
   the last 10 minutes**; `POST /trading/symbols/{symbol}/disable` is one click, like the halt. A symbol outside the server's list is refused (`422`), whatever the code.
 - Closing never needs it: an order that only reduces a position still goes through for a symbol that has been switched off, so a position cannot be locked in.
-- Every choice is written to the audit log (who, which symbol, enabled or disabled). The choice is the same for every administrator; it is kept in `vault.trading_symbols`.
+- Every choice is written to the audit log (who, which symbol, enabled or disabled). The choice is the same for every administrator; it is kept in `vault.trading_symbols` in the vault's own database, and the enabled symbols are copied to `config.traded_symbols` in the main one for the watch to read (see [database-security.md](database-security.md)). Nothing about trading is decided from the copy.
 - The live price watch follows the enabled symbols automatically (see [research.md](research.md)); an administrator can switch the watch of one off on their own responsibility.
 
 ## Halt (kill switch)
 
 - **Halt trading now** (panel) stops the user's new positions at once, with no extra code: in an emergency nothing should be in the way.
-  **Resume** asks for a fresh second-factor code.
+  **Resume** asks for the trading code.
 - An order marked **only reduce** (`reduceOnly`) still goes through while halted and is not counted against the caps, so a position can always be closed.
 - Halting does **not** cancel open orders or close positions at Binance; do that at Binance.
 - `TRADING_HALTED=true` halts everybody and can only be lifted on the server.
 
 ## Other rules
 
-- Placing an order needs an administrator, a key of their own in status **Active**, and a **second-factor code entered in the last 10 minutes**
-  (the same step-up as for the keys). At most 10 orders a minute per user.
+- Placing an order needs an administrator, a key of their own in status **Active**, and a **trading code (see exchange-keys.md) entered in the last 10 minutes**
+  (the vault's own confirmation, the same as for the keys). At most 10 orders a minute per user.
 - Every order is written to the audit log (who, symbol, side, quantity, environment, result) and to `vault.orders`.
 - Result of an order: **Placed** (Binance accepted it), **Refused** (Binance said no; nothing opened), **Unknown** (no answer; it may exist at Binance:
   check the position there; it keeps counting against the budget).

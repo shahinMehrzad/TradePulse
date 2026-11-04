@@ -36,6 +36,7 @@ public static class DependencyInjection
     {
         AddHandlers(services, IsApiOnlyHandler);
         services.AddScoped<LoginSteps>();
+        services.AddScoped<LoginGuard>();
         services.AddScoped<EmailCodeSender>();
         services.AddSingleton<EmailCodeThrottle>();
         return services;

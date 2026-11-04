@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Npgsql;
 
 namespace WebApi.IntegrationTests;
 
@@ -26,7 +27,7 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     private record Page(Entry[] Value);
     private record SymbolMarketDto(int ListingId, string Exchange, string Market, string ExchangeSymbol);
     private record Item(int Id, string Name, string? Description, SymbolMarketDto[] Markets);
-    private record DetailMarket(int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount);
+    private record DetailMarket(int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount, int WatchCount, bool Traded);
     private record Detail(int Id, string Name, string? Description, DetailMarket[] Markets);
     private record SymbolPage(Item[] Items, int PageNumber, int PageSize, int TotalItems, int TotalPages);
 
@@ -378,6 +379,9 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         var spot = (await (await PostListingAsync(client, symbol, "DETAILSUSDT", Spot)).Content.ReadFromJsonAsync<Created>(Ct))!.Id;
         (await client.PostAsJsonAsync("/api/admin/configurations/add-config",
             new { symbolListingId = futures, timeFrameId = 3600, startDate = "2020-01-01T00:00:00Z" }, Ct)).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync("/api/admin/configurations/add-config",
+            new { symbolListingId = futures, timeFrameId = 60, startDate = "2020-01-01T00:00:00Z" }, Ct)).EnsureSuccessStatusCode();   // the watch needs 1 minute candles
+        (await client.PostAsJsonAsync("/api/admin/shock-watch", new { symbolListingId = futures }, Ct)).EnsureSuccessStatusCode();
         (await client.PostAsJsonAsync("/api/admin/configurations/add-symbol-data",
             new { symbolListingId = futures, collectFundingRate = true, fundingStartDate = "2020-01-01T00:00:00Z", collectLiquidation = true }, Ct)).EnsureSuccessStatusCode();
 
@@ -385,10 +389,46 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
 
         Assert.Equal(("DETAILS/USDT", "two markets"), (detail.Name, detail.Description));
         Assert.Equal(
-            [(futures, "Binance", "Futures", "DETAILSUSDT", 1, 1), (spot, "Binance", "Spot", "DETAILSUSDT", 0, 0)],
-            detail.Markets.Select(m => (m.ListingId, m.Exchange, m.Market, m.ExchangeSymbol, m.SeriesCount, m.SettingsCount)).OrderByDescending(m => m.ListingId == futures));
+            [(futures, "Binance", "Futures", "DETAILSUSDT", 2, 1, 1), (spot, "Binance", "Spot", "DETAILSUSDT", 0, 0, 0)],
+            detail.Markets.Select(m => (m.ListingId, m.Exchange, m.Market, m.ExchangeSymbol, m.SeriesCount, m.SettingsCount, m.WatchCount)).OrderByDescending(m => m.ListingId == futures));
         Assert.Equal(HttpStatusCode.Conflict, (await client.DeleteAsync($"{ListingsUrl}/{futures}", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"{ListingsUrl}/{spot}", Ct)).StatusCode);
+    }
+
+    /// <summary>What the trading service does to the copy in <c>config.traded_symbols</c> when an admin enables (or disables) a symbol.</summary>
+    private async Task SetTradedAsync(string exchangeSymbol, bool enabled)
+    {
+        await using var connection = new NpgsqlConnection(api.ConnectionString);
+        await connection.OpenAsync(Ct);
+        await using var command = new NpgsqlCommand(enabled
+            ? "INSERT INTO config.traded_symbols VALUES (@symbol, now() at time zone 'utc') ON CONFLICT (symbol) DO NOTHING"
+            : "DELETE FROM config.traded_symbols WHERE symbol = @symbol", connection);
+        command.Parameters.AddWithValue("symbol", exchangeSymbol);
+        await command.ExecuteNonQueryAsync(Ct);
+    }
+
+    [Fact]
+    public async Task TheFuturesListingOfASymbolEnabledForTradingIsHeldInPlaceUntilTradingIsSwitchedOff()
+    {
+        var client = await AdminAsync();
+        api.ExchangeCatalog.Trading.Add("HELDUSDT");
+        var symbol = await AddSymbolAsync(client, "HELD/USDT");
+        var futures = (await (await PostListingAsync(client, symbol, "HELDUSDT", Futures)).Content.ReadFromJsonAsync<Created>(Ct))!.Id;
+        var spot = (await (await PostListingAsync(client, symbol, "HELDUSDT", Spot)).Content.ReadFromJsonAsync<Created>(Ct))!.Id;
+        await SetTradedAsync("HELDUSDT", true);
+
+        var detail = (await client.GetFromJsonAsync<Detail>($"{SymbolsUrl}/{symbol}", Ct))!;
+        var refused = await client.DeleteAsync($"{ListingsUrl}/{futures}", Ct);
+
+        // Trading is on Futures only: the Spot listing of the same name is not held, and nothing uses it.
+        Assert.Equal([(futures, true), (spot, false)], detail.Markets.OrderByDescending(m => m.ListingId == futures).Select(m => (m.ListingId, m.Traded)));
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Contains("enabled for trading", (await refused.Content.ReadFromJsonAsync<Problem>(Ct))!.Detail);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"{ListingsUrl}/{spot}", Ct)).StatusCode);
+
+        await SetTradedAsync("HELDUSDT", false);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"{ListingsUrl}/{futures}", Ct)).StatusCode);
     }
 
     [Fact]

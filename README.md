@@ -67,6 +67,7 @@ A separate console (`src/Research`, its own process, its own `research` schema) 
 | [docs/api.md](docs/api.md) | The candle read API, the dashboard API, login and refresh tokens. |
 | [docs/admin-panel.md](docs/admin-panel.md) | The panel's pages, sessions and what it asks WebApi for. |
 | [docs/exchange-keys.md](docs/exchange-keys.md) | The key vault: how administrators keep their Binance Futures keys, and how they are protected. |
+| [docs/database-security.md](docs/database-security.md) | The two databases, who may touch what, upgrading a server, restoring, and defining a role. |
 | [docs/trading.md](docs/trading.md) | Manual market orders with Demo/Live keys, the server-side limits and the halt switch. |
 | [docs/candle-cache.md](docs/candle-cache.md) | `HybridCache` in front of the candle reads, with benchmark results. |
 | [docs/testing.md](docs/testing.md) | Unit, integration and contract tests, benchmarks, CI. |
@@ -87,7 +88,7 @@ kept as *user secrets* (in your Windows profile, not in a file of the project). 
 ```bash
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/WebApi
 dotnet user-secrets set "ConnectionStrings:AuthConnection"    "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/WebApi
-dotnet user-secrets set "JwtConfigurations:Secret"            "<at least 32 random characters>"                                          --project src/WebApi
+dotnet user-secrets set "JwtConfigurations:PrivateKey"        "<JWT_PRIVATE_KEY from deploy/make-jwt-keys.sh>"                            --project src/WebApi
 dotnet user-secrets set "AdminConfigurations:Email"           "admin@example.com"                                                        --project src/WebApi
 dotnet user-secrets set "AdminConfigurations:Password"        "<a temporary password, at least 12 characters>"                                                      --project src/WebApi
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=trading_db;Username=postgres;Password=password" --project src/BackgroundWorker

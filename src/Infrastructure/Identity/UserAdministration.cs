@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Infrastructure.Identity;
 
-public sealed class UserAdministration(UserManager<ApplicationUser> userManager, IConfiguration configuration) : IUserAdministration
+public sealed class UserAdministration(UserManager<ApplicationUser> userManager, IConfiguration configuration, ILoginThrottle throttle) : IUserAdministration
 {
     private string AdminRole => configuration["AdminConfigurations:Role"]
                                 ?? throw new InvalidOperationException("AdminConfigurations:Role must be set.");
@@ -14,10 +14,11 @@ public sealed class UserAdministration(UserManager<ApplicationUser> userManager,
     public async Task<IReadOnlyList<UserSummary>> ListAsync(CancellationToken cancellationToken)
     {
         var users = await userManager.Users.OrderBy(u => u.UserName).ToListAsync(cancellationToken);
+        var locks = await throttle.ActiveLocksAsync(cancellationToken);
 
         var summaries = new List<UserSummary>(users.Count);
         foreach (var user in users)
-            summaries.Add(await ToSummaryAsync(user));
+            summaries.Add(await ToSummaryAsync(user, locks.GetValueOrDefault(user.Id)));
         return summaries;
     }
 
@@ -57,6 +58,7 @@ public sealed class UserAdministration(UserManager<ApplicationUser> userManager,
         user.MustChangePassword = true;
         await userManager.UpdateAsync(user);
         await userManager.ResetAccessFailedCountAsync(user);
+        await throttle.ClearAsync(user.Id, cancellationToken);
         return (UserChangeOutcome.Done, password);
     }
 
@@ -71,6 +73,7 @@ public sealed class UserAdministration(UserManager<ApplicationUser> userManager,
         await userManager.ResetAuthenticatorKeyAsync(user);
         await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 0); // forgets the old codes
         await userManager.ResetAccessFailedCountAsync(user);
+        await throttle.ClearAsync(user.Id, cancellationToken);
         return UserChangeOutcome.Done;
     }
 
@@ -92,6 +95,7 @@ public sealed class UserAdministration(UserManager<ApplicationUser> userManager,
         await userManager.SetTwoFactorEnabledAsync(user, false);
         await userManager.ResetAuthenticatorKeyAsync(user);
         await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 0);
+        await throttle.ClearAsync(user.Id, cancellationToken);
         return (await ToSummaryAsync(user), password);
     }
 
@@ -111,10 +115,19 @@ public sealed class UserAdministration(UserManager<ApplicationUser> userManager,
         return UserChangeOutcome.Done;
     }
 
+    public async Task<UserChangeOutcome> UnlockAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        if (await userManager.FindByIdAsync(userId.ToString()) is not { } user)
+            return UserChangeOutcome.NotFound;
+
+        await throttle.ClearAsync(user.Id, cancellationToken);
+        return UserChangeOutcome.Done;
+    }
+
     private async Task<bool> AnotherActiveAdministratorExistsAsync(ApplicationUser except) =>
         (await userManager.GetUsersInRoleAsync(AdminRole)).Any(u => u.Id != except.Id && !u.IsDisabled());
 
-    private async Task<UserSummary> ToSummaryAsync(ApplicationUser user) => new(
+    private async Task<UserSummary> ToSummaryAsync(ApplicationUser user, AccountLock? locked = null) => new(
         user.Id, user.UserName ?? string.Empty, user.Email ?? string.Empty, [.. await userManager.GetRolesAsync(user)],
-        user.TwoFactorEnabled, user.MustChangePassword, user.IsDisabled());
+        user.TwoFactorEnabled, user.MustChangePassword, user.IsDisabled(), locked?.LockedUntil, locked?.LockedAddresses ?? 0);
 }

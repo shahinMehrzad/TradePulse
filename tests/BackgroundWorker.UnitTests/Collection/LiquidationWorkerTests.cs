@@ -47,7 +47,13 @@ public class LiquidationWorkerTests
     private sealed class RecordingRepository : IMarketDataRepository<Liquidation>
     {
         public List<string> Created { get; } = [];
-        public List<(string Table, List<Liquidation> Rows)> Inserts { get; } = [];
+        private readonly List<(string Table, List<Liquidation> Rows)> _inserts = [];
+
+        /// <summary>A copy: the worker stores from its own thread while a test reads.</summary>
+        public List<(string Table, List<Liquidation> Rows)> Inserts
+        {
+            get { lock (_inserts) return _inserts.ToList(); }
+        }
 
         public Task EnsureTableExistsAsync(string tableName, CancellationToken cancellationToken)
         {
@@ -58,10 +64,10 @@ public class LiquidationWorkerTests
 
         public Task<int> BulkInsert(string tableName, IEnumerable<Liquidation> rows, CancellationToken cancellationToken)
         {
-            lock (Inserts)
+            lock (_inserts)
             {
                 var list = rows.ToList();
-                Inserts.Add((tableName, list));
+                _inserts.Add((tableName, list));
                 return Task.FromResult(list.Count);
             }
         }

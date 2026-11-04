@@ -493,6 +493,18 @@ public sealed class TradePulseApiClient(HttpClient http)
         return await ToResultAsync(response, NotFoundUser, cancellationToken);
     }
 
+    /// <summary>Ends this session's refresh token at the API. The answer does not matter: the panel's own session ends either way.</summary>
+    public async Task LogoutAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("api/account/logout", content: null, cancellationToken);
+    }
+
+    public async Task<ApiResult> UnlockUserAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"{UsersRoot}/{id}/unlock", content: null, cancellationToken);
+        return await ToResultAsync(response, NotFoundUser, cancellationToken);
+    }
+
     public async Task<ApiResult> SetUserDisabledAsync(Guid id, bool disabled, CancellationToken cancellationToken)
     {
         using var response = await http.PostAsync($"{UsersRoot}/{id}/{(disabled ? "disable" : "enable")}", content: null, cancellationToken);
@@ -530,7 +542,8 @@ public sealed class TradePulseApiClient(HttpClient http)
         {
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-            return document.RootElement.TryGetProperty("code", out var code) && code.GetString() == "step_up_required";
+            // A code is needed (the API's, or the key vault's), or the user has not set up the trading code yet: both are "confirm first", not a lost role.
+            return document.RootElement.TryGetProperty("code", out var code) && code.GetString() is "step_up_required" or "trading_code_not_set";
         }
         catch (JsonException)
         {

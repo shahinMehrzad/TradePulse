@@ -8,7 +8,7 @@
 <div class="card card-md">
     <div class="card-body">
         <h2 class="h2 text-center mb-2">Two-factor verification</h2>
-        <p class="text-secondary text-center mb-4">Enter the 6-digit code your authenticator app shows@(Model.EmailCodeAvailable ? ", a code we email you," : "") or one of your recovery codes.</p>
+        <p class="text-secondary text-center mb-4">Enter the 6-digit code of the entry named <strong>TradePulse</strong> in your authenticator app@(Model.EmailCodeAvailable ? ", a code we email you," : "") or one of your recovery codes.</p>
         @if (Model.Notice is not null)
         {
             <div class="alert alert-info" role="alert">@Model.Notice</div>

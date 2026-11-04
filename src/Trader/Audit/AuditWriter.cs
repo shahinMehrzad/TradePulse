@@ -9,13 +9,13 @@ namespace Trader.Audit;
 /// a failure to write is logged and never thrown: the key really was added or removed. What is written is the label and what happened,
 /// never a key, a public key or the API key.
 /// </summary>
-public sealed class AuditWriter(NpgsqlDataSource dataSource, TimeProvider time, ILogger<AuditWriter> logger)
+public sealed class AuditWriter(MainDatabase main, TimeProvider time, ILogger<AuditWriter> logger)
 {
-    public async Task RecordAsync(AuditAction action, string userName, string label, string details, CancellationToken cancellationToken)
+    public async Task RecordAsync(AuditAction action, string userName, string label, string details, CancellationToken cancellationToken, string? entityType = null)
     {
         try
         {
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            await using var connection = await main.Source.OpenConnectionAsync(cancellationToken);
             await connection.ExecuteAsync(new CommandDefinition("""
                 INSERT INTO config.audit_log ("OccurredAt", "UserName", "Action", "EntityType", "EntityId", "Summary", "Details")
                 VALUES (@at, @userName, @action, @type, 0, @summary, @details)
@@ -25,7 +25,7 @@ public sealed class AuditWriter(NpgsqlDataSource dataSource, TimeProvider time, 
                     at = DateTime.SpecifyKind(time.GetUtcNow().UtcDateTime, DateTimeKind.Unspecified), // timestamp without zone, always UTC
                     userName = Truncate(userName, 256),
                     action = action.ToString(),
-                    type = AuditEntityTypes.ExchangeKey,
+                    type = entityType ?? AuditEntityTypes.ExchangeKey,
                     summary = Truncate(label, 256),
                     details
                 }, cancellationToken: cancellationToken));

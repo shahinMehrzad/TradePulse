@@ -38,7 +38,7 @@ public class SymbolCatalogRepository(ConfigDbContext context) : ISymbolCatalogRe
         return (items, total);
     }
 
-    public async Task<IReadOnlyDictionary<int, (int Series, int Settings)>> GetListingUsage(int symbolId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<int, (int Series, int Settings, int Watches)>> GetListingUsage(int symbolId, CancellationToken cancellationToken)
     {
         var listings = context.SymbolListings.Where(l => l.SymbolId == symbolId).Select(l => l.Id);
 
@@ -47,9 +47,14 @@ public class SymbolCatalogRepository(ConfigDbContext context) : ISymbolCatalogRe
         var settings = await context.SymbolDataConfigurations.Where(c => listings.Contains(c.SymbolListingId))
             .GroupBy(c => c.SymbolListingId).Select(g => new { Listing = g.Key, Count = g.Count() }).ToListAsync(cancellationToken);
 
-        return series.Select(x => x.Listing).Union(settings.Select(x => x.Listing)).ToDictionary(
+        var watches = await context.ShockWatchConfigurations.Where(c => listings.Contains(c.SymbolListingId))
+            .GroupBy(c => c.SymbolListingId).Select(g => new { Listing = g.Key, Count = g.Count() }).ToListAsync(cancellationToken);
+
+        return series.Select(x => x.Listing).Union(settings.Select(x => x.Listing)).Union(watches.Select(x => x.Listing)).ToDictionary(
             id => id,
-            id => (series.FirstOrDefault(x => x.Listing == id)?.Count ?? 0, settings.FirstOrDefault(x => x.Listing == id)?.Count ?? 0));
+            id => (series.FirstOrDefault(x => x.Listing == id)?.Count ?? 0,
+                settings.FirstOrDefault(x => x.Listing == id)?.Count ?? 0,
+                watches.FirstOrDefault(x => x.Listing == id)?.Count ?? 0));
     }
 
     public async Task<SymbolLookup> UpdateSymbolDescription(int id, string? description, CancellationToken cancellationToken)
@@ -88,7 +93,7 @@ public class SymbolCatalogRepository(ConfigDbContext context) : ISymbolCatalogRe
         var entity = await context.SymbolListings.SingleOrDefaultAsync(l => l.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException("Listing does not exist.");
         context.SymbolListings.Remove(entity);
-        await SaveAsync(deleting: true, "A series or symbol-data setting still uses this listing.", "Unknown listing.", cancellationToken);
+        await SaveAsync(deleting: true, "A series, a symbol-data setting or a price watch still uses this listing.", "Unknown listing.", cancellationToken);
     }
 
     /// <summary>Saves, turning the two database errors a caller can cause into domain exceptions. Anything else is a real failure and is left to propagate.</summary>

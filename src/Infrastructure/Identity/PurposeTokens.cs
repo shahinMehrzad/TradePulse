@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using Infrastructure.Configurations;
 using Microsoft.IdentityModel.Tokens;
 
@@ -9,15 +8,15 @@ namespace Infrastructure.Identity;
 /// <summary>
 /// A short-lived signed token that names a user and is good for one purpose only. It is signed with the key of the access tokens
 /// but for an audience of its own, so the API's bearer validation never takes one for an access token, and one purpose's token is
-/// never taken for another's.
+/// never taken for another's. A program that only has the public key can check such a token and cannot make one.
 /// </summary>
 internal sealed class PurposeTokens(JwtConfigurations jwt, TimeProvider time, string purpose, TimeSpan lifetime)
 {
     private const string UserClaim = "uid";
 
-    private string Audience => $"{jwt.Audience}:{purpose}";
+    private readonly JwtKeys _keys = JwtKeys.From(jwt);
 
-    private SymmetricSecurityKey Key => new(Encoding.UTF8.GetBytes(jwt.Secret));
+    private string Audience => $"{jwt.Audience}:{purpose}";
 
     public (string Token, DateTime ExpiresAt) Create(Guid userId)
     {
@@ -31,7 +30,9 @@ internal sealed class PurposeTokens(JwtConfigurations jwt, TimeProvider time, st
             Expires = expiresAt,
             Issuer = jwt.Issuer,
             Audience = Audience,
-            SigningCredentials = new SigningCredentials(Key, SecurityAlgorithms.HmacSha256Signature)
+            SigningCredentials = new SigningCredentials(
+                _keys.SigningKey ?? throw new InvalidOperationException("This program has no signing key (JwtConfigurations:PrivateKey): only the API makes tokens."),
+                JwtKeys.Algorithm)
         };
 
         return (handler.WriteToken(handler.CreateToken(descriptor)), expiresAt);
@@ -49,8 +50,8 @@ internal sealed class PurposeTokens(JwtConfigurations jwt, TimeProvider time, st
             ValidateAudience = true,
             ValidAudience = Audience,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = Key,
-            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            IssuerSigningKey = _keys.VerificationKey,
+            ValidAlgorithms = [JwtKeys.Algorithm],
             RequireExpirationTime = true,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(5),

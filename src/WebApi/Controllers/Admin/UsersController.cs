@@ -37,6 +37,15 @@ public class UsersController(ICommandDispatcher dispatcher) : AdminControllerBas
         return NoContent();
     }
 
+    /// <summary>Lifts the locks that wrong passwords or codes led to (the account stays disabled if it was).</summary>
+    [HttpPost("{id:guid}/unlock")]
+    [RequireElevation]
+    public async Task<IActionResult> Unlock(Guid id, CancellationToken cancellationToken)
+    {
+        await dispatcher.SendAsync<UnlockUserCommand, bool>(new UnlockUserCommand(id), cancellationToken);
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/disable")]
     [RequireElevation]
     public Task<IActionResult> Disable(Guid id, CancellationToken cancellationToken) => SetDisabled(id, true, cancellationToken);

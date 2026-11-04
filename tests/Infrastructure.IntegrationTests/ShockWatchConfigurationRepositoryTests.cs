@@ -167,13 +167,13 @@ public class ShockWatchConfigurationRepositoryTests(PostgresFixture postgres)
         await using var watchContext = new ConfigDbContext(options);
         var connectionString = watchContext.Database.GetConnectionString()!;
 
-        // The trading service made its table and the admin enabled bitcoin for trading there.
+        // The trading service published its copy of the enabled symbols and bitcoin is on it.
         await using (var connection = new NpgsqlConnection(connectionString))
         {
             await connection.ExecuteAsync("""
-                CREATE SCHEMA IF NOT EXISTS vault;
-                CREATE TABLE IF NOT EXISTS vault.trading_symbols (symbol text PRIMARY KEY, enabled boolean NOT NULL, changed_by text NOT NULL, changed_at timestamp NOT NULL);
-                INSERT INTO vault.trading_symbols VALUES ('BTCUSDT', true, 'admin', now() at time zone 'utc');
+                CREATE SCHEMA IF NOT EXISTS config;
+                CREATE TABLE IF NOT EXISTS config.traded_symbols (symbol text PRIMARY KEY, changed_at timestamp NOT NULL);
+                INSERT INTO config.traded_symbols VALUES ('BTCUSDT', now() at time zone 'utc');
                 """);
         }
 

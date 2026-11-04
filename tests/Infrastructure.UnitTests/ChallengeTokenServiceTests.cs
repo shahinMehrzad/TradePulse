@@ -3,19 +3,22 @@ using Infrastructure.Configurations;
 using Infrastructure.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using Tests.Shared;
 
 namespace Infrastructure.UnitTests;
 
 public class ChallengeTokenServiceTests
 {
+    private static readonly JwtTestKeys Main = JwtTestKeys.New();
+    private static readonly JwtTestKeys Other = JwtTestKeys.New();
     private static readonly Guid UserId = Guid.NewGuid();
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
 
-    private static IOptions<JwtConfigurations> Options(string secret = "challenge-test-secret-challenge-test-secret-0123") =>
-        Microsoft.Extensions.Options.Options.Create(new JwtConfigurations { Secret = secret, Issuer = "issuer", Audience = "audience", DurationInMinutes = 30 });
+    private static IOptions<JwtConfigurations> Options(JwtTestKeys? keys = null) =>
+        Microsoft.Extensions.Options.Options.Create(new JwtConfigurations { PrivateKey = (keys ?? Main).PrivateKey, Issuer = "issuer", Audience = "audience", DurationInMinutes = 30 });
 
-    private JwtChallengeTokenService Service(string secret = "challenge-test-secret-challenge-test-secret-0123") => new(Options(secret), _time);
+    private JwtChallengeTokenService Service(JwtTestKeys? keys = null) => new(Options(keys), _time);
 
     [Fact]
     public void ATokenNamesTheUserItWasIssuedTo()
@@ -40,7 +43,7 @@ public class ChallengeTokenServiceTests
     [Fact]
     public void ATokenSignedWithAnotherKeyIsRefused()
     {
-        var forged = Service("another-secret-another-secret-another-secret-01").Create(UserId);
+        var forged = Service(Other).Create(UserId);
 
         Assert.Null(Service().Validate(forged.Token));
     }
