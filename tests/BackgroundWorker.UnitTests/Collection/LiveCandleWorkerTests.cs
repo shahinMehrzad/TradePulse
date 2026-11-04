@@ -48,14 +48,20 @@ public class LiveCandleWorkerTests
 
     private sealed class RecordingCandleRepository : ICandleRepository
     {
-        public List<(string Table, List<Candle> Rows)> Inserts { get; } = [];
+        private readonly List<(string Table, List<Candle> Rows)> _inserts = [];
+
+        /// <summary>A copy: the worker stores from its own thread while a test reads.</summary>
+        public List<(string Table, List<Candle> Rows)> Inserts
+        {
+            get { lock (_inserts) return _inserts.ToList(); }
+        }
 
         public Task<int> BulkInsert(string tableName, IEnumerable<Candle> candles, CancellationToken cancellationToken)
         {
-            lock (Inserts)
+            lock (_inserts)
             {
                 var list = candles.ToList();
-                Inserts.Add((tableName, list));
+                _inserts.Add((tableName, list));
                 return Task.FromResult(list.Count);
             }
         }
