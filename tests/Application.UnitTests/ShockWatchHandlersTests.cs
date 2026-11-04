@@ -107,7 +107,7 @@ public class ShockWatchHandlersTests
     // ---- switching ---------------------------------------------------------------------------------------------------------
 
     private Task<bool> SetAsync(int id, bool enabled) =>
-        new SetShockWatchEnabledCommandHandler(_watch, _series, Audit).HandleAsync(new SetShockWatchEnabledCommand(id, enabled), Ct);
+        new SetShockWatchEnabledCommandHandler(_watch, _series, new FakeTradedSymbolSource(), Audit).HandleAsync(new SetShockWatchEnabledCommand(id, enabled), Ct);
 
     [Fact]
     public async Task SwitchingOffNeedsNothingEvenWhenTheCandlesAreGone()

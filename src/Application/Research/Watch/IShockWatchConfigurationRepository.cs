@@ -19,6 +19,9 @@ public interface IShockWatchConfigurationRepository
     /// <summary>Throws <see cref="Domain.Exceptions.ConfigurationNotFoundException"/> when the row does not exist.</summary>
     Task SetEnabled(int id, bool enabled, CancellationToken cancellationToken);
 
+    /// <summary>Changes why the row is on the list and whether it is switched on, in one step. Throws <see cref="Domain.Exceptions.ConfigurationNotFoundException"/> when the row does not exist.</summary>
+    Task Decide(int id, Domain.Enums.WatchReasonEnum reason, bool enabled, CancellationToken cancellationToken);
+
     /// <summary>Throws <see cref="Domain.Exceptions.ConfigurationNotFoundException"/> when the row does not exist.</summary>
     Task Remove(int id, CancellationToken cancellationToken);
 }

@@ -22,7 +22,7 @@ public sealed class ShockWatchListItem
     /// </summary>
     public string Reason { get; set; } = "";
 
-    /// <summary>Whether the watch follows it right now.</summary>
+    /// <summary>Whether the watch follows it right now (a row added by hand and switched off is still followed while the symbol is enabled for trading).</summary>
     public bool IsEnabled { get; set; }
 
     /// <summary>Whether the symbol is enabled for trading right now (whatever the reason it is on the list).</summary>
@@ -47,7 +47,7 @@ public sealed class ShockWatchListItem
         SymbolId = configuration.SymbolListing.SymbolId,
         ExchangeSymbol = configuration.SymbolListing.ExchangeSymbol,
         Reason = configuration.Reason.ToString(),
-        IsEnabled = configuration.IsEnabled,
+        IsEnabled = Application.Research.Watch.ConfiguredWatchedSymbols.IsWatched(configuration, tradedNow),
         IsTradedNow = tradedNow,
         HasMinuteCandles = hasMinuteCandles,
         CreateDate = configuration.CreateDate,

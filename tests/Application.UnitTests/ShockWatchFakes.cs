@@ -135,6 +135,14 @@ internal sealed class FakeShockWatchConfigurationRepository : Application.Resear
         return Task.CompletedTask;
     }
 
+    public Task Decide(int id, WatchReasonEnum reason, bool enabled, CancellationToken cancellationToken)
+    {
+        var row = Rows.FirstOrDefault(r => r.Id == id) ?? throw new ConfigurationNotFoundException("Configuration does not exist.");
+        row.Reason = reason;
+        row.IsEnabled = enabled;
+        return Task.CompletedTask;
+    }
+
     public Task Remove(int id, CancellationToken cancellationToken)
     {
         Rows.Remove(Rows.FirstOrDefault(r => r.Id == id) ?? throw new ConfigurationNotFoundException("Configuration does not exist."));

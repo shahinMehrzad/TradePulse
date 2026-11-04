@@ -14,7 +14,8 @@ namespace Application.UnitTests;
 
 /// <summary>
 /// A symbol enabled for trading is watched on its own; the admin can switch that off on their own responsibility, and can add symbols
-/// by hand to study them. Per symbol, a row decides; with no row, trading decides.
+/// by hand to study them. A row switched on is watched; a traded symbol is watched unless a Trading row says off; a row added by hand and
+/// switched off does not keep a traded symbol from being watched.
 /// </summary>
 public class ShockWatchTradingTests
 {
@@ -86,6 +87,25 @@ public class ShockWatchTradingTests
         OnTheList(EthFutures, WatchReasonEnum.Trading, enabled: false);
 
         Assert.Equal(["BTCUSDT"], Names(await FollowedAsync()));
+    }
+
+    [Fact]
+    public async Task ARowAddedByHandAndSwitchedOffDoesNotKeepASymbolFromBeingWatchedOnceItIsEnabledForTrading()
+    {
+        OnTheList(EthFutures, WatchReasonEnum.Manual, enabled: false);       // studied by hand, then switched off
+        Assert.Empty(await FollowedAsync());
+
+        _traded.Enabled.Add("ETHUSDT");                                      // and now it is chosen for trading
+
+        Assert.Equal(["ETHUSDT"], Names(await FollowedAsync()));
+        var item = Assert.Single(await ListAsync());
+        Assert.Equal(("Manual", true, true), (item.Reason, item.IsEnabled, item.IsTradedNow));   // the list says what the watch does
+        Assert.Single(_watch.Rows);                                                              // and the row is still the admin's own
+
+        _traded.Enabled.Clear();                                             // trading is switched off again
+
+        Assert.Empty(await FollowedAsync());
+        Assert.False(Assert.Single(await ListAsync()).IsEnabled);
     }
 
     [Fact]
@@ -206,23 +226,48 @@ public class ShockWatchTradingTests
         Assert.Single(_auditLog.Entries);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ASymbolStudiedByHandAndTradedToIsSwitchedOffByMakingItsRowTheOffOfATradedSymbol(bool rowWasOn)
+    {
+        _traded.Enabled.Add("SOLUSDT");
+        OnTheList(SolFutures, WatchReasonEnum.Manual, enabled: rowWasOn);     // off by hand earlier: the symbol is watched anyway now
+
+        var id = await SwitchOffAsync(SolFutures.Id);
+
+        var row = Assert.Single(_watch.Rows);
+        Assert.Equal((id, WatchReasonEnum.Trading, false), (row.Id, row.Reason, row.IsEnabled));   // "off" alone would not do: trading watches it
+        Assert.Empty(await FollowedAsync());
+        Assert.Equal("watch on -> off (enabled for trading)", Assert.Single(_auditLog.Entries).Details);
+    }
+
     [Fact]
-    public async Task ASymbolStudiedByHandAndTradedToIsSwitchedOffByTurningItsRowOff()
+    public async Task TurningOffTheRowOfATradedSymbolAddedByHandThroughTheRowIsTheSameAsSwitchingTheTradedSymbolOff()
     {
         _traded.Enabled.Add("SOLUSDT");
         OnTheList(SolFutures, WatchReasonEnum.Manual, enabled: true);
 
-        await SwitchOffAsync(SolFutures.Id);
+        await SetAsync(_watch.Rows[0].Id, false);
 
-        var row = Assert.Single(_watch.Rows);
-        Assert.Equal((WatchReasonEnum.Manual, false), (row.Reason, row.IsEnabled));   // still the admin's own row: only its switch changed
+        Assert.Equal((WatchReasonEnum.Trading, false), (_watch.Rows[0].Reason, _watch.Rows[0].IsEnabled));
         Assert.Empty(await FollowedAsync());
+    }
+
+    [Fact]
+    public async Task TurningOffTheRowOfASymbolThatIsNotTradedJustTurnsItOff()
+    {
+        OnTheList(SolFutures, WatchReasonEnum.Manual, enabled: true);
+
+        await SetAsync(_watch.Rows[0].Id, false);
+
+        Assert.Equal((WatchReasonEnum.Manual, false), (_watch.Rows[0].Reason, _watch.Rows[0].IsEnabled));   // studying is over; trading is not involved
     }
 
     // ---- switching it back on ------------------------------------------------------------------------------------------------
 
     private Task<bool> SetAsync(int id, bool enabled) =>
-        new SetShockWatchEnabledCommandHandler(_watch, _series, Audit).HandleAsync(new SetShockWatchEnabledCommand(id, enabled), Ct);
+        new SetShockWatchEnabledCommandHandler(_watch, _series, _traded, Audit).HandleAsync(new SetShockWatchEnabledCommand(id, enabled), Ct);
 
     [Fact]
     public async Task SwitchingATradedSymbolBackOnRemovesTheRowSoItIsAutomaticAgainEvenWithoutMinuteCandles()

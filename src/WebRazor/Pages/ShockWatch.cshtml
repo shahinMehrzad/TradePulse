@@ -54,6 +54,8 @@
                             @foreach (var item in Model.Items)
                             {
                                 var automatic = item.Id == 0;
+                                // A row added by hand for a symbol that is enabled for trading: its watch is on, and turning it off is the traded symbol's decision.
+                                var tradedByHand = item.Id != 0 && item.Reason != "Trading" && item.IsTradedNow && item.IsEnabled;
                                 <tr>
                                     <td>@Model.ExchangeName(item.ExchangeId)</td>
                                     <td><span class="badge @(Model.MarketName(item.MarketId) == "Futures" ? "bg-purple-lt" : "bg-blue-lt")">@Model.MarketName(item.MarketId)</span></td>
@@ -102,9 +104,13 @@
                                         }
                                     </td>
                                     <td class="text-nowrap text-end">
-                                        @if (automatic)
+                                        @if (automatic || tradedByHand)
                                         {
                                             <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#off-@item.SymbolListingId">Switch off</button>
+                                            @if (tradedByHand)
+                                            {
+                                                <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-@item.Id">Remove</button>
+                                            }
                                         }
                                         else
                                         {
@@ -122,7 +128,7 @@
                         </tbody>
                     </table>
                 </div>
-                @foreach (var item in Model.Items.Where(i => i.Id == 0))
+                @foreach (var item in Model.Items.Where(i => i.Id == 0 || (i.Reason != "Trading" && i.IsTradedNow && i.IsEnabled)))
                 {
                 <div class="modal modal-blur fade text-start" id="off-@item.SymbolListingId" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog modal-sm modal-dialog-centered">
@@ -132,6 +138,10 @@
                                 <div class="text-secondary">
                                     This symbol is enabled for trading. With its watch off, you will not be told when its price moves suddenly.
                                     That is your decision and your responsibility. It stays off until you switch it on here again.
+                                    @if (item.Id != 0)
+                                    {
+                                        <span> It was added by hand: it stays on the list as a symbol you switched off while it is traded.</span>
+                                    }
                                 </div>
                             </div>
                             <div class="modal-footer">
