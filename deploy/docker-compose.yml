@@ -8,6 +8,8 @@
 # (and recreate the development database of the root file with the definition below).
 name: tradepulse-stack
 
+# Every connection string below ends with GSS Encryption Mode=Disable: the images have no Kerberos library, and without it Npgsql prints
+# "Cannot load library libgssapi_krb5.so.2" at every start. Nothing here uses Kerberos (the roles log in with passwords).
 x-probe: &probe
   interval: 15s
   timeout: 5s
@@ -42,7 +44,7 @@ services:
     environment:
       # The API has its own role (tp_api): it owns the schemas auth, config and research, and may read the data tables. Not the
       # superuser. The roles are made by deploy/main-db-roles.sh; see docs/database-security.md.
-      ConnectionStrings__DefaultConnection: &api-db Host=postgres;Database=tradepulse;Username=tp_api;Password=${API_DB_PASSWORD:?set API_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
+      ConnectionStrings__DefaultConnection: &api-db Host=postgres;Database=tradepulse;Username=tp_api;Password=${API_DB_PASSWORD:?set API_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh};GSS Encryption Mode=Disable
       ConnectionStrings__AuthConnection: *api-db
       ConnectionStrings__ConfigConnection: *api-db
       # The API alone signs the tokens (ES256), so it alone holds the private key. See deploy/make-jwt-keys.sh.
@@ -102,10 +104,10 @@ services:
     networks: [default, vault-net]
     environment:
       # Its own database (keys, orders, limits, the halt switch, the enabled symbols).
-      ConnectionStrings__Vault: Host=vault-db;Database=vault;Username=vault;Password=${VAULT_DB_PASSWORD}
+      ConnectionStrings__Vault: Host=vault-db;Database=vault;Username=vault;Password=${VAULT_DB_PASSWORD};GSS Encryption Mode=Disable
       # The main database, through a role that may only add to the audit log and publish the copy of the enabled symbols
       # (made by deploy/main-db-roles.sh). If it cannot be reached, trading goes on and the problem is logged.
-      ConnectionStrings__Main: Host=postgres;Database=tradepulse;Username=tp_trader;Password=${TRADER_MAIN_DB_PASSWORD:?set TRADER_MAIN_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
+      ConnectionStrings__Main: Host=postgres;Database=tradepulse;Username=tp_trader;Password=${TRADER_MAIN_DB_PASSWORD:?set TRADER_MAIN_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh};GSS Encryption Mode=Disable
       # Only the PUBLIC key: the vault can check a token and cannot make one. It refuses to start if it is given the private key.
       JwtConfigurations__PublicKey: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY in deploy/.env (the other half of JWT_PRIVATE_KEY, from ./deploy/make-jwt-keys.sh)}
       JwtConfigurations__Issuer: TradePulseApi
@@ -172,7 +174,7 @@ services:
     environment:
       # The collector has its own role (tp_collector): it owns and writes the data tables and reads the config tables that say what to
       # collect. It cannot see the accounts (auth) or anything else.
-      ConnectionStrings__DefaultConnection: Host=postgres;Database=tradepulse;Username=tp_collector;Password=${COLLECTOR_DB_PASSWORD:?set COLLECTOR_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=tradepulse;Username=tp_collector;Password=${COLLECTOR_DB_PASSWORD:?set COLLECTOR_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh};GSS Encryption Mode=Disable
       Alerts__InstanceName: ${ALERT_INSTANCE_NAME:-tradepulse}
       Alerts__Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
       Alerts__Telegram__ChatId: ${TELEGRAM_CHAT_ID:-}
@@ -198,7 +200,7 @@ services:
     depends_on:
       api: { condition: service_healthy }
     environment:
-      ConnectionStrings__DefaultConnection: Host=postgres;Database=tradepulse;Username=tp_watch;Password=${WATCH_DB_PASSWORD:?set WATCH_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=tradepulse;Username=tp_watch;Password=${WATCH_DB_PASSWORD:?set WATCH_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh};GSS Encryption Mode=Disable
       # A bot of its own, not the collector's. Empty: the alerts only go to the log (docker compose logs watch) and to research.shock_alerts.
       Watch__Alerts__InstanceName: ${ALERT_INSTANCE_NAME:-tradepulse} watch
       Watch__Alerts__Telegram__BotToken: ${WATCH_TELEGRAM_BOT_TOKEN:-}
