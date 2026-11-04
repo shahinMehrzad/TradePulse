@@ -12,14 +12,39 @@ public sealed class TelegramNotifier(HttpClient http, IOptions<AlertsOptions> op
 
     public async Task SendAsync(Alert alert, CancellationToken cancellationToken)
     {
+        // A message with formatting (bold, emoji) goes as HTML. If Telegram cannot read it, the same words go once more as plain text: a
+        // formatting mistake must not cost the admin the message.
+        if (alert.Html is { Length: > 0 and <= MaxLength } html)
+        {
+            var failure = await PostAsync(new { chat_id = options.Value.Telegram.ChatId, text = html, parse_mode = "HTML", disable_web_page_preview = true }, cancellationToken);
+            if (failure is null)
+                return;
+
+            if (failure.StatusCode != System.Net.HttpStatusCode.BadRequest)
+                throw failure.ToException();
+        }
+
+        var settings = options.Value;
+        var plain = await PostAsync(new { chat_id = settings.Telegram.ChatId, text = Compose(settings.Label, alert), disable_web_page_preview = true }, cancellationToken);
+        if (plain is not null)
+            throw plain.ToException();
+    }
+
+    /// <summary>What went wrong with a request to Telegram, or null when it was accepted.</summary>
+    private sealed record Failure(System.Net.HttpStatusCode StatusCode, string? Reason)
+    {
+        public NotificationException ToException() => new($"Telegram answered {(int)StatusCode}{(Reason is null ? "" : $": {Reason}")}");
+    }
+
+    private async Task<Failure?> PostAsync(object payload, CancellationToken cancellationToken)
+    {
         var settings = options.Value;
 
         HttpResponseMessage response;
         try
         {
             // "./": a token looks like "123456:ABC", and without it "bot123456:" would be read as the scheme of an address.
-            response = await http.PostAsJsonAsync($"./bot{settings.Telegram.BotToken}/sendMessage",
-                new { chat_id = settings.Telegram.ChatId, text = Compose(settings.Label, alert), disable_web_page_preview = true }, cancellationToken);
+            response = await http.PostAsJsonAsync($"./bot{settings.Telegram.BotToken}/sendMessage", payload, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -29,11 +54,10 @@ public sealed class TelegramNotifier(HttpClient http, IOptions<AlertsOptions> op
 
         using (response)
         {
-            if (!response.IsSuccessStatusCode)
-            {
-                var reason = await ReasonAsync(response, settings.Telegram.BotToken, cancellationToken);
-                throw new NotificationException($"Telegram answered {(int)response.StatusCode}{(reason is null ? "" : $": {reason}")}");
-            }
+            if (response.IsSuccessStatusCode)
+                return null;
+
+            return new Failure(response.StatusCode, await ReasonAsync(response, settings.Telegram.BotToken, cancellationToken));
         }
     }
 
