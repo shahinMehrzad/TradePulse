@@ -189,6 +189,22 @@ services:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/live HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
     restart: unless-stopped
 
+  # The price watch (src/Research, `watch`): follows the live trades of the symbols switched on in the panel (and of those enabled for
+  # trading), and tells the admin about a sudden move. Its own process and its own database role (tp_watch: reads the lists and the
+  # candles, writes only research.shock_alerts), so nothing it does can slow the collector. Nothing listens here: it only calls out
+  # (Binance, its Telegram bot). The rule and its evidence: docs/research.md.
+  watch:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: watch }
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=tradepulse;Username=tp_watch;Password=${WATCH_DB_PASSWORD:?set WATCH_DB_PASSWORD in deploy/.env (letters and digits, e.g. openssl rand -hex 24), then run deploy/main-db-roles.sh}
+      # A bot of its own, not the collector's. Empty: the alerts only go to the log (docker compose logs watch) and to research.shock_alerts.
+      Watch__Alerts__InstanceName: ${ALERT_INSTANCE_NAME:-tradepulse} watch
+      Watch__Alerts__Telegram__BotToken: ${WATCH_TELEGRAM_BOT_TOKEN:-}
+      Watch__Alerts__Telegram__ChatId: ${WATCH_TELEGRAM_CHAT_ID:-}
+    restart: unless-stopped
+
 networks:
   # Joined by the trader and its database only. "internal": nothing on it can reach the internet or the other containers.
   vault-net:

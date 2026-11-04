@@ -62,8 +62,8 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
 - **The key vault** (`trader`) has no published port and is reached only by the panel. It needs `VAULT_MASTER_KEY`: keep a copy outside the server, see [docs/exchange-keys.md](../docs/exchange-keys.md).
   It has **its own Postgres** (`vault-db`, volume `vault-pgdata`) on a network nothing else is on.
 - **Database roles.** No program connects as the superuser: the API is `tp_api`, the collector `tp_collector`, the trader's way into the main
-  database `tp_trader` (passwords `API_DB_PASSWORD`, `COLLECTOR_DB_PASSWORD`, `TRADER_MAIN_DB_PASSWORD`, and `VAULT_DB_PASSWORD` for the vault's
-  Postgres). `./deploy/main-db-roles.sh` makes the roles and gives them their rights (run it **before** the API starts the first time and again
+  database `tp_trader`, the price watch `tp_watch` (passwords `API_DB_PASSWORD`, `COLLECTOR_DB_PASSWORD`, `TRADER_MAIN_DB_PASSWORD`, `WATCH_DB_PASSWORD`, and
+  `VAULT_DB_PASSWORD` for the vault's Postgres). `./deploy/main-db-roles.sh` makes the roles and gives them their rights (run it **before** the API starts the first time and again
   **after** it, and after any restore); `./deploy/check-db-roles.sh` tries each role and says `ok` or `FAIL`. Setting up a new server,
   **upgrading a running one**, restoring, looking at the databases and defining a role yourself: [docs/database-security.md](../docs/database-security.md).
 - **Secrets** are only in `deploy/.env` (git-ignored). Use long random values. The tokens are signed with a key pair (`./deploy/make-jwt-keys.sh` prints

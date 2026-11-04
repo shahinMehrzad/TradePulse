@@ -1,4 +1,5 @@
 using Dapper;
+using Application.Research.Watch;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Persistence;
@@ -11,7 +12,7 @@ namespace Infrastructure.IntegrationTests;
 
 /// <summary>
 /// The roles of <c>deploy/main-db-roles.sql</c> on a real Postgres, with the programs' own code: the collector's repositories connect as
-/// <c>tp_collector</c>, the API's migrations as <c>tp_api</c>, the trader's two statements as <c>tp_trader</c>. Every other test runs as the
+/// <c>tp_collector</c>, the API's migrations as <c>tp_api</c>, the trader's two statements as <c>tp_trader</c>, the price watch's readers and alert store as <c>tp_watch</c>. Every other test runs as the
 /// superuser and would never notice a missing grant; this is where it shows. The script is the file the deploy runs, not a copy.
 /// </summary>
 [Collection(PostgresCollection.Name)]
@@ -20,6 +21,7 @@ public class DatabaseRolesTests(PostgresFixture postgres)
     private const string ApiPassword = "ApiPasswordForTests0123456789";
     private const string CollectorPassword = "CollectorPasswordForTests01234";
     private const string TraderPassword = "TraderPasswordForTests0123456";
+    private const string WatchPassword = "WatchPasswordForTests01234567";
 
     private const string CandleTable = "binance_futures_btcusdt_1h";
     private const string LiquidationTable = "binance_futures_btcusdt_liquidation";
@@ -33,7 +35,7 @@ public class DatabaseRolesTests(PostgresFixture postgres)
             directory = directory.Parent;
         var sql = Path.Combine(directory?.FullName ?? throw new FileNotFoundException("The solution folder was not found."), "deploy", "main-db-roles.sql");
 
-        return $"\\set api_password '{ApiPassword}'\n\\set collector_password '{CollectorPassword}'\n\\set trader_password '{TraderPassword}'\n{File.ReadAllText(sql)}";
+        return $"\\set api_password '{ApiPassword}'\n\\set collector_password '{CollectorPassword}'\n\\set trader_password '{TraderPassword}'\n\\set watch_password '{WatchPassword}'\n{File.ReadAllText(sql)}";
     }
 
     private async Task<string> NewDatabaseAsync()
@@ -50,7 +52,7 @@ public class DatabaseRolesTests(PostgresFixture postgres)
         {
             Database = database,
             Username = role,
-            Password = role switch { "tp_api" => ApiPassword, "tp_collector" => CollectorPassword, _ => TraderPassword }
+            Password = role switch { "tp_api" => ApiPassword, "tp_collector" => CollectorPassword, "tp_watch" => WatchPassword, _ => TraderPassword }
         }.ConnectionString;
 
     private static DbContextOptions<T> Options<T>(string connectionString, string historySchema) where T : DbContext =>
@@ -206,6 +208,64 @@ public class DatabaseRolesTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task ThePriceWatchDoesItsWholeJobAsItsOwnRoleAndSeesNothingElse()
+    {
+        var database = await OlderServerAsync();
+        var superuser = ConnectionString(database);
+        await using (var config = new ConfigDbContext(Options<ConfigDbContext>(superuser, "config")))
+        {
+            config.ShockWatchConfigurations.Add(new ShockWatchConfiguration { SymbolListingId = 1, Reason = WatchReasonEnum.Manual, IsEnabled = true });
+            await config.SaveChangesAsync(Ct);
+        }
+        await using (var connection = new NpgsqlConnection(superuser))
+            await connection.ExecuteAsync(new CommandDefinition("INSERT INTO config.traded_symbols VALUES ('ETHUSDT', now() at time zone 'utc')", cancellationToken: Ct));
+        await postgres.RunPsqlAsync(database, RolesScript());
+        var asWatch = ConnectionString(database, "tp_watch");
+
+        // What to watch: the list and the traded symbols, read the way the program reads them (rows, plus the Futures listings of the traded names).
+        await using (var config = new ConfigDbContext(Options<ConfigDbContext>(asWatch, "config")))
+        {
+            var watched = await new ConfiguredWatchedSymbols(
+                new ShockWatchConfigurationRepository(config), new TradedSymbolSource(asWatch), new SymbolCatalogRepository(config)).GetAsync(Ct);
+            Assert.Equal(["BTCUSDT", "ETHUSDT"], watched.Select(w => w.Symbol.Value).Order());
+        }
+
+        // The seed: the stored candles.
+        Assert.Equal(5, (await new CandleRepository(asWatch).GetLatestAsync(CandleTable, 10, null, Ct)).Count);
+
+        // Its alerts: stored when they start, updated when they end.
+        var alert = new ShockAlert
+        {
+            SymbolListingId = 1, TriggeredAt = new DateTime(2025, 1, 1, 12, 30, 0, DateTimeKind.Utc), Direction = EventDirectionEnum.Up, Level = AlertLevelEnum.Attention,
+            WindowSeconds = 30, Move = 0.0031m, ZScore = 7m, StartPrice = 100m, EndPrice = 100.31m, Volume = 12m, FlaggedSeconds = 4, RuleVersion = "test"
+        };
+        await using (var research = new ResearchDbContext(Options<ResearchDbContext>(asWatch, "research")))
+        {
+            var store = new ShockAlertStore(research);
+            await store.SaveAsync(alert, Ct);
+            alert.Id = 0;
+            alert.Level = AlertLevelEnum.Alarm;
+            alert.Move = 0.0052m;
+            await store.SaveAsync(alert, Ct);
+        }
+        Assert.Equal(1, await ScalarAsync<long>(superuser, "SELECT count(*) FROM research.shock_alerts"));
+        Assert.Equal(0.0052m, await ScalarAsync<decimal>(superuser, "SELECT \"Move\" FROM research.shock_alerts"));
+
+        // And what it must not be able to do.
+        await AssertDeniedAsync(asWatch, "SELECT * FROM auth.users");
+        await AssertDeniedAsync(asWatch, "SELECT * FROM auth.user_tokens");
+        await AssertDeniedAsync(asWatch, "SELECT * FROM config.audit_log");
+        await AssertDeniedAsync(asWatch, "SELECT * FROM research.market_events");
+        await AssertDeniedAsync(asWatch, "SELECT * FROM config.candle_worker_configurations");
+        await AssertDeniedAsync(asWatch, "DELETE FROM research.shock_alerts");
+        await AssertDeniedAsync(asWatch, "UPDATE config.shock_watch_configurations SET \"IsEnabled\" = false");
+        await AssertDeniedAsync(asWatch, "DELETE FROM config.traded_symbols");
+        await AssertDeniedAsync(asWatch, $"DELETE FROM {CandleTable}");
+        await AssertDeniedAsync(asWatch, "CREATE TABLE research.evil (x int)");
+        await AssertDeniedAsync(asWatch, "CREATE TABLE public.evil (x int)");
+    }
+
+    [Fact]
     public async Task ANewServerGetsItsRolesBeforeTheApiAndTheLastGrantsAfterIt()
     {
         var database = await NewDatabaseAsync();
@@ -252,7 +312,7 @@ public class DatabaseRolesTests(PostgresFixture postgres)
         await postgres.RunPsqlAsync(database, RolesScript());
 
         var privileged = await ScalarAsync<long>(ConnectionString(database),
-            "SELECT count(*) FROM pg_roles WHERE rolname IN ('tp_api','tp_collector','tp_trader') AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR NOT rolcanlogin)");
+            "SELECT count(*) FROM pg_roles WHERE rolname IN ('tp_api','tp_collector','tp_trader','tp_watch') AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR NOT rolcanlogin)");
         Assert.Equal(0, privileged);
     }
 }

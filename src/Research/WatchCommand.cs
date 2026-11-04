@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Application;
 using Application.Notifications;
 using Application.Research.Watch;
@@ -15,7 +16,7 @@ using Microsoft.Extensions.Logging;
 namespace Research;
 
 /// <summary>
-/// <c>watch</c>: follows the live trades and tells the admin about sudden moves. Runs until Ctrl+C. It is its own process, apart from
+/// <c>watch</c>: follows the live trades and tells the admin about sudden moves. Runs until Ctrl+C or SIGTERM. It is its own process, apart from
 /// the collector, so nothing it does can slow the collector down.
 /// <para>
 /// Which symbols: the ones switched on in the admin panel (the watch list in the database), looked at again every 30 seconds, so
@@ -94,6 +95,13 @@ internal static class WatchCommand
             e.Cancel = true;
             cancellation.Cancel();
         };
+
+        // `docker stop` sends SIGTERM, not Ctrl+C: end the same way, so the subscriptions are closed and the alerts in flight are sent.
+        using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+        {
+            context.Cancel = true;
+            cancellation.Cancel();
+        });
 
         IWatchedSymbolSource source;
         string following;

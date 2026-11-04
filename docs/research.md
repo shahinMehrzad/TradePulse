@@ -14,6 +14,8 @@ dotnet run --project src/Research -- watch  --symbols BTCUSDT[,ETHUSDT] [--marke
 
 Connection strings come from user secrets or the environment (`ConnectionStrings__DefaultConnection`, optionally `ConnectionStrings__ResearchConnection`).
 
+**On the server** `watch` is the `watch` service of `deploy/docker-compose.yml`: it starts with the stack, restarts with it, follows the panel's list, and stops cleanly on `docker stop`. It connects as the role `tp_watch` (`WATCH_DB_PASSWORD`, made by `deploy/main-db-roles.sh`), and its bot is `WATCH_TELEGRAM_BOT_TOKEN` / `WATCH_TELEGRAM_CHAT_ID` in `deploy/.env`. Its alerts are in `docker compose logs watch` and in `research.shock_alerts`.
+
 ## Market events (`detect`, `list`)
 
 Finds the minutes in which the price moved far more than it usually does, from the stored 1 minute candles, and keeps what the price did afterwards.
