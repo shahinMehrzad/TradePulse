@@ -258,6 +258,23 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task APriceWatchAloneCountsAsUseOfAListingAndKeepsItFromBeingRemoved()
+    {
+        await using var context = await MigratedContextAsync();
+        var repository = new SymbolCatalogRepository(context);
+        var eth = (int)SeededSymbol.ETHUSDT;
+        context.ShockWatchConfigurations.Add(new ShockWatchConfiguration { SymbolListingId = eth, Reason = WatchReasonEnum.Manual, IsEnabled = false });
+        await context.SaveChangesAsync(Ct);
+
+        context.ChangeTracker.Clear();   // the API removes in a request of its own: it has not tracked the watch row
+        var usage = await repository.GetListingUsage(eth, Ct);
+
+        Assert.Equal((0, 0, 1), usage[eth]);   // a row that is switched off still points at the listing
+        var refused = await Assert.ThrowsAsync<ConfigurationConflictException>(() => repository.RemoveListing(eth, Ct));
+        Assert.Contains("price watch", refused.Message);
+    }
+
+    [Fact]
     public async Task ASymbolListedSomewhereCannotBeDeletedFromTheDatabase()
     {
         await using var context = await MigratedContextAsync();

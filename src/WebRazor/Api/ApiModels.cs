@@ -91,13 +91,13 @@ public record SymbolListingItem(int Id, int ExchangeId, string Exchange, int Mar
 /// <summary>Where a symbol is listed: one exchange market, under the name that exchange uses for it.</summary>
 public record SymbolMarket(int ListingId, string Exchange, string Market, string ExchangeSymbol);
 
-/// <summary>One symbol with every market it is listed on; <c>SeriesCount</c> and <c>SettingsCount</c> say what uses each listing.</summary>
+/// <summary>One symbol with every market it is listed on; <c>SeriesCount</c>, <c>SettingsCount</c> and <c>WatchCount</c> say what uses each listing.</summary>
 public record SymbolDetail(int Id, string Name, string? Description, IReadOnlyList<SymbolDetailMarket> Markets);
 
 public record SymbolDetailMarket(
-    int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount)
+    int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount, int WatchCount)
 {
-    public bool InUse => SeriesCount + SettingsCount > 0;
+    public bool InUse => SeriesCount + SettingsCount + WatchCount > 0;
 }
 
 /// <summary>One symbol of the Symbols page, with the markets it is listed on.</summary>

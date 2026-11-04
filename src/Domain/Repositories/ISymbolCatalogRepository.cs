@@ -19,10 +19,10 @@ public interface ISymbolCatalogRepository
     Task<(IReadOnlyList<SymbolLookup> Items, int Total)> GetSymbolsPage(string? keyword, int skip, int take, CancellationToken cancellationToken);
 
     /// <summary>
-    /// For each listing of the symbol that something uses, how many candle series and how many funding rate / liquidation settings
-    /// point at it. A listing nothing uses is not in the answer.
+    /// For each listing of the symbol that something uses, how many candle series, how many funding rate / liquidation settings and
+    /// how many price watch rows (on or off) point at it. A listing nothing uses is not in the answer.
     /// </summary>
-    Task<IReadOnlyDictionary<int, (int Series, int Settings)>> GetListingUsage(int symbolId, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<int, (int Series, int Settings, int Watches)>> GetListingUsage(int symbolId, CancellationToken cancellationToken);
 
     /// <summary>Throws <see cref="Exceptions.ConfigurationNotFoundException"/> when it does not exist. The name is never changed: tables are named after the exchange's name, not this one.</summary>
     Task<SymbolLookup> UpdateSymbolDescription(int id, string? description, CancellationToken cancellationToken);

@@ -26,7 +26,7 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     private record Page(Entry[] Value);
     private record SymbolMarketDto(int ListingId, string Exchange, string Market, string ExchangeSymbol);
     private record Item(int Id, string Name, string? Description, SymbolMarketDto[] Markets);
-    private record DetailMarket(int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount);
+    private record DetailMarket(int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount, int WatchCount);
     private record Detail(int Id, string Name, string? Description, DetailMarket[] Markets);
     private record SymbolPage(Item[] Items, int PageNumber, int PageSize, int TotalItems, int TotalPages);
 
@@ -378,6 +378,9 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         var spot = (await (await PostListingAsync(client, symbol, "DETAILSUSDT", Spot)).Content.ReadFromJsonAsync<Created>(Ct))!.Id;
         (await client.PostAsJsonAsync("/api/admin/configurations/add-config",
             new { symbolListingId = futures, timeFrameId = 3600, startDate = "2020-01-01T00:00:00Z" }, Ct)).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync("/api/admin/configurations/add-config",
+            new { symbolListingId = futures, timeFrameId = 60, startDate = "2020-01-01T00:00:00Z" }, Ct)).EnsureSuccessStatusCode();   // the watch needs 1 minute candles
+        (await client.PostAsJsonAsync("/api/admin/shock-watch", new { symbolListingId = futures }, Ct)).EnsureSuccessStatusCode();
         (await client.PostAsJsonAsync("/api/admin/configurations/add-symbol-data",
             new { symbolListingId = futures, collectFundingRate = true, fundingStartDate = "2020-01-01T00:00:00Z", collectLiquidation = true }, Ct)).EnsureSuccessStatusCode();
 
@@ -385,8 +388,8 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
 
         Assert.Equal(("DETAILS/USDT", "two markets"), (detail.Name, detail.Description));
         Assert.Equal(
-            [(futures, "Binance", "Futures", "DETAILSUSDT", 1, 1), (spot, "Binance", "Spot", "DETAILSUSDT", 0, 0)],
-            detail.Markets.Select(m => (m.ListingId, m.Exchange, m.Market, m.ExchangeSymbol, m.SeriesCount, m.SettingsCount)).OrderByDescending(m => m.ListingId == futures));
+            [(futures, "Binance", "Futures", "DETAILSUSDT", 2, 1, 1), (spot, "Binance", "Spot", "DETAILSUSDT", 0, 0, 0)],
+            detail.Markets.Select(m => (m.ListingId, m.Exchange, m.Market, m.ExchangeSymbol, m.SeriesCount, m.SettingsCount, m.WatchCount)).OrderByDescending(m => m.ListingId == futures));
         Assert.Equal(HttpStatusCode.Conflict, (await client.DeleteAsync($"{ListingsUrl}/{futures}", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"{ListingsUrl}/{spot}", Ct)).StatusCode);
     }
