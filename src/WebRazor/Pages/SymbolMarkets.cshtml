@@ -63,23 +63,27 @@
                                         }
                                         else
                                         {
-                                            @if (market.SeriesCount > 0)
+                                            var uses = new List<(string Text, string Page, string? Keyword)>();
+                                            if (market.SeriesCount > 0)
+                                                uses.Add(($"{market.SeriesCount} series", "/Series", Model.Detail.Name));
+                                            if (market.SettingsCount > 0)
+                                                uses.Add(($"{market.SettingsCount} {(market.SettingsCount == 1 ? "setting" : "settings")}", "/SymbolData", null));
+                                            if (market.WatchCount > 0)
+                                                uses.Add(($"{market.WatchCount} price {(market.WatchCount == 1 ? "watch" : "watches")}", "/ShockWatch", null));
+
+                                            for (var i = 0; i < uses.Count; i++)
                                             {
-                                                <a asp-page="/Series" asp-route-keyword="@Model.Detail.Name">@market.SeriesCount series</a>
-                                            }
-                                            @if (market.SeriesCount > 0 && market.SettingsCount > 0)
-                                            {
-                                                <span>, </span>
-                                            }
-                                            @if (market.SettingsCount > 0)
-                                            {
-                                                <a asp-page="/SymbolData">@market.SettingsCount @(market.SettingsCount == 1 ? "setting" : "settings")</a>
+                                                if (i > 0)
+                                                {
+                                                    <span>, </span>
+                                                }
+                                                <a asp-page="@uses[i].Page" asp-route-keyword="@uses[i].Keyword">@uses[i].Text</a>
                                             }
                                         }
                                     </td>
                                     <td class="text-nowrap text-end">
                                         <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#remove-@market.ListingId"
-                                                disabled="@market.InUse" title="@(market.InUse ? "A series or a setting uses it, so it cannot be removed." : null)">Remove</button>
+                                                disabled="@market.InUse" title="@(market.InUse ? "A series, a setting or a price watch uses it, so it cannot be removed." : null)">Remove</button>
                                     </td>
                                 </tr>
                             }
