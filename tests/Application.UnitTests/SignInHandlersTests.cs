@@ -192,11 +192,23 @@ public class SignInHandlersTests
     [Fact]
     public async Task ARightCodeOpensTheSession()
     {
-        var step = await new VerifyTwoFactorCommandHandler(_identity, Steps)
+        var step = await new VerifyTwoFactorCommandHandler(_identity, Steps, new FakeElevation())
             .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "123456", TwoFactorMethod.Authenticator), Ct);
 
         Assert.Equal(LoginStage.Authenticated, step.Stage);
         Assert.Equal("access-admin", step.Session!.AccessToken);
+    }
+
+    [Theory]
+    [InlineData(TwoFactorMethod.Authenticator, true)]
+    [InlineData(TwoFactorMethod.Email, true)]
+    [InlineData(TwoFactorMethod.Recovery, false)]
+    public async Task ACodeFromTheAppOrEmailIsAlsoTheStepUpButARecoveryCodeIsNot(TwoFactorMethod method, bool elevated)
+    {
+        var step = await new VerifyTwoFactorCommandHandler(_identity, Steps, new FakeElevation())
+            .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "123456", method), Ct);
+
+        Assert.Equal(elevated ? "elevation-" + UserId : null, step.Elevation?.Token);
     }
 
     [Theory]
@@ -206,7 +218,7 @@ public class SignInHandlersTests
     {
         _identity.TwoFactor = outcome;
 
-        var failure = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps)
+        var failure = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps, new FakeElevation())
             .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "000000", TwoFactorMethod.Authenticator), Ct));
 
         Assert.Equal(message, failure.Message);
@@ -218,14 +230,14 @@ public class SignInHandlersTests
         _identity.Account = new Account(User, MustChangePassword: true, TwoFactorEnabled: true);
         _identity.TwoFactor = TwoFactorOutcome.Valid; // even a right code
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps)
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps, new FakeElevation())
             .HandleAsync(new VerifyTwoFactorCommand("challenge-" + UserId, "123456", TwoFactorMethod.Authenticator), Ct));
     }
 
     [Fact]
     public async Task ATokenThatIsNotAChallengeIsRefusedByEveryStep()
     {
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps)
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new VerifyTwoFactorCommandHandler(_identity, Steps, new FakeElevation())
             .HandleAsync(new VerifyTwoFactorCommand("garbage", "123456", TwoFactorMethod.Authenticator), Ct));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new BeginTwoFactorEnrollmentCommandHandler(_identity, Steps)
             .HandleAsync(new BeginTwoFactorEnrollmentCommand("garbage"), Ct));

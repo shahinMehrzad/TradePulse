@@ -123,6 +123,7 @@ Being signed in is not enough for what can hurt. These actions need a second-fac
 - It is good for ten minutes, names one user (another user's token is refused), is signed for an audience of its own (it is not an access token and an access token is not an elevation) and **a refresh does not renew it**: after ten minutes, or in a stolen session without the phone, the next sensitive action asks again.
 - Without it the action answers `403` with `"code": "step_up_required"` in the problem details, so a client can tell "ask for a code" from "you lack the role". Reading (`GET`) does not need it.
 - `POST /api/account/step-up/email` mails a code to a user who turned email codes on (`409` otherwise). Wrong codes are counted and lock like any other wrong code (see above) and the endpoints share the login rate limit.
+- **Signing in with a code is a step-up too.** The answer of `POST /api/auth/login/two-factor` carries `elevationToken` and `elevationExpiresAt` (10 minutes) when the code came from the authenticator app or by email, so the user is not asked for another code within the same 30 seconds (it would be refused as already used). A recovery code gives none, and neither do a refresh or the first-time setup. The panel keeps it like any other step-up. This is the API's step-up only: the key vault's trading code is separate and is never given by a sign-in.
 - Put `[RequireElevation]` on a new sensitive action; that is all it takes.
 
 ### My account
