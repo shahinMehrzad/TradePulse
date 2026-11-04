@@ -27,13 +27,41 @@ public static class ShockAlertMessage
 
         var body = string.Join(Environment.NewLine,
             string.Create(culture, $"Since: {alert.TriggeredAt:yyyy-MM-dd HH:mm:ss} UTC"),
-            string.Create(culture, $"Price: {alert.StartPrice:0.##} -> {alert.EndPrice:0.##}"),
+            $"Price: {Price(alert.StartPrice)} -> {Price(alert.EndPrice)}",
             string.Create(culture, $"Unusual by: {Math.Abs(alert.ZScore):0.0} standard deviations of the last hour"),
-            string.Create(culture, $"Traded in the window: {alert.Volume:0.###}"),
+            string.Create(culture, $"Traded in the window: {alert.Volume:0.###}{BaseAssetSuffix(symbol)}"),
             string.Create(culture, $"Flagged seconds: {alert.FlaggedSeconds}"),
             $"Rule: {alert.RuleVersion}");
 
         return new Alert(title, body);
+    }
+
+    /// <summary>
+    /// A price with six significant digits, so a cheap coin keeps what matters (<c>0.906</c>, not <c>0.91</c>) and an expensive one is not
+    /// padded (<c>79893.4</c>). Trailing zeros are dropped.
+    /// </summary>
+    public static string Price(decimal price)
+    {
+        if (price == 0m)
+            return "0";
+
+        var decimals = Math.Clamp(5 - (int)Math.Floor(Math.Log10((double)Math.Abs(price))), 0, 8);
+        return Math.Round(price, decimals).ToString("0.########", CultureInfo.InvariantCulture);
+    }
+
+    private static readonly string[] QuoteAssets = ["USDT", "USDC", "BUSD", "USD"];
+
+    /// <summary>
+    /// The volume is in the base asset (<c>SUI</c> for <c>SUIUSDT</c>), not in USDT: say so. The exchange's name carries no separator, so the
+    /// quote asset is taken off the end; a name that does not end in a known one gets no unit rather than a wrong one.
+    /// </summary>
+    private static string BaseAssetSuffix(string symbol)
+    {
+        foreach (var quote in QuoteAssets)
+            if (symbol.Length > quote.Length && symbol.EndsWith(quote, StringComparison.OrdinalIgnoreCase))
+                return " " + symbol[..^quote.Length].ToUpperInvariant();
+
+        return string.Empty;
     }
 
     /// <summary>The watch cannot see the market: no alert can come until it can.</summary>
