@@ -6,7 +6,9 @@ namespace Infrastructure.IntegrationTests;
 /// <summary>One real Postgres container shared by every test in the collection. Needs Docker.</summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine").Build();
+    // Every test has a database of its own and Npgsql keeps a pool of connections for each, so the idle ones add up over the whole run: the
+    // default of 100 clients was reached once there were enough tests ("53300: sorry, too many clients already").
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine").WithCommand("-c", "max_connections=500").Build();
 
     public string ConnectionString => _container.GetConnectionString();
 

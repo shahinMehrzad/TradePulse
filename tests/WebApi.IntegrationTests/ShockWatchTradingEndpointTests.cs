@@ -160,8 +160,30 @@ public class ShockWatchTradingEndpointTests(ApiFixture api) : IClassFixture<ApiF
         Assert.Equal((id, "Manual", true, true, true), (row!.Id, row.Reason, row.IsEnabled, row.IsTradedNow, row.HasMinuteCandles));
 
         var off = await client.PostAsync(OffUrl(symbol), null, Ct);
-        Assert.Equal(id, (await off.Content.ReadFromJsonAsync<Created>(Ct))!.Id);        // the same row: only its switch changed
+        Assert.Equal(id, (await off.Content.ReadFromJsonAsync<Created>(Ct))!.Id);        // the same row, now the off of a traded symbol: "off" alone would not do
         var after = await FindAsync(client, symbol);
-        Assert.Equal(("Manual", false), (after!.Reason, after.IsEnabled));
+        Assert.Equal(("Trading", false), (after!.Reason, after.IsEnabled));
+    }
+
+    [Fact]
+    public async Task ARowAddedByHandAndSwitchedOffIsWatchedAgainWhenTheSymbolIsEnabledForTrading()
+    {
+        var client = await AdminAsync();
+        var symbol = NewSymbol();
+        (await client.PostAsJsonAsync(AddSeriesUrl,
+            new { symbolListingId = ListingIds.Of(1, 2, symbol), timeFrameId = 60, startDate = "2020-01-01T00:00:00" }, Ct)).EnsureSuccessStatusCode();
+        var id = (await (await client.PostAsJsonAsync(WatchUrl, new { symbolListingId = ListingIds.Of(1, 2, symbol) }, Ct)).Content.ReadFromJsonAsync<Created>(Ct))!.Id;
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PutAsJsonAsync(EnabledUrl(id), new { enabled = false }, Ct)).StatusCode);
+        Assert.False((await FindAsync(client, symbol))!.IsEnabled);
+
+        await SetTradedAsync(symbol, true);
+
+        var row = await FindAsync(client, symbol);
+        Assert.Equal((id, "Manual", true, true), (row!.Id, row.Reason, row.IsEnabled, row.IsTradedNow));   // the later choice, trading, is the one that counts
+
+        // Turning it off now is the traded symbol's off, whichever way it is asked for.
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PutAsJsonAsync(EnabledUrl(id), new { enabled = false }, Ct)).StatusCode);
+        var after = await FindAsync(client, symbol);
+        Assert.Equal(("Trading", false), (after!.Reason, after.IsEnabled));
     }
 }
