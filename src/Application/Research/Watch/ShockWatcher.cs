@@ -45,8 +45,11 @@ public sealed class ShockWatcher(
     /// <summary>A change of the followed symbols, handed from the task that subscribes to the task that judges.</summary>
     private readonly record struct Change(Tracked? Add, ExchangeSymbol Remove);
 
-    /// <summary>What the admin is told or what is kept: the words, and the alert to keep (null for a message about the watch itself).</summary>
-    private readonly record struct Outgoing(Alert Message, ShockAlert? ToStore);
+    /// <summary>
+    /// What the admin is told and what is kept: the words (null when the alert is only to be kept, because its symbol was told about recently or
+    /// because it only ends), and the alert to keep (null for a message about the watch itself).
+    /// </summary>
+    private readonly record struct Outgoing(Alert? Message, ShockAlert? ToStore);
 
     /// <summary>Everything the judging task knows about one followed symbol.</summary>
     private sealed class Tracked(WatchedSymbol symbol, ShockDetector detector, Listener listener)
@@ -55,6 +58,9 @@ public sealed class ShockWatcher(
         public ShockDetector Detector { get; } = detector;
         public Listener Listener { get; } = listener;
         public bool BlindTold { get; set; }
+
+        /// <summary>When the admin was last told about this symbol (a move); null if never since the watch started.</summary>
+        public DateTimeOffset? LastMessage { get; set; }
     }
 
     /// <summary>A symbol that is subscribed. Only the task that subscribes touches these.</summary>
@@ -230,9 +236,13 @@ public sealed class ShockWatcher(
             var table = TableNameRegistry.GetCandleTableName(symbol.Exchange, symbol.MarketType, name, TimeFrameEnum._1M);
             var candles = await candleRepository.GetLatestAsync(table, options.SeedMinutes + 1, null, cancellationToken);
 
-            if (ShockSeed.TryEstimate(candles, time.GetUtcNow().UtcDateTime, options.SeedMaxAge, options.SeedMinReturns, out var volatility))
+            // The usual second is estimated from the last hour of candles; the 24 hours are what the gradual check starts from.
+            var lastHour = candles.OrderBy(c => c.TimeRange.OpenTime).TakeLast(options.BaselineSeconds / 60 + 1);
+            if (ShockSeed.TryEstimate(lastHour, time.GetUtcNow().UtcDateTime, options.SeedMaxAge, options.SeedMinReturns, out var volatility))
             {
                 detector.Seed(volatility);
+                detector.SeedMinutes(candles.OrderBy(c => c.TimeRange.OpenTime)
+                    .Select(c => new MinuteClose((long)(c.TimeRange.OpenTime - DateTime.UnixEpoch).TotalMinutes, c.Close)));
                 logger.LogInformation("{Symbol} starts from the 1 minute candles: a second usually moves {Volatility:P4}", name, volatility);
                 return true;
             }
@@ -333,10 +343,32 @@ public sealed class ShockWatcher(
         }
     }
 
-    private static void Dispatch(Tracked one, List<ShockSignal> signals, ChannelWriter<Outgoing> outgoing)
+    /// <summary>
+    /// Every alert is kept. Only the start of one is told, and only if the admin was not told about this symbol in the last
+    /// <see cref="ShockWatchOptions.SilenceAfterMessage"/>: a symbol cannot fill the chat, however often it moves. The end of an alert only
+    /// completes what is kept.
+    /// </summary>
+    private void Dispatch(Tracked one, List<ShockSignal> signals, ChannelWriter<Outgoing> outgoing)
     {
         foreach (var signal in signals)
-            outgoing.TryWrite(new Outgoing(ShockAlertMessage.Create(signal.Alert, one.Symbol.Symbol.Value, signal.Kind), signal.Alert));
+        {
+            Alert? message = null;
+            if (signal.Kind == ShockSignalKind.Started)
+            {
+                var now = time.GetUtcNow();
+                if (one.LastMessage is not { } last || now - last >= options.SilenceAfterMessage)
+                {
+                    message = ShockAlertMessage.Create(signal.Alert, one.Symbol.Symbol.Value);
+                    one.LastMessage = now;
+                }
+                else
+                {
+                    logger.LogInformation("{Symbol}: an alert was kept but not told (told {Minutes:0} min ago)", one.Symbol.Symbol.Value, (now - last).TotalMinutes);
+                }
+            }
+
+            outgoing.TryWrite(new Outgoing(message, signal.Alert));
+        }
 
         signals.Clear();
     }
@@ -349,16 +381,19 @@ public sealed class ShockWatcher(
         {
             using var timeout = new CancellationTokenSource(SendTimeout, time);
 
-            foreach (var notifier in notifiers)
+            if (message.Message is { } words)
             {
-                try
+                foreach (var notifier in notifiers)
                 {
-                    await notifier.SendAsync(message.Message, timeout.Token);
-                }
-                catch (Exception ex)
-                {
-                    // Only the kind of failure, never its text: a notifier's error may carry the address it called.
-                    logger.LogWarning("{Notifier} could not send an alert ({Error})", notifier.Name, ex.GetType().Name);
+                    try
+                    {
+                        await notifier.SendAsync(words, timeout.Token);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Only the kind of failure, never its text: a notifier's error may carry the address it called.
+                        logger.LogWarning("{Notifier} could not send an alert ({Error})", notifier.Name, ex.GetType().Name);
+                    }
                 }
             }
 
