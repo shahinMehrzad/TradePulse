@@ -80,6 +80,9 @@ public sealed class TraderFixture : WebApplicationFactory<Program>, IAsyncLifeti
         builder.UseSetting("AdminConfigurations:Role", AdminRole);
         builder.UseSetting("Vault:MasterKey", MasterKey);
         builder.UseSetting("RateLimiting:KeysPerMinute", "1000");
+        // The ceiling of the symbols, as deploy/docker-compose.yml gives it: the program has no default list.
+        builder.UseSetting("Trading:AllowedSymbols:0", "BTCUSDT");
+        builder.UseSetting("Trading:AllowedSymbols:1", "ETHUSDT");
         builder.ConfigureServices(services =>
         {
             services.AddHttpClient(BinanceClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Binance);
