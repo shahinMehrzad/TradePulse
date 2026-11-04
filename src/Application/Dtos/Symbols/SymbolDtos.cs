@@ -27,7 +27,7 @@ public sealed record SymbolMarket(int ListingId, string Exchange, string Market,
 public sealed record SymbolDetail(int Id, string Name, string? Description, IReadOnlyList<SymbolDetailMarket> Markets);
 
 public sealed record SymbolDetailMarket(
-    int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount, int WatchCount);
+    int ListingId, int ExchangeId, string Exchange, int MarketId, string Market, string ExchangeSymbol, int SeriesCount, int SettingsCount, int WatchCount, bool Traded);
 
 public sealed class AddSymbolListingDto
 {
