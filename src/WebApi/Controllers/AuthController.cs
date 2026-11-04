@@ -105,6 +105,7 @@ public class AuthController(ICommandDispatcher dispatcher) : BaseController
 
         return Ok(new LoginResponseDto(
             step.Stage.ToString(), step.Session?.AccessToken, step.Session?.ExpiresAt, step.Session?.UserName,
-            refreshToken, step.ChallengeToken, step.MustChangePassword, step.NeedsTwoFactorSetup, recoveryCodes, step.EmailCodeAvailable));
+            refreshToken, step.ChallengeToken, step.MustChangePassword, step.NeedsTwoFactorSetup, recoveryCodes, step.EmailCodeAvailable,
+            step.Elevation?.Token, step.Elevation?.ExpiresAt));
     }
 }

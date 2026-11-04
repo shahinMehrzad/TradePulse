@@ -33,14 +33,14 @@
         else if (Model.Status is { Enrolled: false })
         {
             <div class="card">
-                <div class="card-header"><h3 class="card-title">Set up your trading code</h3></div>
+                <div class="card-header"><h3 class="card-title">Set up your trading code (a second entry, apart from your sign-in)</h3></div>
                 <div class="card-body">
                     <p class="text-secondary">
                         The keys and the orders ask for a second code, <strong>apart from the one you sign in with</strong>: a second entry in your authenticator app
                         that only the key vault knows. Even if the rest of the system were taken over, nobody could move a key or place an order without it.
                     </p>
                     <ol class="text-secondary">
-                        <li>In your authenticator app add a new account: scan this code or type the key. It is called <em>TradePulse trading</em>, not the one you sign in with.</li>
+                        <li>In your authenticator app add a new account: scan this code or type the key. It is called <strong>TradePulse trading</strong>; you will then have two entries, <em>TradePulse</em> to sign in and <em>TradePulse trading</em> for the keys and the orders.</li>
                         <li>Type the 6 digits it shows now.</li>
                     </ol>
                     @if (Model.QrSvg is not null)
@@ -65,10 +65,11 @@
         else if (Model.Status is { Enrolled: true })
         {
             <div class="card">
-                <div class="card-header"><h3 class="card-title">Confirm with your trading code</h3></div>
+                <div class="card-header"><h3 class="card-title">Confirm with your trading code (not your sign-in code)</h3></div>
                 <div class="card-body">
                     <p class="text-secondary">
-                        Enter the 6 digits of the <em>TradePulse trading</em> entry of your authenticator app. It is good for ten minutes, so you can do several things in a row.
+                        Enter the 6 digits of the entry named <strong>TradePulse trading</strong> in your authenticator app. It is a different entry from <em>TradePulse</em>, the one you sign in with, and
+                        the sign-in code will not work here. It is good for ten minutes, so you can do several things in a row.
                     </p>
                     @if (Model.Status.LockedUntil is { } lockedUntil)
                     {
@@ -77,7 +78,7 @@
                     <form method="post" asp-page-handler="Confirm" autocomplete="off">
                         <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
                         <div class="mb-3">
-                            <label asp-for="Input.Code" class="form-label">Trading code</label>
+                            <label asp-for="Input.Code" class="form-label">Code of the entry "TradePulse trading"</label>
                             <input asp-for="Input.Code" class="form-control" inputmode="numeric" autocomplete="one-time-code" autofocus />
                             <span asp-validation-for="Input.Code" class="text-danger"></span>
                         </div>

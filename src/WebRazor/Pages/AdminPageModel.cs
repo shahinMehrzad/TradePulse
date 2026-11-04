@@ -27,7 +27,7 @@ public abstract class AdminPageModel(SessionTokenStore store) : PageModel
     /// <summary>Sends the user to give the trading code (or to set it up first), then back to <paramref name="returnPath"/>.</summary>
     protected IActionResult ConfirmWithTradingCode(string returnPath)
     {
-        TempData["TradingCodeNotice"] = "Enter your trading code to continue. The keys and the orders ask for it: it is checked by the key vault itself.";
+        TempData["TradingCodeNotice"] = "The keys and the orders ask for your trading code, the entry named \"TradePulse trading\" in your authenticator app (not the code you sign in with). The key vault checks it itself.";
         return RedirectToPage("/TradingCode", new { returnUrl = returnPath });
     }
 

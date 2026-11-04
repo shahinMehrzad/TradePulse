@@ -151,6 +151,9 @@ public sealed class AdminLoginService(IHttpClientFactory clientFactory, SessionT
                     ?? throw new InvalidOperationException("Empty admin response.");
 
         store.Create(sessionId, new TokenSet(login.AccessToken!, login.RefreshToken!, login.ExpiresAt!.Value));
+        // The code that signed them in is the step-up for the next 10 minutes (the API says so by sending a token).
+        if (login.ElevationToken is not null && login.ElevationExpiresAt is { } elevatedUntil)
+            store.SetElevation(sessionId, login.ElevationToken, elevatedUntil);
         return new LoginOutcome(LoginFailure.None, LoginNext.SignedIn, sessionId, admin, RecoveryCodes: login.RecoveryCodes);
     }
 
