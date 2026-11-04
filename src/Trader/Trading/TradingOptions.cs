@@ -18,9 +18,10 @@ public sealed class TradingOptions
 
     /// <summary>
     /// Exchange names of the symbols that may ever be traded, e.g. <c>BTCUSDT</c>: the ceiling the owner of the server sets. The panel
-    /// chooses among these which are enabled for trading (<c>vault.trading_symbols</c>), and can never go beyond them.
+    /// chooses among these which are enabled for trading (<c>vault.trading_symbols</c>), and can never go beyond them. There is no default list on purpose: the configuration binder adds a list that is set to a default one, so a default would widen
+    /// the owner's ceiling instead of being replaced by it. Without a list nothing can be traded (<c>deploy/docker-compose.yml</c> gives the usual two).
     /// </summary>
-    public string[] AllowedSymbols { get; set; } = ["BTCUSDT", "ETHUSDT"];
+    public string[] AllowedSymbols { get; set; } = [];
 
     /// <summary>The largest single opening order, in USDT (quantity x mark price).</summary>
     public decimal MaxOrderUsd { get; set; } = 100m;
