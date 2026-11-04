@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 // Connection strings come from user secrets or the environment (ConnectionStrings__DefaultConnection), like the other programs.
 // Only Binance Futures is looked at for now.
 
+
 if (args is ["watch", ..var watchArgs])
     return await Research.WatchCommand.RunAsync(watchArgs);
 
