@@ -205,6 +205,8 @@ services:
       Watch__Alerts__InstanceName: ${ALERT_INSTANCE_NAME:-tradepulse} watch
       Watch__Alerts__Telegram__BotToken: ${WATCH_TELEGRAM_BOT_TOKEN:-}
       Watch__Alerts__Telegram__ChatId: ${WATCH_TELEGRAM_CHAT_ID:-}
+      # How unusual a 15 minute move must be: 4.5 is about 2.6 messages a week per symbol, 5.0 the quieter choice (about 1.4). See docs/research.md.
+      Watch__Rule__GradualMinZScore: ${WATCH_GRADUAL_MIN_Z:-4.5}
     restart: unless-stopped
 
 networks:
