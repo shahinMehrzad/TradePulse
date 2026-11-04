@@ -7,7 +7,7 @@ keys are kept safe. Nothing here trades yet: the vault only makes keys, checks t
 
 ## What a user does
 
-On **Exchange keys** (asks for a second-factor code first):
+On **Exchange keys** (asks for the **trading code** first, see below):
 
 1. **Make a key pair.** Give it a name. The program makes a 4096-bit RSA pair.
 2. In Binance, **API Management → create an API key → self-generated**, and paste the **public key** the panel shows.
@@ -50,13 +50,45 @@ Not protected against: somebody with a shell **on the server** and the vault's e
 key must be a secret of its own, the server's access must be small, and the keys must be restricted to the server's IP at Binance: a stolen key is then
 useless from anywhere else.
 
+## The trading code
+
+The keys and the orders are protected by a second factor that **only the vault has**. Your sign-in code is checked by the API, and the API can sign
+anybody in; if it were taken over, it could ask the vault for anything. So the vault checks a code of its own: a second TOTP entry in your
+authenticator app (called *TradePulse trading*), whose secret is made inside the vault and stored encrypted with the master key. The API never sees it.
+The API's step-up token is **not** accepted by the vault for these actions.
+
+**The first time** (each administrator, once): open **Exchange keys** or **Trading**; the panel sends you to the *Trading code* page. Scan the QR code
+(or type the key) into the authenticator app as a new account, type the 6 digits, and **write down the 10 recovery codes** it shows once (a password
+manager, not this server). After a right code you are confirmed for 10 minutes: creating, replacing, verifying or deleting a key, placing orders,
+resuming after a halt and enabling a symbol need that confirmation. Looking, the halt switch and disabling a symbol do not.
+
+**Wrong codes**: 5 wrong in a row lock the code for 15 minutes, then 1 hour, 6 hours, 24 hours; never for good. The 2nd wrong code in a row and every lock go to the security Telegram bot
+(`SECURITY_TELEGRAM_*`, the same one as the API's) and the audit log. A code works once (a code that was just used is refused: wait for the next one).
+
+**Lost phone, you have a recovery code**: on the *Trading code* page, *Lost your phone?*, type one recovery code. It forgets the code; set a new one up.
+
+**Lost phone and no recovery code**: somebody with a shell on the server (this is deliberately not possible from the panel or the API):
+
+```bash
+cd deploy
+docker compose exec trader dotnet Trader.dll list-trading-codes          # who has a code: user id, set up or not
+docker compose exec postgres psql -U postgres -d tradepulse -c 'select "Id","UserName" from auth.users'   # find the user id
+docker compose exec trader dotnet Trader.dll reset-trading-code <user id>
+```
+
+The reset is in the audit log (done by the server console) and sent to the security bot. The user then sets a new code up on their next visit.
+
+**Known limit**: for somebody who has **no** code yet, the first setup is trusted (the vault cannot know who is really at the other end, it believes the API's
+sign-in token). That is why everybody should set theirs up right after this is deployed, and why an enrolment is in the audit log and sent to the security bot. A hacked API can
+also still read the key list and orders, halt trading and disable symbols; it cannot create or delete a key, place an order or resume.
+
 ## If a key may have leaked
 
 Binance's terms (clause 2.3) make the holder responsible for reporting a lost or misused key at once. In this order:
 
 1. **Stop trading**: use the halt switch (see [trading.md](trading.md)).
 2. **Delete the key at Binance** (*API Management → Delete*). This is the step that actually closes the door.
-3. **Delete the key in the panel** (needs a fresh second-factor code), and make a new pair if trading should go on.
+3. **Delete the key in the panel** (needs the trading code), and make a new pair if trading should go on.
 4. If the master key or the server may be exposed, treat every stored key as leaked: do 2 and 3 for all of them, then change `VAULT_MASTER_KEY`.
 5. Look at the audit log (entity `ExchangeKey`) and at Binance's order and trade history for anything nobody asked for.
 

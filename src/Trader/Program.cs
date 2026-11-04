@@ -4,10 +4,12 @@ using Domain.Entities;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Trader;
 using Trader.Audit;
 using Trader.Binance;
 using Trader.Security;
 using Trader.Trading;
+using Trader.TradingCode;
 using Trader.Vault;
 
 // The only program that holds the private keys of the exchange keys. It has no public port: the admin panel reaches it over the
@@ -17,8 +19,23 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddTokenSecurity(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<ElevationValidator>();
-builder.Services.AddSingleton<RequireElevationFilter>();
+builder.Services.AddProxyHeaders();
+
+// The trading code: a second factor that only this program checks (see TradingCodeEndpoints), and the security bot that hears about it.
+builder.Services.AddSingleton<TradingCodeRepository>();
+builder.Services.AddSingleton<TradingConfirmations>();
+builder.Services.AddSingleton<RequireTradingConfirmationFilter>();
+builder.Services.AddSingleton<TradingCodeService>();
+builder.Services.AddSingleton<SecurityAlerts>();
+builder.Services.AddSingleton<ISecurityAlerts>(provider => provider.GetRequiredService<SecurityAlerts>());
+builder.Services.Configure<SecurityAlertsOptions>(builder.Configuration.GetSection(SecurityAlertsOptions.SectionName));
+builder.Services.AddHttpClient(SecurityAlertSender.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri("https://api.telegram.org/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+}).RemoveAllLoggers(); // the bot token is part of the address
+builder.Services.AddSingleton<SecurityAlertSender>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<SecurityAlertSender>());
 
 builder.Services.AddOptions<VaultOptions>().BindConfiguration(VaultOptions.SectionName)
     .Validate(o => TryParseKey(o.MasterKey), "Vault:MasterKey must be 32 random bytes in base64 (e.g. `openssl rand -base64 32`).")
@@ -63,7 +80,16 @@ var app = builder.Build();
 
 await ExchangeKeyRepository.EnsureSchemaAsync(app.Services.GetRequiredService<NpgsqlDataSource>(), CancellationToken.None);
 await TradingRepository.EnsureSchemaAsync(app.Services.GetRequiredService<NpgsqlDataSource>(), CancellationToken.None);
+await TradingCodeRepository.EnsureSchemaAsync(app.Services.GetRequiredService<NpgsqlDataSource>(), CancellationToken.None);
 
+// `Trader.dll reset-trading-code <user id>` / `list-trading-codes`: the way back for somebody with a shell on the server, then exit.
+if (args is ["reset-trading-code", var who])
+    return await TradingCodeCli.ResetAsync(app.Services, who);
+if (args is ["list-trading-codes"])
+    return await TradingCodeCli.ListAsync(app.Services);
+
+// First, so that the address of an alert is the visitor's, not the panel's.
+app.UseForwardedHeaders();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
@@ -71,8 +97,10 @@ app.UseRateLimiter();
 app.MapGet("/health", () => Results.Ok("ok")).AllowAnonymous();
 app.MapExchangeKeys();
 app.MapTrading();
+app.MapTradingCode();
 
 app.Run();
+return 0;
 
 static bool TryParseKey(string key)
 {

@@ -27,6 +27,7 @@ namespace WebRazor
             builder.Services.AddSingleton<SessionTokenStore>();
             builder.Services.AddScoped<AdminLoginService>();
             builder.Services.AddSingleton<PendingLoginCookie>();
+            builder.Services.AddTransient<TraderConfirmationHandler>();
             builder.Services.AddTransient<ApiAuthHandler>();
 
             // Raw client: login and refresh, where there is no session token to attach yet.
@@ -43,7 +44,8 @@ namespace WebRazor
                         client.BaseAddress = new Uri(trader.BaseUrl.TrimEnd('/') + "/");
                     client.Timeout = TimeSpan.FromSeconds(60); // making a 4096-bit key pair and asking Binance take a few seconds
                 })
-                .AddHttpMessageHandler<ApiAuthHandler>();
+                .AddHttpMessageHandler<ApiAuthHandler>()
+                .AddHttpMessageHandler<TraderConfirmationHandler>();
 
             // The browser only ever holds this cookie; the API tokens stay in SessionTokenStore on the server.
             builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

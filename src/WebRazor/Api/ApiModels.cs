@@ -110,6 +110,17 @@ public record SymbolsPage(IReadOnlyList<SymbolRow> Items, int PageNumber, int Pa
 
 /// <summary>Outcome of a write. <see cref="SessionRejected"/> means the API no longer accepts the signed-in session.</summary>
 /// <param name="StepUpRequired">The API wants a fresh second-factor confirmation for this (not a lack of rights): see the StepUp page.</param>
+/// <summary>Where a user stands with the trading code of the key vault.</summary>
+/// <param name="LockedUntil">Until when wrong codes keep them from confirming (UTC); null when nothing does.</param>
+public record TradingCodeStatus(bool Enrolled, DateTime? LockedUntil, int RecoveryCodesLeft, DateTime? ConfirmedUntil);
+
+public record TradingCodeSetup(string SharedKey, string AuthenticatorUri);
+
+/// <summary>The recovery codes are in this answer and nowhere else.</summary>
+public record TradingCodeEnrolled(string[] RecoveryCodes, string ConfirmationToken, DateTime ExpiresAt);
+
+public record TradingConfirmation(string Token, DateTime ExpiresAt);
+
 public record ApiResult(bool Success, IReadOnlyList<string> Errors, bool SessionRejected = false, bool StepUpRequired = false);
 
 public record ElevationGrant(string Token, DateTime ExpiresAt);

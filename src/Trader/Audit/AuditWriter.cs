@@ -11,7 +11,7 @@ namespace Trader.Audit;
 /// </summary>
 public sealed class AuditWriter(MainDatabase main, TimeProvider time, ILogger<AuditWriter> logger)
 {
-    public async Task RecordAsync(AuditAction action, string userName, string label, string details, CancellationToken cancellationToken)
+    public async Task RecordAsync(AuditAction action, string userName, string label, string details, CancellationToken cancellationToken, string? entityType = null)
     {
         try
         {
@@ -25,7 +25,7 @@ public sealed class AuditWriter(MainDatabase main, TimeProvider time, ILogger<Au
                     at = DateTime.SpecifyKind(time.GetUtcNow().UtcDateTime, DateTimeKind.Unspecified), // timestamp without zone, always UTC
                     userName = Truncate(userName, 256),
                     action = action.ToString(),
-                    type = AuditEntityTypes.ExchangeKey,
+                    type = entityType ?? AuditEntityTypes.ExchangeKey,
                     summary = Truncate(label, 256),
                     details
                 }, cancellationToken: cancellationToken));

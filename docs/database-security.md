@@ -374,9 +374,10 @@ Change it in `deploy/.env`, run `./deploy/main-db-roles.sh` (it sets the new pas
 
 - The tokens are signed with a key pair, and the trader has only the **public** half: a hacked trader cannot make a token, so it cannot sign in
   as anybody on the API or the panel. The other direction is still open: whoever has the API's environment (the private key) can make access and
-  elevation tokens, and the trader believes them, so a hacked API can use the keys within the limits (order size, daily total, symbols, halt). The
-  limits are in the trader's environment, not the database. Closing that needs the second-factor code to be checked by the vault itself (a code of its
-  own, which the API never sees); that is not built.
+  elevation tokens, and the trader believes them, the API could ask the trader for things. That is closed for the actions that matter: the
+  trader no longer accepts the API's step-up token. Keys and orders need the **trading code**, a TOTP whose secret only the vault has
+  (see [exchange-keys.md](exchange-keys.md)). A hacked API can still read the key list and the orders, halt trading and disable symbols, and the very
+  first setup of a user who has no code yet is trusted. The limits are in the trader's environment, not the database.
 - Someone with a shell on the server who can read the trader's environment has the master key and the vault's password.
 - The superuser `postgres` can still log in from other containers with its password. No program has it, but a stronger setup would let it in only
   from the container itself (a `pg_hba.conf` of its own). Not done.

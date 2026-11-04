@@ -20,6 +20,17 @@ public abstract class AdminPageModel(SessionTokenStore store) : PageModel
         return RedirectToPage("/StepUp", new { returnUrl = returnPath });
     }
 
+    /// <summary>True while this session holds a confirmation of the key vault (given after the trading code) that has not run out.</summary>
+    protected bool IsTraderConfirmed() =>
+        User.FindFirstValue(ApiAuthHandler.SessionClaim) is { } sessionId && store.TryGetTraderConfirmation(sessionId, out _);
+
+    /// <summary>Sends the user to give the trading code (or to set it up first), then back to <paramref name="returnPath"/>.</summary>
+    protected IActionResult ConfirmWithTradingCode(string returnPath)
+    {
+        TempData["TradingCodeNotice"] = "Enter your trading code to continue. The keys and the orders ask for it: it is checked by the key vault itself.";
+        return RedirectToPage("/TradingCode", new { returnUrl = returnPath });
+    }
+
     /// <summary>The API refused the session (refresh failed or the role was removed): forget it and start over at the login page.</summary>
     protected async Task<IActionResult> EndSessionAsync()
     {
