@@ -1,5 +1,6 @@
 using Application.Research.Watch;
 using Domain.Entities;
+using Domain.Enums;
 using Domain.Exceptions;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,16 @@ public class ShockWatchConfigurationRepository(ConfigDbContext context) : IShock
         var entity = await context.ShockWatchConfigurations.SingleOrDefaultAsync(c => c.Id == id, cancellationToken)
             ?? throw new ConfigurationNotFoundException("Configuration does not exist.");
 
+        entity.IsEnabled = enabled;
+        await SaveAsync(cancellationToken);
+    }
+
+    public async Task Decide(int id, WatchReasonEnum reason, bool enabled, CancellationToken cancellationToken)
+    {
+        var entity = await context.ShockWatchConfigurations.SingleOrDefaultAsync(c => c.Id == id, cancellationToken)
+            ?? throw new ConfigurationNotFoundException("Configuration does not exist.");
+
+        entity.Reason = reason;
         entity.IsEnabled = enabled;
         await SaveAsync(cancellationToken);
     }
