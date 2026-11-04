@@ -7,10 +7,12 @@ using Infrastructure.Identity;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Testcontainers.PostgreSql;
 using Trader.Binance;
+using Trader.TradingCode;
 
 namespace Trader.IntegrationTests;
 
@@ -27,6 +29,12 @@ public sealed class TraderFixture : WebApplicationFactory<Program>, IAsyncLifeti
     public string MasterKey { get; } = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
 
     public FakeBinance Binance { get; } = new();
+
+    /// <summary>
+    /// The confirmations the vault gives, held here and handed to every host of these tests: a confirmation made with one host (a test asks for another
+    /// with other settings) must still be believed by the other, which a program of its own memory would not do. A real vault is one program.
+    /// </summary>
+    public TradingConfirmations Confirmations { get; } = new(TimeProvider.System);
 
     public string ConnectionString => _postgres.GetConnectionString();
 
@@ -73,23 +81,42 @@ public sealed class TraderFixture : WebApplicationFactory<Program>, IAsyncLifeti
         builder.UseSetting("Vault:MasterKey", MasterKey);
         builder.UseSetting("RateLimiting:KeysPerMinute", "1000");
         builder.ConfigureServices(services =>
-            services.AddHttpClient(BinanceClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Binance));
+        {
+            services.AddHttpClient(BinanceClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Binance);
+            services.RemoveAll<TradingConfirmations>();
+            services.AddSingleton(Confirmations);
+        });
     }
 
     // ---- who is asking (tokens exactly as the API makes them)
 
-    public sealed record Caller(Guid Id, string Name, string AccessToken, string Elevation);
+    /// <param name="Elevation">The confirmation the vault gave after the caller's trading code (the name is from when the API gave it).</param>
+    /// <param name="TradingKey">The base32 secret of the caller's trading code, to make more codes with.</param>
+    public sealed record Caller(Guid Id, string Name, string AccessToken, string Elevation, string TradingKey);
+
+    private sealed record SetupBody(string SharedKey);
+    private sealed record EnrolledBody(string[] RecoveryCodes, string ConfirmationToken);
 
     public Caller Administrator(string name = "admin") => MakeCaller(name, AdminRole);
 
     public Caller OrdinaryUser(string name = "ordinary") => MakeCaller(name, "User");
 
-    private static Caller MakeCaller(string name, string role)
+    /// <summary>An administrator as the API signs them in, who then set up their trading code with the vault and so holds its confirmation.</summary>
+    private Caller MakeCaller(string name, string role)
     {
         var id = Guid.NewGuid();
         var access = new JwtAccessTokenService(Options.Create(Jwt)).Create(new AuthenticatedUser(id, name, $"{name}@example.com", [role])).Token;
-        var elevation = new JwtElevationTokenService(Options.Create(Jwt), TimeProvider.System).Create(id).Token;
-        return new Caller(id, name, access, elevation);
+        if (role != AdminRole)
+            return new Caller(id, name, access, "", "");
+
+        using var client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", access);
+        var begin = client.PostAsync("/trading-code/begin", null).GetAwaiter().GetResult();
+        begin.EnsureSuccessStatusCode();
+        var key = begin.Content.ReadFromJsonAsync<SetupBody>().GetAwaiter().GetResult()!.SharedKey;
+        var setup = client.PostAsJsonAsync("/trading-code/setup", new { Code = WebApi.IntegrationTests.Totp.Code(key) }).GetAwaiter().GetResult();
+        setup.EnsureSuccessStatusCode();
+        return new Caller(id, name, access, setup.Content.ReadFromJsonAsync<EnrolledBody>().GetAwaiter().GetResult()!.ConfirmationToken, key);
     }
 
     /// <summary>A client of the same Trader (same database, same fake Binance) started with other settings, e.g. <c>Trading:AllowLive</c>.</summary>
@@ -107,7 +134,7 @@ public sealed class TraderFixture : WebApplicationFactory<Program>, IAsyncLifeti
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", caller.AccessToken);
             if (elevated || elevation is not null)
-                request.Headers.Add("X-Elevation", elevation ?? caller.Elevation);
+                request.Headers.Add(RequireTradingConfirmationFilter.Header, elevation ?? caller.Elevation);
         }
 
         return (client ?? CreateClient()).SendAsync(request, TestContext.Current.CancellationToken);

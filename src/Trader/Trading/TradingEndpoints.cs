@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Trader.Audit;
 using Trader.Binance;
 using Trader.Security;
+using Trader.TradingCode;
 using Trader.Vault;
 
 namespace Trader.Trading;
@@ -39,15 +40,15 @@ public static class TradingEndpoints
 
         trading.MapGet("state", State);
         trading.MapGet("orders", Orders);
-        trading.MapPost("orders", Place).AddEndpointFilter<RequireElevationFilter>().RequireRateLimiting("orders");
+        trading.MapPost("orders", Place).AddEndpointFilter<RequireTradingConfirmationFilter>().RequireRateLimiting("orders");
         // Stopping is one click with no extra code on purpose (an emergency); starting again asks for the second factor.
         trading.MapPost("halt", Halt);
-        trading.MapPost("resume", Resume).AddEndpointFilter<RequireElevationFilter>();
+        trading.MapPost("resume", Resume).AddEndpointFilter<RequireTradingConfirmationFilter>();
 
         // Which of the server's symbols may be opened. Same rule as the halt: switching off is one click, switching on asks for the
         // second factor. Either way the server's own list stays the ceiling; nothing here can add a symbol to it.
         trading.MapGet("symbols", Symbols);
-        trading.MapPost("symbols/{symbol}/enable", EnableSymbol).AddEndpointFilter<RequireElevationFilter>();
+        trading.MapPost("symbols/{symbol}/enable", EnableSymbol).AddEndpointFilter<RequireTradingConfirmationFilter>();
         trading.MapPost("symbols/{symbol}/disable", DisableSymbol);
         return app;
     }

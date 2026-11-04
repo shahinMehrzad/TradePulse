@@ -112,6 +112,10 @@ services:
       JwtConfigurations__Audience: TradePulseClient
       AdminConfigurations__Role: Administrator
       Vault__MasterKey: ${VAULT_MASTER_KEY:?set VAULT_MASTER_KEY in deploy/.env (openssl rand -base64 32), and keep a copy outside this server}
+      # Wrong trading codes and lock-outs go to the same security bot as the API's (see docs/exchange-keys.md).
+      SecurityAlerts__InstanceName: ${ALERT_INSTANCE_NAME:-tradepulse}
+      SecurityAlerts__Telegram__BotToken: ${SECURITY_TELEGRAM_BOT_TOKEN:-}
+      SecurityAlerts__Telegram__ChatId: ${SECURITY_TELEGRAM_CHAT_ID:-}
       # What may be traded and how much (see docs/trading.md). Real money stays off until TRADING_ALLOW_LIVE=true.
       Trading__AllowLive: ${TRADING_ALLOW_LIVE:-false}
       Trading__Halted: ${TRADING_HALTED:-false}

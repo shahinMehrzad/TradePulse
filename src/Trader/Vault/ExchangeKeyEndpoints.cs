@@ -5,6 +5,7 @@ using Domain.Entities;
 using Trader.Audit;
 using Trader.Binance;
 using Trader.Security;
+using Trader.TradingCode;
 
 namespace Trader.Vault;
 
@@ -32,10 +33,11 @@ public static partial class ExchangeKeyEndpoints
         var keys = app.MapGroup("/keys").RequireAuthorization(TokenSecurity.AdminPolicy);
 
         keys.MapGet("", List);
-        keys.MapPost("", Create).AddEndpointFilter<RequireElevationFilter>().RequireRateLimiting("keys");
-        keys.MapPut("{id:guid}/api-key", SetApiKey).AddEndpointFilter<RequireElevationFilter>().RequireRateLimiting("keys");
-        keys.MapPost("{id:guid}/verify", Verify).AddEndpointFilter<RequireElevationFilter>().RequireRateLimiting("keys");
-        keys.MapDelete("{id:guid}", Delete).AddEndpointFilter<RequireElevationFilter>();
+        // What changes a key needs the vault's own confirmation (the trading code), not the API's.
+        keys.MapPost("", Create).AddEndpointFilter<RequireTradingConfirmationFilter>().RequireRateLimiting("keys");
+        keys.MapPut("{id:guid}/api-key", SetApiKey).AddEndpointFilter<RequireTradingConfirmationFilter>().RequireRateLimiting("keys");
+        keys.MapPost("{id:guid}/verify", Verify).AddEndpointFilter<RequireTradingConfirmationFilter>().RequireRateLimiting("keys");
+        keys.MapDelete("{id:guid}", Delete).AddEndpointFilter<RequireTradingConfirmationFilter>();
         return app;
     }
 

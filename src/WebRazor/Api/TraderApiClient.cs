@@ -38,6 +38,49 @@ public sealed class TraderApiClient(HttpClient http)
         return await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
     }
 
+    // ---- the trading code: a second factor that only the vault knows
+
+    /// <returns>Where the user stands with the code, or null when the session is no longer accepted.</returns>
+    public async Task<TradingCodeStatus?> GetTradingCodeStatusAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("trading-code", cancellationToken);
+        if (TradePulseApiClient.IsRejected(response))
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingCodeStatus>(cancellationToken);
+    }
+
+    /// <summary>The key (and the address the QR code encodes) for the authenticator app; the same one again until the setup is finished.</summary>
+    public async Task<(ApiResult Result, TradingCodeSetup? Setup)> BeginTradingCodeAsync(CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync("trading-code/begin", content: null, cancellationToken);
+        var result = await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
+        return result.Success ? (result, await response.Content.ReadFromJsonAsync<TradingCodeSetup>(cancellationToken)) : (result, null);
+    }
+
+    /// <summary>The first code proves that the app has the key: the vault answers with the recovery codes (once) and a confirmation.</summary>
+    public async Task<(ApiResult Result, TradingCodeEnrolled? Enrolled)> SetUpTradingCodeAsync(string code, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("trading-code/setup", new { Code = code }, cancellationToken);
+        var result = await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
+        return result.Success ? (result, await response.Content.ReadFromJsonAsync<TradingCodeEnrolled>(cancellationToken)) : (result, null);
+    }
+
+    public async Task<(ApiResult Result, TradingConfirmation? Confirmation)> ConfirmTradingCodeAsync(string code, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("trading-code/confirmation", new { Code = code }, cancellationToken);
+        var result = await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
+        return result.Success ? (result, await response.Content.ReadFromJsonAsync<TradingConfirmation>(cancellationToken)) : (result, null);
+    }
+
+    /// <summary>A recovery code starts the setup again (the way back for a lost phone).</summary>
+    public async Task<ApiResult> ResetTradingCodeAsync(string recoveryCode, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync("trading-code/reset", new { RecoveryCode = recoveryCode }, cancellationToken);
+        return await TradePulseApiClient.ToResultAsync(response, NotFound, cancellationToken);
+    }
+
     // ---- trading
 
     /// <returns>The limits and the halt switch of the user, or null when the session is no longer accepted.</returns>

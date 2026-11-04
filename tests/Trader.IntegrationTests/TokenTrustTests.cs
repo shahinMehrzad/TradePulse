@@ -37,7 +37,7 @@ public class TokenTrustTests(TraderFixture trader) : IClassFixture<TraderFixture
 
     private Task<HttpResponseMessage> ListKeysAsync(string accessToken, string? elevation = null)
     {
-        var caller = new TraderFixture.Caller(Guid.NewGuid(), "forger", accessToken, elevation ?? "");
+        var caller = new TraderFixture.Caller(Guid.NewGuid(), "forger", accessToken, elevation ?? "", "");
         return trader.SendAsync(HttpMethod.Get, "/keys", caller, elevated: false);
     }
 
@@ -65,15 +65,20 @@ public class TokenTrustTests(TraderFixture trader) : IClassFixture<TraderFixture
     }
 
     [Fact]
-    public async Task AConfirmationSignedByAnotherKeyIsNotAConfirmation()
+    public async Task AConfirmationOfTheApiIsNotAConfirmationOfTheVaultEvenWithTheRightKey()
     {
-        var admin = trader.Administrator("confirmed");
-        var forgedElevation = new JwtElevationTokenService(Options.Create(SignedBy(JwtTestKeys.New())), TimeProvider.System).Create(admin.Id).Token;
+        var admin = trader.Administrator("api-confirmed");
+        // What the API gives after a sign-in code, made with the REAL key: a hacked API can make exactly this for anybody. The vault does not take it.
+        var apiConfirmation = new JwtElevationTokenService(Options.Create(TraderFixture.Jwt), TimeProvider.System).Create(admin.Id).Token;
 
-        var response = await trader.SendAsync(HttpMethod.Post, "/keys", admin, new { Label = "x", Environment = "Demo" }, elevated: true, elevation: forgedElevation);
+        var asTheVaultsHeader = await trader.SendAsync(HttpMethod.Post, "/keys", admin, new { Label = "x", Environment = "Demo" }, elevated: true, elevation: apiConfirmation);
+        Assert.Equal(HttpStatusCode.Forbidden, asTheVaultsHeader.StatusCode);
+        Assert.Contains("step_up_required", await asTheVaultsHeader.Content.ReadAsStringAsync(Ct));
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Contains("step_up_required", await response.Content.ReadAsStringAsync(Ct));
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/keys") { Content = System.Net.Http.Json.JsonContent.Create(new { Label = "x", Environment = "Demo" }) };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", admin.AccessToken);
+        request.Headers.Add("X-Elevation", apiConfirmation);   // the header the API's own endpoints read
+        Assert.Equal(HttpStatusCode.Forbidden, (await trader.CreateClient().SendAsync(request, Ct)).StatusCode);
     }
 
     [Fact]

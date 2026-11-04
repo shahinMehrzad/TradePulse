@@ -1,0 +1,110 @@
+@page
+@model TradingCodeModel
+@{
+    ViewData["Title"] = "Trading code";
+}
+
+<div class="row justify-content-center">
+    <div class="col-12 col-md-9 col-lg-6">
+        @if (Model.Notice is not null)
+        {
+            <div class="alert alert-info" role="alert">@Model.Notice</div>
+        }
+        @if (Model.Error is not null)
+        {
+            <div class="alert alert-danger" role="alert">@Model.Error</div>
+        }
+
+        @if (Model.RecoveryCodes is not null)
+        {
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">The trading code is set up</h3></div>
+                <div class="card-body">
+                    <div class="alert alert-warning" role="alert">
+                        <h4 class="alert-title">Keep these recovery codes</h4>
+                        <p>They are shown <strong>only now</strong>. If you lose your phone, one of them (each works once) lets you set the trading code up again.
+                            Nobody else can: not another administrator, not the API. Put them where you keep your passwords, not on this server.</p>
+                        <pre class="mb-0 fs-4 user-select-all">@string.Join('\n', Model.RecoveryCodes)</pre>
+                    </div>
+                    <a class="btn btn-primary" href="@(Url.IsLocalUrl(Model.ReturnUrl) ? Model.ReturnUrl : "/ExchangeKeys")">I saved them, continue</a>
+                </div>
+            </div>
+        }
+        else if (Model.Status is { Enrolled: false })
+        {
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">Set up your trading code</h3></div>
+                <div class="card-body">
+                    <p class="text-secondary">
+                        The keys and the orders ask for a second code, <strong>apart from the one you sign in with</strong>: a second entry in your authenticator app
+                        that only the key vault knows. Even if the rest of the system were taken over, nobody could move a key or place an order without it.
+                    </p>
+                    <ol class="text-secondary">
+                        <li>In your authenticator app add a new account: scan this code or type the key. It is called <em>TradePulse trading</em>, not the one you sign in with.</li>
+                        <li>Type the 6 digits it shows now.</li>
+                    </ol>
+                    @if (Model.QrSvg is not null)
+                    {
+                        <div class="d-flex justify-content-center mb-3">
+                            <div class="bg-white rounded p-2" style="width: 220px" role="img" aria-label="QR code for the trading code">@Html.Raw(Model.QrSvg)</div>
+                        </div>
+                        <p class="text-center"><code class="user-select-all">@Model.SharedKey</code></p>
+                    }
+                    <form method="post" asp-page-handler="SetUp" autocomplete="off">
+                        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+                        <div class="mb-3">
+                            <label asp-for="Input.Code" class="form-label">Code</label>
+                            <input asp-for="Input.Code" class="form-control" inputmode="numeric" autocomplete="one-time-code" autofocus />
+                            <span asp-validation-for="Input.Code" class="text-danger"></span>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Finish the setup</button>
+                    </form>
+                </div>
+            </div>
+        }
+        else if (Model.Status is { Enrolled: true })
+        {
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">Confirm with your trading code</h3></div>
+                <div class="card-body">
+                    <p class="text-secondary">
+                        Enter the 6 digits of the <em>TradePulse trading</em> entry of your authenticator app. It is good for ten minutes, so you can do several things in a row.
+                    </p>
+                    @if (Model.Status.LockedUntil is { } lockedUntil)
+                    {
+                        <div class="alert alert-warning" role="alert">Too many wrong codes. No code is taken until @lockedUntil.ToString("yyyy-MM-dd HH:mm") UTC.</div>
+                    }
+                    <form method="post" asp-page-handler="Confirm" autocomplete="off">
+                        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+                        <div class="mb-3">
+                            <label asp-for="Input.Code" class="form-label">Trading code</label>
+                            <input asp-for="Input.Code" class="form-control" inputmode="numeric" autocomplete="one-time-code" autofocus />
+                            <span asp-validation-for="Input.Code" class="text-danger"></span>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Confirm</button>
+                        <a href="/" class="btn btn-link text-secondary">Cancel</a>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header"><h3 class="card-title">Lost your phone?</h3></div>
+                <div class="card-body">
+                    <p class="text-secondary">
+                        Use one of the recovery codes you saved when you set the trading code up (@Model.Status.RecoveryCodesLeft left). It forgets the code, and you set a new one up.
+                        If you have none left, somebody with a shell on the server can do it with the vault's <code>reset-trading-code</code> command (see docs/exchange-keys.md).
+                    </p>
+                    <form method="post" asp-page-handler="Reset" autocomplete="off"
+                          data-confirm="Forget the trading code? You will have to set up a new one before you can use the keys or the orders.">
+                        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+                        <div class="mb-3">
+                            <label class="form-label" for="RecoveryCode">Recovery code</label>
+                            <input id="RecoveryCode" name="RecoveryCode" class="form-control" placeholder="XXXXX-XXXXX" autocomplete="off" />
+                        </div>
+                        <button type="submit" class="btn btn-outline-danger">Start again with this code</button>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+</div>

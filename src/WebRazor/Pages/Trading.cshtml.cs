@@ -85,7 +85,7 @@ public class TradingModel(TraderApiClient trader, IOptions<TraderOptions> option
         if (result.SessionRejected)
             return await EndSessionAsync();
         if (result.StepUpRequired)
-            return ConfirmFirst(Path);
+            return ConfirmWithTradingCode(Path);
 
         if (!result.Success)
         {
