@@ -45,8 +45,12 @@ public sealed class ConfiguredWatchedSymbols(
 
     /// <summary>The Binance Futures listings of the symbols enabled for trading (trading is on Futures only). A traded name nobody listed is left out: there is nothing to follow it by.</summary>
     internal static IEnumerable<SymbolListing> TradedListings(IEnumerable<SymbolListing> listings, IReadOnlySet<string> tradedNames) =>
-        listings.Where(l => l.ExchangeId == (int)ExchangeEnum.Binance && l.MarketId == (int)MarketTypeEnum.Futures
-                            && tradedNames.Contains(l.ExchangeSymbol, StringComparer.OrdinalIgnoreCase));
+        listings.Where(l => IsTraded(l, tradedNames));
+
+    /// <summary>True for the Binance Futures listing of a symbol enabled for trading.</summary>
+    internal static bool IsTraded(SymbolListing listing, IReadOnlySet<string> tradedNames) =>
+        listing.ExchangeId == (int)ExchangeEnum.Binance && listing.MarketId == (int)MarketTypeEnum.Futures
+        && tradedNames.Contains(listing.ExchangeSymbol, StringComparer.OrdinalIgnoreCase);
 
     private static WatchedSymbol Watched(SymbolListing listing) =>
         new((ExchangeEnum)listing.ExchangeId, (MarketTypeEnum)listing.MarketId, listing.Id, new ExchangeSymbol(listing.ExchangeSymbol));
