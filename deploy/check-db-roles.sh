@@ -14,6 +14,7 @@ DATABASE="$(setting POSTGRES_DB tradepulse)"
 api_pw="$(setting API_DB_PASSWORD)"
 collector_pw="$(setting COLLECTOR_DB_PASSWORD)"
 trader_pw="$(setting TRADER_MAIN_DB_PASSWORD)"
+watch_pw="$(setting WATCH_DB_PASSWORD)"
 failed=0
 
 # run <role> <password> <sql>: the output and the exit code of psql, connecting to the server by its network name (the image trusts
@@ -49,7 +50,7 @@ superuser() { "${COMPOSE[@]}" exec -T postgres psql -U postgres -d "$DATABASE" -
 echo "Database: $DATABASE"
 
 # ---- the passwords work, and a wrong one does not
-for pair in "tp_api:$api_pw" "tp_collector:$collector_pw" "tp_trader:$trader_pw"; do
+for pair in "tp_api:$api_pw" "tp_collector:$collector_pw" "tp_trader:$trader_pw" "tp_watch:$watch_pw"; do
   role="${pair%%:*}"; pw="${pair#*:}"
   if [ -z "$pw" ]; then fail "$role has a password in deploy/.env"; continue; fi
   if run "$role" "$pw" "select 1" >/dev/null; then ok "$role connects with its password"; else fail "$role connects with its password" "run deploy/main-db-roles.sh"; fi
@@ -99,6 +100,23 @@ cannot tp_trader "$trader_pw" "read the symbols"          "select count(*) from 
 cannot tp_trader "$trader_pw" "read the accounts"         "select count(*) from auth.users"
 cannot tp_trader "$trader_pw" "read the configuration"    "select count(*) from config.candle_worker_configurations"
 [ -n "$DATA_TABLE" ] && cannot tp_trader "$trader_pw" "read the data table" "select count(*) from public.\"$DATA_TABLE\""
+
+# ---- tp_watch
+can    tp_watch "$watch_pw" "read the watch list"            "select count(*) from config.shock_watch_configurations"
+can    tp_watch "$watch_pw" "read the symbol listings"       "select count(*) from config.exchange_symbols join config.symbols on true join config.exchanges on true join config.markets on true"
+can    tp_watch "$watch_pw" "read the enabled symbols"       "select count(*) from config.traded_symbols"
+can    tp_watch "$watch_pw" "write its alerts"               "begin; delete from research.shock_alerts where false; update research.shock_alerts set \"Move\" = \"Move\" where false; rollback"
+cannot tp_watch "$watch_pw" "read the accounts"              "select count(*) from auth.users"
+cannot tp_watch "$watch_pw" "read the second-factor secrets" "select count(*) from auth.user_tokens"
+cannot tp_watch "$watch_pw" "read the audit log"             "select count(*) from config.audit_log"
+cannot tp_watch "$watch_pw" "change the watch list"          "begin; delete from config.shock_watch_configurations; rollback"
+cannot tp_watch "$watch_pw" "change the configuration"       "begin; delete from config.candle_worker_configurations; rollback"
+cannot tp_watch "$watch_pw" "make a table in public"         "create table public.check_tmp (x int)"
+cannot tp_watch "$watch_pw" "make a table in research"       "create table research.check_tmp (x int)"
+if [ -n "$DATA_TABLE" ]; then
+  can    tp_watch "$watch_pw" "read the data table $DATA_TABLE"    "select count(*) from public.\"$DATA_TABLE\""
+  cannot tp_watch "$watch_pw" "write the data table"               "begin; delete from public.\"$DATA_TABLE\"; rollback"
+fi
 
 # ---- who is connected right now (the running programs should be on their own roles)
 echo

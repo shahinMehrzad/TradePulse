@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Makes (or updates) the roles of the programs in the MAIN database: tp_api, tp_collector and tp_trader, with exactly the rights that
-# deploy/main-db-roles.sql gives them. The passwords are API_DB_PASSWORD, COLLECTOR_DB_PASSWORD and TRADER_MAIN_DB_PASSWORD from
+# Makes (or updates) the roles of the programs in the MAIN database: tp_api, tp_collector, tp_trader and tp_watch, with exactly the rights that
+# deploy/main-db-roles.sql gives them. The passwords are API_DB_PASSWORD, COLLECTOR_DB_PASSWORD, TRADER_MAIN_DB_PASSWORD and WATCH_DB_PASSWORD from
 # deploy/.env (the programs connect with the same ones).
 #
 # Run it as the user that runs docker compose:
@@ -15,9 +15,10 @@ set -u -o pipefail
 API_PASSWORD="$(setting API_DB_PASSWORD)"
 COLLECTOR_PASSWORD="$(setting COLLECTOR_DB_PASSWORD)"
 TRADER_PASSWORD="$(setting TRADER_MAIN_DB_PASSWORD)"
+WATCH_PASSWORD="$(setting WATCH_DB_PASSWORD)"
 DATABASE="$(setting POSTGRES_DB tradepulse)"
 
-for name in API_DB_PASSWORD COLLECTOR_DB_PASSWORD TRADER_MAIN_DB_PASSWORD; do
+for name in API_DB_PASSWORD COLLECTOR_DB_PASSWORD TRADER_MAIN_DB_PASSWORD WATCH_DB_PASSWORD; do
   value="$(setting "$name")"
   if ! [[ "$value" =~ ^[A-Za-z0-9]{16,}$ ]]; then
     echo "$name in $ENV_FILE must be at least 16 letters and digits (openssl rand -hex 24)." >&2
@@ -25,8 +26,8 @@ for name in API_DB_PASSWORD COLLECTOR_DB_PASSWORD TRADER_MAIN_DB_PASSWORD; do
   fi
 done
 
-if [ "$API_PASSWORD" = "$COLLECTOR_PASSWORD" ] || [ "$API_PASSWORD" = "$TRADER_PASSWORD" ] || [ "$COLLECTOR_PASSWORD" = "$TRADER_PASSWORD" ]; then
-  echo "The three passwords (API_DB_PASSWORD, COLLECTOR_DB_PASSWORD, TRADER_MAIN_DB_PASSWORD) must be different from each other." >&2
+if [ "$(printf '%s\n' "$API_PASSWORD" "$COLLECTOR_PASSWORD" "$TRADER_PASSWORD" "$WATCH_PASSWORD" | sort | uniq -d)" ]; then
+  echo "The four passwords (API_DB_PASSWORD, COLLECTOR_DB_PASSWORD, TRADER_MAIN_DB_PASSWORD, WATCH_DB_PASSWORD) must be different from each other." >&2
   exit 1
 fi
 
@@ -35,9 +36,10 @@ fi
   printf "\\\\set api_password '%s'\n" "$API_PASSWORD"
   printf "\\\\set collector_password '%s'\n" "$COLLECTOR_PASSWORD"
   printf "\\\\set trader_password '%s'\n" "$TRADER_PASSWORD"
+  printf "\\\\set watch_password '%s'\n" "$WATCH_PASSWORD"
   cat "$DEPLOY_DIR/main-db-roles.sql"
 } | "${COMPOSE[@]}" exec -T postgres psql -U postgres -d "$DATABASE" -v ON_ERROR_STOP=1 -q \
   || { echo "Could not set up the roles." >&2; exit 1; }
 
-echo "The roles tp_api, tp_collector and tp_trader are ready in database $DATABASE."
+echo "The roles tp_api, tp_collector, tp_trader and tp_watch are ready in database $DATABASE."
 echo "If a notice above says a table does not exist yet, run this script again after the API has started."
