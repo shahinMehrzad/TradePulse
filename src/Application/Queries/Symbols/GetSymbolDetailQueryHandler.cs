@@ -19,8 +19,8 @@ public sealed class GetSymbolDetailQueryHandler(ISymbolCatalogRepository reposit
             .Where(l => l.SymbolId == symbol.Id)
             .Select(l =>
             {
-                var (series, settings) = usage.GetValueOrDefault(l.Id);
-                return new SymbolDetailMarket(l.Id, l.ExchangeId, l.Exchange!.Name, l.MarketId, l.Market!.Name, l.ExchangeSymbol, series, settings);
+                var (series, settings, watches) = usage.GetValueOrDefault(l.Id);
+                return new SymbolDetailMarket(l.Id, l.ExchangeId, l.Exchange!.Name, l.MarketId, l.Market!.Name, l.ExchangeSymbol, series, settings, watches);
             })
             .ToList();
 
