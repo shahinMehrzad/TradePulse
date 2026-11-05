@@ -1,4 +1,5 @@
 using Application.Exchange;
+using Application.Notifications;
 using Application.Research.Watch;
 using Domain.Enums;
 using Domain.ValueObjects;
@@ -162,6 +163,19 @@ public class ShockWatcherTests
 
         Assert.Empty(_telegram.Sent);
         await StopAsync(run);
+    }
+
+    [Fact]
+    public void OnlyTheTextOfANotificationExceptionIsWrittenToTheLog()
+    {
+        // Telegram's own reason is what tells a wrong chat id from a wrong token ...
+        Assert.Equal("Telegram answered 400: group chat was upgraded to a supergroup chat",
+            ShockWatcher.FailureText(new NotificationException("Telegram answered 400: group chat was upgraded to a supergroup chat")));
+
+        // ... but any other exception can carry the address it called, which holds the bot token: only its kind goes out.
+        var text = ShockWatcher.FailureText(new HttpRequestException("POST https://api.telegram.org/bot123456:SECRET/sendMessage failed"));
+        Assert.Equal("HttpRequestException", text);
+        Assert.DoesNotContain("SECRET", text);
     }
 
     [Fact]

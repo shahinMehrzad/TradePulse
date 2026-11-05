@@ -391,8 +391,9 @@ public sealed class ShockWatcher(
                     }
                     catch (Exception ex)
                     {
-                        // Only the kind of failure, never its text: a notifier's error may carry the address it called.
-                        logger.LogWarning("{Notifier} could not send an alert ({Error})", notifier.Name, ex.GetType().Name);
+                        // A NotificationException is written to be told ("Telegram answered 400: group chat was upgraded ..."): the notifier
+                        // keeps its token out of it. Any other exception may carry the address it called, so only its kind is logged.
+                        logger.LogWarning("{Notifier} could not send an alert ({Error})", notifier.Name, FailureText(ex));
                     }
                 }
             }
@@ -410,6 +411,9 @@ public sealed class ShockWatcher(
             }
         }
     }
+
+    /// <summary>What may be written to a log about a failed send: the text of a <see cref="NotificationException"/>, the kind of anything else.</summary>
+    public static string FailureText(Exception ex) => ex is NotificationException ? ex.Message : ex.GetType().Name;
 
     /// <summary>The socket's callbacks for one symbol. They only record; the judging happens on the judging task.</summary>
     private sealed class Listener(ChannelWriter<Item> trades, TimeProvider time) : ILiveTradeListener
