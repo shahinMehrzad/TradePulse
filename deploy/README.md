@@ -96,6 +96,14 @@ answers on its health port, that Postgres accepts connections, that the disk is 
 newest backup is not older than `BACKUP_MAX_AGE_DAYS` (20; `0` turns this off). A problem is reported after `WATCHDOG_FAILS` runs in a
 row (3, so not for a blink), again every `WATCHDOG_REPEAT_MINUTES` (360) while it lasts, and once more when it is over.
 
+It also looks at the **Telegram chats** of the three bots (collector, price watch, security alerts) once an hour (`WATCHDOG_TELEGRAM_CHECK_MINUTES`,
+60; `0` turns it off): each configured bot is asked, with `sendChatAction` ("typing..." for a few seconds, nothing stays in the chat), whether it
+may still post in its chat. A bot cannot report that its own chat is gone, and its program looks healthy; this happened when a group was
+upgraded to a supergroup and so got a new chat id. After `WATCHDOG_TELEGRAM_FAILS` checks in a row (2) the problem is reported through a bot that
+still works, with Telegram's own reason, and the ping turns to `/fail` so that healthchecks.io tells you by its own channels, which do not depend
+on any of the three bots. If Telegram itself cannot be reached nothing is concluded and nothing changes. Tried against a small fake Telegram
+(a moved chat of each of the bots, the recovery, an unreachable Telegram); not against the real one.
+
 **The watcher outside the server.** If the whole server or the cron job dies, nothing on it can say so. So the watchdog also pings
 `WATCHDOG_PING_URL` every minute while nothing is broken (and `<url>/fail` while something is), and a service that notices when
 the pings STOP tells you. With [healthchecks.io](https://healthchecks.io) (free): create a check with a period of 1 minute and a grace

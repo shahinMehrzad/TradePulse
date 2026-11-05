@@ -26,6 +26,8 @@ HEALTH_PORT="$(setting HEALTH_PORT 8089)"
 BACKUP_DIR="$(setting BACKUP_DIR /opt/tradepulse-backups)"
 BACKUP_MAX_AGE_DAYS="$(setting BACKUP_MAX_AGE_DAYS 20)"
 PING_URL="$(setting WATCHDOG_PING_URL)"
+TELEGRAM_CHECK_MINUTES="$(setting WATCHDOG_TELEGRAM_CHECK_MINUTES 60)"
+TELEGRAM_FAILS="$(setting WATCHDOG_TELEGRAM_FAILS 2)"
 
 mkdir -p "$STATE_DIR"
 
@@ -38,9 +40,9 @@ fi
 now="$(date +%s)"
 broken=0
 
-# record <what> <status 0=fine> <what is wrong>: keeps how long a check has been failing and talks when it should.
+# record <what> <status 0=fine> <what is wrong> [runs in a row before it talks]: keeps how long a check has been failing and talks when it should.
 record() {
-  local key="$1" status="$2" detail="$3" file="$STATE_DIR/$1" fails=0 alerted=0 last=0
+  local key="$1" status="$2" detail="$3" file="$STATE_DIR/$1" fails=0 alerted=0 last=0 threshold="${4:-$THRESHOLD}"
 
   if [ -r "$file" ]; then
     read -r fails alerted last < "$file" || true
@@ -55,7 +57,7 @@ record() {
   fi
 
   fails=$((fails + 1))
-  if [ "$alerted" != 1 ] && [ "$fails" -ge "$THRESHOLD" ]; then
+  if [ "$alerted" != 1 ] && [ "$fails" -ge "$threshold" ]; then
     notify "PROBLEM: $detail"
     alerted=1
     last="$now"
@@ -158,6 +160,87 @@ if [ "$BACKUP_MAX_AGE_DAYS" -gt 0 ]; then
     else
       record vault-backup 0 ""
     fi
+  fi
+fi
+
+# ---- the Telegram chats of the bots (collector, price watch, security alerts)
+# A bot whose chat has gone (a group upgraded to a supergroup gets a new id, the bot was removed or blocked) cannot say so itself, and its
+# program looks healthy. Once an hour each configured bot is asked "may you still post there?" with sendChatAction ("typing..." for a few
+# seconds, nothing stays in the chat). A bot that may not is reported through a bot that still can, and the ping below turns to /fail, which
+# healthchecks.io carries to you by its own channels. Telegram being unreachable proves nothing about a chat: it changes no state.
+telegram_probe() {
+  local token="$1" chat="$2" base answer reason
+  base="$(setting TELEGRAM_API_BASE https://api.telegram.org)"
+  # The token goes in through stdin so that it does not show in the list of processes.
+  answer="$(printf 'url = "%s/bot%s/sendChatAction"\n' "$base" "$token" \
+    | curl -sS --max-time 15 -K - --data-urlencode "chat_id=$chat" --data-urlencode "action=typing" 2>/dev/null)" || return 2
+  [ -n "$answer" ] || return 2
+  if printf '%s' "$answer" | grep -q '"ok" *: *true'; then
+    return 0
+  fi
+  # Telegram's own sentence about the request ("Bad Request: group chat was upgraded to a supergroup chat"); the token is blanked should it hold it.
+  reason="$(printf '%s' "$answer" | sed -n 's/.*"description" *: *"\([^"]*\)".*/\1/p' | head -c 160)"
+  printf '%s' "${reason//$token/***}"
+  return 1
+}
+
+if [ "$TELEGRAM_CHECK_MINUTES" -gt 0 ] 2>/dev/null; then
+  channels="collector:TELEGRAM_BOT_TOKEN:TELEGRAM_CHAT_ID watch:WATCH_TELEGRAM_BOT_TOKEN:WATCH_TELEGRAM_CHAT_ID security:SECURITY_TELEGRAM_BOT_TOKEN:SECURITY_TELEGRAM_CHAT_ID"
+  stamp="$STATE_DIR/telegram-checked"
+  last_check=0
+  [ -r "$stamp" ] && read -r last_check < "$stamp"
+  [[ "$last_check" =~ ^[0-9]+$ ]] || last_check=0
+
+  if [ $((now - last_check)) -ge $((TELEGRAM_CHECK_MINUTES * 60)) ]; then
+    printf '%s\n' "$now" > "$stamp"
+    declare -A verdict reason tokens chats
+    via_token=""
+    via_chat=""
+
+    for entry in $channels; do
+      IFS=: read -r name token_setting chat_setting <<< "$entry"
+      tokens[$name]="$(setting "$token_setting")"
+      chats[$name]="$(setting "$chat_setting")"
+      if [ -z "${tokens[$name]}" ] || [ -z "${chats[$name]}" ]; then
+        verdict[$name]=unset
+        continue
+      fi
+      reason[$name]="$(telegram_probe "${tokens[$name]}" "${chats[$name]}")"
+      case $? in
+        0) verdict[$name]=ok
+           if [ -z "$via_token" ]; then via_token="${tokens[$name]}"; via_chat="${chats[$name]}"; fi ;;
+        1) verdict[$name]=bad ;;
+        *) verdict[$name]=unknown ;;
+      esac
+    done
+
+    for entry in $channels; do
+      name="${entry%%:*}"
+      case "${verdict[$name]}" in
+        ok|unset)
+          NOTIFY_VIA_TOKEN="$via_token" NOTIFY_VIA_CHAT="$via_chat" record "telegram-$name" 0 "" ;;
+        bad)
+          detail="the $name bot can no longer post in its Telegram chat (Telegram says: ${reason[$name]:-no reason given}). If the group was upgraded to a supergroup its chat id changed: put the new one in deploy/.env."
+          NOTIFY_VIA_TOKEN="$via_token" NOTIFY_VIA_CHAT="$via_chat" record "telegram-$name" 1 "$detail" "$TELEGRAM_FAILS" ;;
+        *)
+          # Telegram did not answer: nothing is learned, so what was known before still stands (and still counts as broken).
+          if [ -r "$STATE_DIR/telegram-$name" ]; then
+            read -r _ was_alerted _ < "$STATE_DIR/telegram-$name" || true
+            [ "${was_alerted:-0}" = 1 ] && broken=$((broken + 1))
+          fi ;;
+      esac
+    done
+  fi
+
+  # A run that does not look must still count what is known to be wrong, or the ping would say "all well" in between.
+  if [ "${looked:-0}" -ne 1 ]; then
+    for entry in $channels; do
+      file="$STATE_DIR/telegram-${entry%%:*}"
+      if [ -r "$file" ]; then
+        read -r _ was_alerted _ < "$file" || true
+        [ "${was_alerted:-0}" = 1 ] && broken=$((broken + 1))
+      fi
+    done
   fi
 fi
 
