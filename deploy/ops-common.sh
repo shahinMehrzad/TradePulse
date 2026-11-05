@@ -29,8 +29,9 @@ notify() {
   local text="$1" token chat base
   logger -t tradepulse-ops -- "$text" 2>/dev/null || true
 
-  token="$(setting TELEGRAM_BOT_TOKEN)"
-  chat="$(setting TELEGRAM_CHAT_ID)"
+  # NOTIFY_VIA_TOKEN / NOTIFY_VIA_CHAT: a caller that knows the usual bot cannot speak (watchdog.sh, when it is the chat that broke) names another.
+  token="${NOTIFY_VIA_TOKEN:-$(setting TELEGRAM_BOT_TOKEN)}"
+  chat="${NOTIFY_VIA_CHAT:-$(setting TELEGRAM_CHAT_ID)}"
   [ -n "$token" ] && [ -n "$chat" ] || return 0
   base="$(setting TELEGRAM_API_BASE https://api.telegram.org)"
 
