@@ -15,6 +15,8 @@ api_pw="$(setting API_DB_PASSWORD)"
 collector_pw="$(setting COLLECTOR_DB_PASSWORD)"
 trader_pw="$(setting TRADER_MAIN_DB_PASSWORD)"
 watch_pw="$(setting WATCH_DB_PASSWORD)"
+# Only when monitoring is used (docs/monitoring.md): without this password there is no tp_monitor to check.
+monitor_pw="$(setting MONITOR_DB_PASSWORD)"
 failed=0
 
 # run <role> <password> <sql>: the output and the exit code of psql, connecting to the server by its network name (the image trusts
@@ -117,6 +119,23 @@ cannot tp_watch "$watch_pw" "make a table in research"       "create table resea
 if [ -n "$DATA_TABLE" ]; then
   can    tp_watch "$watch_pw" "read the data table $DATA_TABLE"    "select count(*) from public.\"$DATA_TABLE\""
   cannot tp_watch "$watch_pw" "write the data table"               "begin; delete from public.\"$DATA_TABLE\"; rollback"
+fi
+
+# ---- tp_monitor (only when monitoring is set up): the statistics of the server, and no row of anything
+if [ -n "$monitor_pw" ]; then
+  if run tp_monitor "$monitor_pw" "select 1" >/dev/null; then ok "tp_monitor connects with its password"; else fail "tp_monitor connects with its password" "run deploy/main-db-roles.sh"; fi
+  if run tp_monitor "not-the-password-$RANDOM" "select 1" >/dev/null; then fail "tp_monitor refuses a wrong password"; else ok "tp_monitor refuses a wrong password"; fi
+  can    tp_monitor "$monitor_pw" "read the statistics of the server"  "select count(*) from pg_stat_activity"
+  can    tp_monitor "$monitor_pw" "read the size of the database"      "select pg_database_size(current_database())"
+  cannot tp_monitor "$monitor_pw" "read the accounts"                  "select count(*) from auth.users"
+  cannot tp_monitor "$monitor_pw" "read the second-factor secrets"     "select count(*) from auth.user_tokens"
+  cannot tp_monitor "$monitor_pw" "read the audit log"                 "select count(*) from config.audit_log"
+  cannot tp_monitor "$monitor_pw" "read the configuration"             "select count(*) from config.candle_worker_configurations"
+  cannot tp_monitor "$monitor_pw" "change the configuration"           "begin; delete from config.candle_worker_configurations; rollback"
+  cannot tp_monitor "$monitor_pw" "make a table in public"             "create table public.check_tmp (x int)"
+  if [ -n "$DATA_TABLE" ]; then
+    cannot tp_monitor "$monitor_pw" "read the data table $DATA_TABLE"  "select count(*) from public.\"$DATA_TABLE\""
+  fi
 fi
 
 # ---- who is connected right now (the running programs should be on their own roles)

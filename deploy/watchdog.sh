@@ -163,7 +163,7 @@ if [ "$BACKUP_MAX_AGE_DAYS" -gt 0 ]; then
   fi
 fi
 
-# ---- the Telegram chats of the bots (collector, price watch, security alerts)
+# ---- the Telegram chats of the bots (collector, price watch, security alerts, monitoring)
 # A bot whose chat has gone (a group upgraded to a supergroup gets a new id, the bot was removed or blocked) cannot say so itself, and its
 # program looks healthy. Once an hour each configured bot is asked "may you still post there?" with sendChatAction ("typing..." for a few
 # seconds, nothing stays in the chat). A bot that may not is reported through a bot that still can, and the ping below turns to /fail, which
@@ -185,7 +185,7 @@ telegram_probe() {
 }
 
 if [ "$TELEGRAM_CHECK_MINUTES" -gt 0 ] 2>/dev/null; then
-  channels="collector:TELEGRAM_BOT_TOKEN:TELEGRAM_CHAT_ID watch:WATCH_TELEGRAM_BOT_TOKEN:WATCH_TELEGRAM_CHAT_ID security:SECURITY_TELEGRAM_BOT_TOKEN:SECURITY_TELEGRAM_CHAT_ID"
+  channels="collector:TELEGRAM_BOT_TOKEN:TELEGRAM_CHAT_ID watch:WATCH_TELEGRAM_BOT_TOKEN:WATCH_TELEGRAM_CHAT_ID security:SECURITY_TELEGRAM_BOT_TOKEN:SECURITY_TELEGRAM_CHAT_ID monitor:MONITOR_TELEGRAM_BOT_TOKEN:MONITOR_TELEGRAM_CHAT_ID"
   stamp="$STATE_DIR/telegram-checked"
   last_check=0
   [ -r "$stamp" ] && read -r last_check < "$stamp"
