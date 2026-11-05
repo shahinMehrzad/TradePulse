@@ -21,8 +21,9 @@
             <title>@point.Tooltip</title>
         </circle>
     }
-    @foreach (var tick in Model.TimeTicks)
+    @* The first time sits at the left edge of the plot: centred on it, half of it would be cut off, so it starts there instead. *@
+    @foreach (var (tick, index) in Model.TimeTicks.Select((tick, index) => (tick, index)))
     {
-        @:<text x="@N(tick.Position)" y="@N(Model.PlotBottom + 16)" text-anchor="middle" fill="currentColor" fill-opacity="0.65">@tick.Label</text>
+        @:<text x="@N(tick.Position)" y="@N(Model.PlotBottom + 16)" text-anchor="@(index == 0 ? "start" : "middle")" fill="currentColor" fill-opacity="0.65">@tick.Label</text>
     }
 </svg>
