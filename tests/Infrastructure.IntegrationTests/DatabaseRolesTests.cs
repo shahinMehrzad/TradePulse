@@ -22,20 +22,22 @@ public class DatabaseRolesTests(PostgresFixture postgres)
     private const string CollectorPassword = "CollectorPasswordForTests01234";
     private const string TraderPassword = "TraderPasswordForTests0123456";
     private const string WatchPassword = "WatchPasswordForTests01234567";
+    private const string MonitorPassword = "MonitorPasswordForTests012345";
 
     private const string CandleTable = "binance_futures_btcusdt_1h";
     private const string LiquidationTable = "binance_futures_btcusdt_liquidation";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static string RolesScript()
+    /// <param name="monitorPassword">Empty: the script makes no tp_monitor (monitoring is optional).</param>
+    private static string RolesScript(string monitorPassword = MonitorPassword)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "DotNetTradePulse.slnx")))
             directory = directory.Parent;
         var sql = Path.Combine(directory?.FullName ?? throw new FileNotFoundException("The solution folder was not found."), "deploy", "main-db-roles.sql");
 
-        return $"\\set api_password '{ApiPassword}'\n\\set collector_password '{CollectorPassword}'\n\\set trader_password '{TraderPassword}'\n\\set watch_password '{WatchPassword}'\n{File.ReadAllText(sql)}";
+        return $"\\set api_password '{ApiPassword}'\n\\set collector_password '{CollectorPassword}'\n\\set trader_password '{TraderPassword}'\n\\set watch_password '{WatchPassword}'\n\\set monitor_password '{monitorPassword}'\n{File.ReadAllText(sql)}";
     }
 
     private async Task<string> NewDatabaseAsync()
@@ -52,7 +54,7 @@ public class DatabaseRolesTests(PostgresFixture postgres)
         {
             Database = database,
             Username = role,
-            Password = role switch { "tp_api" => ApiPassword, "tp_collector" => CollectorPassword, "tp_watch" => WatchPassword, _ => TraderPassword }
+            Password = role switch { "tp_api" => ApiPassword, "tp_collector" => CollectorPassword, "tp_watch" => WatchPassword, "tp_monitor" => MonitorPassword, _ => TraderPassword }
         }.ConnectionString;
 
     private static DbContextOptions<T> Options<T>(string connectionString, string historySchema) where T : DbContext =>
@@ -306,13 +308,66 @@ public class DatabaseRolesTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task TheMonitorReadsTheStatisticsOfTheServerAndNothingElse()
+    {
+        var database = await OlderServerAsync();
+        await postgres.RunPsqlAsync(database, RolesScript());
+        var asMonitor = ConnectionString(database, "tp_monitor");
+
+        // What a monitoring agent asks: who is connected, what is read and written, how big things are, the settings.
+        Assert.True(await ScalarAsync<long>(asMonitor, "SELECT count(*) FROM pg_stat_activity") >= 1);
+        Assert.True(await ScalarAsync<long>(asMonitor, "SELECT count(*) FROM pg_stat_database WHERE datname = current_database()") == 1);
+        Assert.True(await ScalarAsync<long>(asMonitor, "SELECT pg_database_size(current_database())") > 0);
+        Assert.False(string.IsNullOrEmpty(await ScalarAsync<string>(asMonitor, "SHOW max_connections")));
+
+        // Not a row of anything: no account, no setting of the collector, no candle, no alert; and nothing can be changed or made.
+        await AssertDeniedAsync(asMonitor, "SELECT * FROM auth.users");
+        await AssertDeniedAsync(asMonitor, "SELECT * FROM auth.user_tokens");
+        await AssertDeniedAsync(asMonitor, "SELECT * FROM config.audit_log");
+        await AssertDeniedAsync(asMonitor, "SELECT * FROM config.candle_worker_configurations");
+        await AssertDeniedAsync(asMonitor, "SELECT * FROM research.shock_alerts");
+        await AssertDeniedAsync(asMonitor, $"SELECT * FROM {CandleTable}");
+        await AssertDeniedAsync(asMonitor, "DELETE FROM config.traded_symbols");
+        await AssertDeniedAsync(asMonitor, "CREATE TABLE public.evil (x int)");
+        await AssertDeniedAsync(asMonitor, "CREATE SCHEMA evil");
+    }
+
+    [Fact]
+    public async Task AnEmptyMonitorPasswordNeitherMakesNorChangesTheMonitorAndTheOtherRolesAreStillMade()
+    {
+        // Roles belong to the whole server, not to one database, so a monitor made by an earlier test is still here: what can be told is
+        // that an empty password does not blank its password (monitoring is optional, a script run without it must not lock the agent out).
+        var database = await NewDatabaseAsync();
+        await postgres.RunPsqlAsync(database, RolesScript());
+        await postgres.RunPsqlAsync(database, RolesScript(monitorPassword: ""));
+
+        Assert.Equal(1, await ScalarAsync<int>(ConnectionString(database, "tp_monitor"), "SELECT 1"));   // still the old password
+        Assert.Equal(4, await ScalarAsync<long>(ConnectionString(database), "SELECT count(*) FROM pg_roles WHERE rolname IN ('tp_api','tp_collector','tp_trader','tp_watch')"));
+    }
+
+    [Fact]
+    public async Task TheMonitorsPasswordCanBeChangedByRunningTheScriptAgain()
+    {
+        var database = await NewDatabaseAsync();
+        await postgres.RunPsqlAsync(database, RolesScript());
+        const string next = "ANewMonitorPasswordForTests01";
+
+        await postgres.RunPsqlAsync(database, RolesScript(monitorPassword: next));
+
+        var changed = new NpgsqlConnectionStringBuilder(ConnectionString(database, "tp_monitor")) { Password = next }.ConnectionString;
+        Assert.Equal(1, await ScalarAsync<int>(changed, "SELECT 1"));
+        await using var old = new NpgsqlConnection(ConnectionString(database, "tp_monitor"));
+        await Assert.ThrowsAsync<PostgresException>(() => old.OpenAsync(Ct));
+    }
+
+    [Fact]
     public async Task NoProgramRoleIsMoreThanAPlainLogin()
     {
         var database = await NewDatabaseAsync();
         await postgres.RunPsqlAsync(database, RolesScript());
 
         var privileged = await ScalarAsync<long>(ConnectionString(database),
-            "SELECT count(*) FROM pg_roles WHERE rolname IN ('tp_api','tp_collector','tp_trader','tp_watch') AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR NOT rolcanlogin)");
+            "SELECT count(*) FROM pg_roles WHERE rolname IN ('tp_api','tp_collector','tp_trader','tp_watch','tp_monitor') AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR NOT rolcanlogin)");
         Assert.Equal(0, privileged);
     }
 }

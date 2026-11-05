@@ -151,8 +151,8 @@ internal static class WatchCommand
             }
             catch (Exception ex)
             {
-                // Only the kind of failure: a notifier's error text may carry the address it called.
-                Console.Error.WriteLine($"{notifier.Name} could not send the start message ({ex.GetType().Name}).");
+                // A NotificationException is meant to be told (it has no token in it); any other text may carry the address it called.
+                Console.Error.WriteLine($"{notifier.Name} could not send the start message ({(ex is NotificationException ? ex.Message : ex.GetType().Name)}).");
             }
         }
     }

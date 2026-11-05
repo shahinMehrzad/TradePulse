@@ -369,3 +369,5 @@ CLAUDE.md
 
 # Secrets of the Docker stack (deploy/.env.example is the template)
 deploy/.env
+# Written by deploy/netdata-setup.sh from deploy/.env: a database password and a bot token
+deploy/netdata/

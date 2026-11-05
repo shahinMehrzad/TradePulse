@@ -69,6 +69,7 @@ A separate console (`src/Research`, its own process, its own `research` schema) 
 | [docs/exchange-keys.md](docs/exchange-keys.md) | The key vault: how administrators keep their Binance Futures keys, and how they are protected. |
 | [docs/database-security.md](docs/database-security.md) | The two databases, who may touch what, upgrading a server, restoring, and defining a role. |
 | [docs/trading.md](docs/trading.md) | Manual market orders with Demo/Live keys, the server-side limits and the halt switch. |
+| [docs/monitoring.md](docs/monitoring.md) | Watching the server (CPU, memory, disk, the memory of each container, Postgres connections) with an optional Netdata agent and Telegram alerts. |
 | [docs/candle-cache.md](docs/candle-cache.md) | `HybridCache` in front of the candle reads, with benchmark results. |
 | [docs/testing.md](docs/testing.md) | Unit, integration and contract tests, benchmarks, CI. |
 

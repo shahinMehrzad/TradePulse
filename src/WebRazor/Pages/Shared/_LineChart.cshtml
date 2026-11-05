@@ -1,0 +1,28 @@
+@using WebRazor.Display
+@model LineChartModel
+@{
+    string N(double value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}
+<svg class="d-block w-100" viewBox="0 0 @N(Model.Width) @N(Model.Height)" role="img" aria-label="@Model.Label" font-size="11">
+    @foreach (var tick in Model.ValueTicks)
+    {
+        <line x1="@N(Model.PlotLeft)" x2="@N(Model.PlotRight)" y1="@N(tick.Position)" y2="@N(tick.Position)" stroke="currentColor" stroke-opacity="0.12" />
+        @:<text x="@N(Model.PlotRight + 6)" y="@N(tick.Position)" fill="currentColor" fill-opacity="0.65" dominant-baseline="middle">@tick.Label</text>
+    }
+    @if (Model.ReferenceY is { } reference)
+    {
+        <line x1="@N(Model.PlotLeft)" x2="@N(Model.PlotRight)" y1="@N(reference)" y2="@N(reference)" stroke="currentColor" stroke-opacity="0.45" stroke-dasharray="4 3" />
+    }
+    <polyline points="@Model.Line" fill="none" stroke="var(--tblr-primary)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+    @* A wide invisible dot over each point: the browser shows its title (time and value) on hover. *@
+    @foreach (var point in Model.Points)
+    {
+        <circle cx="@N(point.X)" cy="@N(point.Y)" r="5" fill="var(--tblr-primary)" fill-opacity="0">
+            <title>@point.Tooltip</title>
+        </circle>
+    }
+    @foreach (var tick in Model.TimeTicks)
+    {
+        @:<text x="@N(tick.Position)" y="@N(Model.PlotBottom + 16)" text-anchor="middle" fill="currentColor" fill-opacity="0.65">@tick.Label</text>
+    }
+</svg>

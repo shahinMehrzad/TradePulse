@@ -53,7 +53,7 @@ public sealed class OpenInterestTable : ITimeSeriesTable<OpenInterest>
     }
 }
 
-public sealed class LongShortRatioTable : ITimeSeriesTable<LongShortRatio>
+public sealed class LongShortRatioTable : ITimeSeriesTable<LongShortRatio>, IReadableTimeSeriesTable<LongShortRatio>
 {
     public string TimeColumn => "snapshot_time";
 
@@ -69,6 +69,9 @@ public sealed class LongShortRatioTable : ITimeSeriesTable<LongShortRatio>
             CONSTRAINT pk_{tableName} PRIMARY KEY (snapshot_time)
         );";
 
+    public LongShortRatio ReadRow(NpgsqlDataReader reader) =>
+        new(Timestamps.FromTimestamp(reader.GetDateTime(0)), reader.GetDecimal(1), reader.GetDecimal(2), reader.GetDecimal(3));
+
     public async Task WriteRowAsync(NpgsqlBinaryImporter writer, LongShortRatio row, CancellationToken cancellationToken)
     {
         await writer.StartRowAsync(cancellationToken);
@@ -79,7 +82,7 @@ public sealed class LongShortRatioTable : ITimeSeriesTable<LongShortRatio>
     }
 }
 
-public sealed class TakerVolumeTable : ITimeSeriesTable<TakerVolume>
+public sealed class TakerVolumeTable : ITimeSeriesTable<TakerVolume>, IReadableTimeSeriesTable<TakerVolume>
 {
     public string TimeColumn => "snapshot_time";
 
@@ -94,6 +97,9 @@ public sealed class TakerVolumeTable : ITimeSeriesTable<TakerVolume>
 
             CONSTRAINT pk_{tableName} PRIMARY KEY (snapshot_time)
         );";
+
+    public TakerVolume ReadRow(NpgsqlDataReader reader) =>
+        new(Timestamps.FromTimestamp(reader.GetDateTime(0)), reader.GetDecimal(1), reader.GetDecimal(2), reader.GetDecimal(3));
 
     public async Task WriteRowAsync(NpgsqlBinaryImporter writer, TakerVolume row, CancellationToken cancellationToken)
     {

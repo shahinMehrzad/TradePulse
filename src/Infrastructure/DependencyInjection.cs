@@ -34,6 +34,9 @@ public static class DependencyInjection
         services.AddScoped<IMarketDataRepository<LongShortRatio>>(_ => new TimeSeriesRepository<LongShortRatio>(connectionString, new LongShortRatioTable()));
         services.AddScoped<IMarketDataRepository<TakerVolume>>(_ => new TimeSeriesRepository<TakerVolume>(connectionString, new TakerVolumeTable()));
         services.AddScoped<IMarketDataRepository<Liquidation>>(_ => new TimeSeriesRepository<Liquidation>(connectionString, new LiquidationTable()));
+        // Read back for the dashboard only; the collector never asks for these.
+        services.AddScoped<ITimeSeriesReader<LongShortRatio>>(_ => new TimeSeriesReader<LongShortRatio>(connectionString, new LongShortRatioTable()));
+        services.AddScoped<ITimeSeriesReader<TakerVolume>>(_ => new TimeSeriesReader<TakerVolume>(connectionString, new TakerVolumeTable()));
         services.AddScoped<ILookupsRepository, LookupsRepository>();
         services.AddScoped<ISymbolCatalogRepository, SymbolCatalogRepository>();
         services.AddScoped<ICandleWorkerConfigurationRepository, CandleWorkerConfigurationRepository>();

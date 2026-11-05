@@ -49,6 +49,23 @@ public sealed class TradePulseApiClient(HttpClient http)
     /// The card with its related data. <c>Detail</c> is null when the API does not collect that series or time frame (404);
     /// <c>SessionRejected</c> when it no longer accepts the session.
     /// </returns>
+    /// <returns>The newest long/short ratio and taker volume rows of a series at a time frame; the statistics are null when the series is not collected at it.</returns>
+    public async Task<(MarketStatistics? Statistics, bool SessionRejected)> GetMarketStatisticsAsync(
+        string exchange, string market, string symbol, string timeframe, int points, CancellationToken cancellationToken)
+    {
+        var url = $"api/admin/dashboard/series/{Uri.EscapeDataString(exchange)}/{Uri.EscapeDataString(market)}/{Uri.EscapeDataString(symbol)}/statistics"
+            + $"?timeframe={Uri.EscapeDataString(timeframe)}&points={points}";
+
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (IsRejected(response))
+            return (null, true);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+            return (null, false);
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<MarketStatistics>(cancellationToken), false);
+    }
+
     public async Task<(DashboardDetail? Detail, bool SessionRejected)> GetDashboardDetailAsync(
         string exchange, string market, string symbol, string? timeframe, int? candles, CancellationToken cancellationToken)
     {
@@ -102,15 +119,12 @@ public sealed class TradePulseApiClient(HttpClient http)
         return new Lookups(exchanges.Result ?? [], markets.Result ?? [], symbols.Result ?? [], timeFrames.Result ?? [], support.Result ?? []);
     }
 
-    /// <param name="keyword">Matched by the API against the exchange, market, symbol and time frame names.</param>
-    /// <returns>One page of the configured series, or null when the session is no longer accepted by the API.</returns>
-    public async Task<SeriesPage?> GetSeriesAsync(int pageNumber, int pageSize, string? keyword, CancellationToken cancellationToken)
+    /// <returns>One page of the configured series as asked (search, filters, sort), or null when the session is no longer accepted by the API.</returns>
+    public async Task<SeriesPage?> GetSeriesAsync(SeriesListQuery query, CancellationToken cancellationToken)
     {
-        // OData: the keyword becomes a $filter over the names, the list is sorted like the panel always showed it, and
-        // $count comes back as "count" (the number of matches before paging).
-        var url = $"{SeriesRoot}/candle-worker/odata?$orderby=symbol,intervalSeconds,id&$top={pageSize}&$skip={(pageNumber - 1) * pageSize}";
-        if (!string.IsNullOrWhiteSpace(keyword))
-            url += $"&$filter={Uri.EscapeDataString(KeywordFilter(keyword))}";
+        // OData: the search and the filters become a $filter, the sort a $orderby (always ending in what the panel always sorted by, so
+        // that pages never overlap), and $count comes back as "count" (the number of matches before paging).
+        var url = $"{SeriesRoot}/candle-worker/odata?{query.ToODataQuery()}";
 
         using var response = await http.GetAsync(url, cancellationToken);
         if (IsRejected(response))
@@ -119,19 +133,7 @@ public sealed class TradePulseApiClient(HttpClient http)
         response.EnsureSuccessStatusCode();
         var wire = await response.Content.ReadFromJsonAsync<SeriesPageWire>(cancellationToken);
         var total = wire?.Count ?? 0;
-        return new SeriesPage(wire?.Value ?? [], pageNumber, pageSize, total, (int)Math.Ceiling(total / (double)pageSize));
-    }
-
-    /// <summary>Case-insensitive match of the keyword against the exchange, market, symbol and symbol description.</summary>
-    internal static string KeywordFilter(string keyword) => ContainsAny(keyword, "exchange", "market", "symbol", "symbolDescription");
-
-    /// <summary>A text in an OData filter: a quote inside it is written twice.</summary>
-    private static string Quote(string text) => $"'{text.Replace("'", "''")}'";
-
-    private static string ContainsAny(string text, params string[] fields)
-    {
-        var term = Quote(text.Trim().ToLowerInvariant());
-        return "(" + string.Join(" or ", fields.Select(field => $"contains(tolower({field}),{term})")) + ")";
+        return new SeriesPage(wire?.Value ?? [], query.PageNumber, query.PageSize, total, (int)Math.Ceiling(total / (double)query.PageSize));
     }
 
     /// <returns>What the collector says about itself, or null when the session is no longer accepted by the API.</returns>
@@ -169,13 +171,13 @@ public sealed class TradePulseApiClient(HttpClient http)
     {
         var filters = new List<string>();
         if (!string.IsNullOrWhiteSpace(query.Action))
-            filters.Add($"action eq {Quote(query.Action.Trim())}");
+            filters.Add($"action eq {ODataText.Quote(query.Action.Trim())}");
         if (!string.IsNullOrWhiteSpace(query.EntityType))
-            filters.Add($"entityType eq {Quote(query.EntityType.Trim())}");
+            filters.Add($"entityType eq {ODataText.Quote(query.EntityType.Trim())}");
         if (!string.IsNullOrWhiteSpace(query.User))
-            filters.Add(ContainsAny(query.User, "userName"));
+            filters.Add(ODataText.ContainsAny(query.User, "userName"));
         if (!string.IsNullOrWhiteSpace(query.Search))
-            filters.Add(ContainsAny(query.Search, "summary", "details"));
+            filters.Add(ODataText.ContainsAny(query.Search, "summary", "details"));
         if (query.From is { } from)
             filters.Add($"occurredAt ge {Iso(from.Date)}");
         if (query.To is { } to)

@@ -96,6 +96,14 @@ answers on its health port, that Postgres accepts connections, that the disk is 
 newest backup is not older than `BACKUP_MAX_AGE_DAYS` (20; `0` turns this off). A problem is reported after `WATCHDOG_FAILS` runs in a
 row (3, so not for a blink), again every `WATCHDOG_REPEAT_MINUTES` (360) while it lasts, and once more when it is over.
 
+It also looks at the **Telegram chats** of the four bots (collector, price watch, security alerts, monitoring) once an hour (`WATCHDOG_TELEGRAM_CHECK_MINUTES`,
+60; `0` turns it off): each configured bot is asked, with `sendChatAction` ("typing..." for a few seconds, nothing stays in the chat), whether it
+may still post in its chat. A bot cannot report that its own chat is gone, and its program looks healthy; this happened when a group was
+upgraded to a supergroup and so got a new chat id. After `WATCHDOG_TELEGRAM_FAILS` checks in a row (2) the problem is reported through a bot that
+still works, with Telegram's own reason, and the ping turns to `/fail` so that healthchecks.io tells you by its own channels, which do not depend
+on any of the bots. If Telegram itself cannot be reached nothing is concluded and nothing changes. Tried against a small fake Telegram
+(a moved chat of each of the bots, the recovery, an unreachable Telegram); not against the real one.
+
 **The watcher outside the server.** If the whole server or the cron job dies, nothing on it can say so. So the watchdog also pings
 `WATCHDOG_PING_URL` every minute while nothing is broken (and `<url>/fail` while something is), and a service that notices when
 the pings STOP tells you. With [healthchecks.io](https://healthchecks.io) (free): create a check with a period of 1 minute and a grace
@@ -113,6 +121,26 @@ is encrypted before it is kept or copied (it then ends in `.age`), the plain dum
 data protection (which decrypt the authenticator keys) are saved in the same way as `api-keys-*.tgz.age`, so nothing has to be done by hand
 for them. Only the owner of the private key, which is not on the server, can read a backup. Set-up, the test to do once, and restoring:
 [docs/database-security.md](../docs/database-security.md#encrypted-backups).
+
+**A copy on your own computer: `pull-backups.ps1`.** Run on a Windows machine (PowerShell 5.1 or 7, OpenSSH client), it lists the `.age`
+files in the server's backup folder over ssh, downloads the ones it does not have (a `.part` file first, checked for size and for the age header,
+then renamed) and deletes the older local copies so that `-Keep` (8) of each kind stay. Nothing is deleted on the server. Nothing about the
+server or the folder is written in the script; each person who runs it gives their own:
+
+```powershell
+.\deploy\pull-backups.ps1 -Server <user>@<your-server>                         # into <your profile>\tradepulse-backups
+.\deploy\pull-backups.ps1 -Server <user>@<your-server> -Destination <folder> -Keep 12 -Register -At 04:00   # and run it every day
+```
+
+The same can be set with the environment variables `TRADEPULSE_SERVER`, `TRADEPULSE_BACKUP_DIR` and `TRADEPULSE_REMOTE_BACKUP_DIR`.
+`-Register` makes a daily Windows task for the current user (it runs once now, too, unless `-NoRun`), so the ssh key of that user must work
+without a passphrase prompt. Run it more often than the server's cron job makes backups and than `BACKUP_KEEP` can hide: the server keeps only the
+newest four. Plain `.dump` files are refused unless `-AllowPlain`. The files stay encrypted here; decrypt one with your age private key only
+when you restore. Tried: the parsing, the checks and the tidying of the local folder. Not tried: the ssh/scp part against a real server.
+
+**`verify-live.sh`** (run by hand on the server, never from cron; only reads) shows what the unit tests cannot: the funding rate tables
+(rows, oldest and newest settlement, the longest hole), the liquidation stream (lost/restored lines in the collector log, newest event) and the
+shock alerts the watch stored. `./deploy/verify-live.sh 7` reads the last 7 days of the log.
 
 Restoring a backup into an empty database (this is how the data was moved to the server). After a restore of the main database run
 `./deploy/main-db-roles.sh` again (a restore with `--no-owner` makes `postgres` the owner of everything and drops the grants); the vault's dump (`vaultdb-*.dump`) is restored into `vault-db`, see

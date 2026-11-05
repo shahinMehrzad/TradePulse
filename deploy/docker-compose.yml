@@ -209,9 +209,54 @@ services:
       Watch__Rule__GradualMinZScore: ${WATCH_GRADUAL_MIN_Z:-4.5}
     restart: unless-stopped
 
+  # ---- monitoring (optional: `--profile monitoring`, set up with deploy/netdata-setup.sh, see docs/monitoring.md)
+  # The server's CPU, memory, disk, the memory of every container over days (a leak shows as a slope), Postgres' connections and more, with
+  # alerts to a Telegram bot of its own. Netdata runs with no extra rights: not in the host's process or network space, no capabilities. What
+  # it reads of the host is read-only. The names of the containers come through a proxy that answers only "list the containers": a plain mount
+  # of the Docker socket would be the key to the whole host, and this host holds the key vault.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    profiles: [monitoring]
+    environment:
+      CONTAINERS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [monitor-net]
+    restart: unless-stopped
+
+  netdata:
+    image: netdata/netdata:v2.12.3
+    profiles: [monitoring]
+    depends_on: [docker-proxy]
+    hostname: ${ALERT_INSTANCE_NAME:-tradepulse}
+    environment:
+      DOCKER_HOST: docker-proxy:2375
+      # No anonymous statistics to Netdata. The agent is not claimed to Netdata Cloud either (no claim token anywhere in this file).
+      DO_NOT_TRACK: 1
+    ports:
+      # The server itself only: look at it through an ssh tunnel (ssh -L 19999:127.0.0.1:19999 <server>), never publish it.
+      - "127.0.0.1:${NETDATA_PORT:-19999}:19999"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      # Made by deploy/netdata-setup.sh from deploy/.env (they hold the monitor's database password and its Telegram token).
+      - ./netdata/go.d/postgres.conf:/etc/netdata/go.d/postgres.conf:ro
+      - ./netdata/health_alarm_notify.conf:/etc/netdata/health_alarm_notify.conf:ro
+      - netdata-lib:/var/lib/netdata
+      - netdata-cache:/var/cache/netdata
+    security_opt:
+      - no-new-privileges:true
+    # On the network of the stack (to reach Postgres) and on the proxy's.
+    networks: [default, monitor-net]
+    restart: unless-stopped
+
 networks:
   # Joined by the trader and its database only. "internal": nothing on it can reach the internet or the other containers.
   vault-net:
+    internal: true
+  # The monitoring agent and the Docker proxy only.
+  monitor-net:
     internal: true
 
 volumes:
@@ -224,3 +269,6 @@ volumes:
   # The certificates Caddy got; losing them means asking Let's Encrypt again (which limits how often).
   caddy-data:
   caddy-config:
+  # What the monitoring agent has measured (days of history) and its cache.
+  netdata-lib:
+  netdata-cache:
