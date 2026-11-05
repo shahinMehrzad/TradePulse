@@ -253,6 +253,17 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     /// <summary>The address values that every link and form of the page carries, so that the view survives them.</summary>
     public IDictionary<string, string> ListRoute => List.RouteValues();
 
+    /// <summary>
+    /// The address values of the view plus one more (<c>edit</c>, <c>id</c>). They go in the same dictionary on purpose: a tag helper that is
+    /// given <c>asp-all-route-data</c> silently drops every <c>asp-route-xxx</c> next to it, which is how the Edit and Remove buttons lost their id.
+    /// </summary>
+    public IDictionary<string, string> WithValue(string key, int value)
+    {
+        var values = List.RouteValues();
+        values[key] = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return values;
+    }
+
     /// <summary>The address of a click on a column header (that column first, the other way round when it is already the sorted one).</summary>
     public IDictionary<string, string> SortRoute(string key) => List.SortedBy(key).RouteValues();
 
