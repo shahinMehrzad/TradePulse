@@ -169,10 +169,10 @@
                                     <td>@if (series.CollectOpenInterest) { <span class="badge bg-green-lt">On</span> } else { <span class="text-secondary">-</span> }</td>
                                     <td>@if (series.CollectMarketStatistics) { <span class="badge bg-green-lt">On</span> } else { <span class="text-secondary">-</span> }</td>
                                     <td class="text-nowrap text-end">
-                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-route-edit="@series.Id" asp-all-route-data="Model.ListRoute">Edit</a>
+                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-all-route-data='Model.WithValue("edit", series.Id)'>Edit</a>
                                         @if (Model.LateStarts.ContainsKey(series.Id))
                                         {
-                                            <form method="post" asp-page-handler="Align" asp-route-id="@series.Id" asp-all-route-data="Model.ListRoute" class="d-inline">
+                                            <form method="post" asp-page-handler="Align" asp-all-route-data='Model.WithValue("id", series.Id)' class="d-inline">
                                                 <button type="submit" class="btn btn-sm btn-outline-warning" title="Move the start date to the first candle">Use first candle</button>
                                             </form>
                                         }
@@ -211,7 +211,7 @@
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
-                                <form method="post" asp-page-handler="Delete" asp-route-id="@series.Id" asp-all-route-data="Model.ListRoute">
+                                <form method="post" asp-page-handler="Delete" asp-all-route-data='Model.WithValue("id", series.Id)'>
                                     <button type="submit" class="btn btn-danger">Remove</button>
                                 </form>
                             </div>
