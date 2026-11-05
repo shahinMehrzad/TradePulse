@@ -7,11 +7,12 @@ namespace WebRazor.Pages;
 
 public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : AdminPageModel(store)
 {
-    public const int PageSize = 10;
-
     public IReadOnlyList<CandleWorkerSeries> Series { get; private set; } = [];
 
-    /// <summary>Which page of the list is shown. Kept (with <see cref="Keyword"/>) through the edit, save and remove round trips.</summary>
+    // What the list shows is in the address, so a page can be bookmarked, reloaded or sent to somebody, and the edit, save and remove round
+    // trips come back to the same view. Every name is cleaned in SeriesListQuery.From; an unknown value is simply the default.
+
+    /// <summary>Which page of the list is shown.</summary>
     [BindProperty(SupportsGet = true)]
     public int PageNumber { get; set; } = 1;
 
@@ -19,11 +20,43 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     [BindProperty(SupportsGet = true)]
     public string? Keyword { get; set; }
 
-    public bool HasPrevious => PageNumber > 1;
+    /// <summary>How many rows a page holds: one of <see cref="SeriesListQuery.PageSizes"/>.</summary>
+    [BindProperty(Name = "size", SupportsGet = true)]
+    public int? Size { get; set; }
+
+    /// <summary>The column the list is sorted by, a key of <see cref="SeriesListQuery.SortFields"/>.</summary>
+    [BindProperty(Name = "sort", SupportsGet = true)]
+    public string? Sort { get; set; }
+
+    /// <summary><c>desc</c> for the other way round.</summary>
+    [BindProperty(Name = "dir", SupportsGet = true)]
+    public string? Direction { get; set; }
+
+    [BindProperty(Name = "exchange", SupportsGet = true)]
+    public int? ExchangeFilter { get; set; }
+
+    [BindProperty(Name = "market", SupportsGet = true)]
+    public int? MarketFilter { get; set; }
+
+    [BindProperty(Name = "timeframe", SupportsGet = true)]
+    public int? TimeFrameFilter { get; set; }
+
+    /// <summary><c>on</c> or <c>off</c>; anything else is either.</summary>
+    [BindProperty(Name = "oi", SupportsGet = true)]
+    public string? OpenInterestFilter { get; set; }
+
+    /// <summary><c>on</c> or <c>off</c>; anything else is either.</summary>
+    [BindProperty(Name = "stats", SupportsGet = true)]
+    public string? StatisticsFilter { get; set; }
+
+    /// <summary>The cleaned query: what is really asked of the API and what the links carry on.</summary>
+    public SeriesListQuery List { get; private set; } = new();
+
+    public bool HasPrevious => List.PageNumber > 1;
 
     public bool HasNext { get; private set; }
 
-    /// <summary>How many series match the search (all of them without one), as the API counts them.</summary>
+    /// <summary>How many series match the search and the filters (all of them without any), as the API counts them.</summary>
     public int TotalItems { get; private set; }
 
     public int TotalPages { get; private set; }
@@ -109,8 +142,8 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     /// <summary>The Edit button links here with <c>?edit=id</c>, which fills the form with that series.</summary>
     public async Task<IActionResult> OnGetAsync(int? edit, CancellationToken cancellationToken)
     {
-        // A hand-edited address must not reach the API with a page it would refuse.
-        PageNumber = Math.Max(1, PageNumber);
+        // A hand-edited address must not reach the API with a page or a sort it would refuse.
+        Clean();
 
         var result = await LoadAsync(cancellationToken);
         if (result is not null)
@@ -140,7 +173,7 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken cancellationToken)
     {
-        PageNumber = Math.Max(1, PageNumber);
+        Clean();
 
         if (ModelState.IsValid)
         {
@@ -177,7 +210,7 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
         // The form is not part of this request. Binding still fills Input.Id from the "id" of the removed row (an empty prefix is
         // tried when nothing is posted under "Input"), which would turn the next "add" into a change of a row that is gone.
         ResetForm();
-        PageNumber = Math.Max(1, PageNumber);
+        Clean();
 
         var result = await CallAsync(() => api.DeleteSeriesAsync(id, cancellationToken));
         if (result.SessionRejected)
@@ -195,7 +228,7 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     public async Task<IActionResult> OnPostAlignAsync(int? id, CancellationToken cancellationToken)
     {
         ResetForm();
-        PageNumber = Math.Max(1, PageNumber);
+        Clean();
 
         var result = await CallAsync(() => api.AlignStartsAsync(id, cancellationToken));
         if (result.SessionRejected)
@@ -208,6 +241,29 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
 
         return await LoadAsync(cancellationToken) ?? Page();
     }
+
+    /// <summary>Reads the view (search, filters, sort, page, size) from the address and cleans it.</summary>
+    private void Clean()
+    {
+        List = SeriesListQuery.From(PageNumber, Size, Keyword, Sort, Direction, ExchangeFilter, MarketFilter, TimeFrameFilter,
+            OpenInterestFilter, StatisticsFilter);
+        PageNumber = List.PageNumber;
+    }
+
+    /// <summary>The address values that every link and form of the page carries, so that the view survives them.</summary>
+    public IDictionary<string, string> ListRoute => List.RouteValues();
+
+    /// <summary>The address of a click on a column header (that column first, the other way round when it is already the sorted one).</summary>
+    public IDictionary<string, string> SortRoute(string key) => List.SortedBy(key).RouteValues();
+
+    /// <summary>The address of another page of the same view.</summary>
+    public IDictionary<string, string> PageRoute(int pageNumber) => List.OnPage(pageNumber).RouteValues();
+
+    /// <summary>The arrow in a column header: which way the list is sorted by it, nothing for the others.</summary>
+    public string SortMark(string key) => List.SortBy != key ? "" : List.Descending ? " ↓" : " ↑";
+
+    /// <summary>The value the page-size and filter forms put back, for the select that holds it.</summary>
+    public bool IsPageSize(int size) => List.PageSize == size;
 
     /// <summary>
     /// Back to an empty "add" form. The posted values have to go too: a tag helper shows what was posted (the hidden id, the old
@@ -250,11 +306,14 @@ public class SeriesModel(TradePulseApiClient api, SessionTokenStore store) : Adm
     {
         try
         {
-            var page = await api.GetSeriesAsync(PageNumber, PageSize, Keyword, cancellationToken);
+            var page = await api.GetSeriesAsync(List, cancellationToken);
 
             // Removing the last row of the last page leaves that page empty: step back to the one before it.
-            while (page is { Items.Count: 0 } && PageNumber > 1)
-                page = await api.GetSeriesAsync(--PageNumber, PageSize, Keyword, cancellationToken);
+            while (page is { Items.Count: 0 } && List.PageNumber > 1)
+            {
+                List = List.OnPage(List.PageNumber - 1);
+                page = await api.GetSeriesAsync(List, cancellationToken);
+            }
 
             if (page is null)
                 return await EndSessionAsync();
