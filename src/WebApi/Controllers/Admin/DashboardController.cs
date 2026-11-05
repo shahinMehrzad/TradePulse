@@ -53,6 +53,33 @@ namespace WebApi.Controllers.Admin
                 new GetDashboardSeriesDetailQuery(parsedExchange, parsedMarket, symbolPart, parsedTimeframe, candles), cancellationToken));
         }
 
+        /// <summary>The newest long/short ratio and taker volume rows of one series at one time frame, oldest first, for the charts of the series page.</summary>
+        [HttpGet("series/{exchange}/{market}/{symbol}/statistics")]
+        public async Task<IActionResult> GetMarketStatistics(string exchange, string market, string symbol, [FromQuery] string? timeframe, [FromQuery] int? points, CancellationToken cancellationToken)
+        {
+            if (points is < 2 or > GetMarketStatisticsQueryHandler.MaxPoints)
+                ModelState.AddModelError(nameof(points), $"points must be between 2 and {GetMarketStatisticsQueryHandler.MaxPoints}.");
+
+            TryParseName(nameof(exchange), exchange, out ExchangeEnum parsedExchange);
+            TryParseName(nameof(market), market, out MarketTypeEnum parsedMarket);
+
+            TimeFrameEnum parsedTimeframe = default;
+            if (string.IsNullOrWhiteSpace(timeframe))
+                ModelState.AddModelError(nameof(timeframe), "timeframe is required (the statistics are kept per time frame).");
+            else
+                TryParseName(nameof(timeframe), timeframe, out parsedTimeframe);
+
+            var symbolPart = "";
+            if (ModelState.IsValid && !TableNameRegistry.TryGetSymbolPart(parsedExchange, parsedMarket, symbol, out symbolPart, out var reason))
+                ModelState.AddModelError(nameof(symbol), $"'{symbol}' is not a valid symbol: {reason}.");
+
+            if (!ModelState.IsValid)
+                return ValidationProblem(ModelState);
+
+            return Ok(await dispatcher.SendAsync<GetMarketStatisticsQuery, MarketStatisticsResponse>(
+                new GetMarketStatisticsQuery(parsedExchange, parsedMarket, symbolPart, parsedTimeframe, points), cancellationToken));
+        }
+
         private bool TryParseName<T>(string parameter, string value, out T result) where T : struct, Enum
         {
             if (EnumExtensions.TryParseRouteName(value, out result))

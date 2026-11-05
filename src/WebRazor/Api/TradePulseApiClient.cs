@@ -49,6 +49,23 @@ public sealed class TradePulseApiClient(HttpClient http)
     /// The card with its related data. <c>Detail</c> is null when the API does not collect that series or time frame (404);
     /// <c>SessionRejected</c> when it no longer accepts the session.
     /// </returns>
+    /// <returns>The newest long/short ratio and taker volume rows of a series at a time frame; the statistics are null when the series is not collected at it.</returns>
+    public async Task<(MarketStatistics? Statistics, bool SessionRejected)> GetMarketStatisticsAsync(
+        string exchange, string market, string symbol, string timeframe, int points, CancellationToken cancellationToken)
+    {
+        var url = $"api/admin/dashboard/series/{Uri.EscapeDataString(exchange)}/{Uri.EscapeDataString(market)}/{Uri.EscapeDataString(symbol)}/statistics"
+            + $"?timeframe={Uri.EscapeDataString(timeframe)}&points={points}";
+
+        using var response = await http.GetAsync(url, cancellationToken);
+        if (IsRejected(response))
+            return (null, true);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+            return (null, false);
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<MarketStatistics>(cancellationToken), false);
+    }
+
     public async Task<(DashboardDetail? Detail, bool SessionRejected)> GetDashboardDetailAsync(
         string exchange, string market, string symbol, string? timeframe, int? candles, CancellationToken cancellationToken)
     {

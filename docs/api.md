@@ -21,6 +21,7 @@ Admin only (bearer token with the admin role). Built from the stored candles for
 |---|---|
 | `GET /api/admin/dashboard/series?market=futures` | One card per exchange market symbol the collector gathers (`market` is optional). |
 | `GET /api/admin/dashboard/series/binance/futures/btcusdt?timeframe=4h&candles=80` | The same card for one time frame, plus `related`: the funding rate, open interest and liquidations that are collected. Futures only. |
+| `GET /api/admin/dashboard/series/binance/futures/btcusdt/statistics?timeframe=4h&points=48` | The newest `points` (2 to 200, 48 without it) rows of the long/short account ratio (`ratio`, `longAccount`, `shortAccount`) and the taker volume (`buySellRatio`, `buyVolume`, `sellVolume`) of the series at that time frame, oldest first. `timeframe` is required (these are kept per time frame). `collected` is false when the series does not collect them, and a table that does not exist yet gives empty lists; a time frame the series is not collected at is a `404`. |
 
 A card has the collected `timeframes`, the shortest as `defaultTimeframe`, and `current`: last close, the change, high, low and volume, a `sparkline` of closes, and `lagSeconds` since the newest candle closed. Everything in `current` describes the same newest candles (24 by default, `candles=2..500` on the second request), from `windowStart` (open of the first) to `windowEnd` (close of the last), so a card's colour always agrees with the line it draws.
 
