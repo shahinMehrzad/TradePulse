@@ -17,7 +17,10 @@
   <ItemGroup>
     <Compile Include="..\Shared\SeededSymbol.cs" Link="Shared\SeededSymbol.cs" />
     <Compile Include="..\Shared\JwtTestKeys.cs" Link="Shared\JwtTestKeys.cs" />
-    <!-- The line chart of the panel's series page. It needs nothing from ASP.NET (only the time format of DashboardFormat), so its numbers are tested here. -->
+  </ItemGroup>
+
+  <!-- The line chart of the panel's symbol page. It needs nothing from ASP.NET (only the time format of DashboardFormat), so its numbers are tested here. -->
+  <ItemGroup>
     <Compile Include="..\..\src\WebRazor\Display\LineChart.cs" Link="Shared\LineChart.cs" />
     <Compile Include="..\..\src\WebRazor\Display\DashboardFormat.cs" Link="Shared\DashboardFormat.cs" />
   </ItemGroup>
