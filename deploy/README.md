@@ -114,6 +114,26 @@ data protection (which decrypt the authenticator keys) are saved in the same way
 for them. Only the owner of the private key, which is not on the server, can read a backup. Set-up, the test to do once, and restoring:
 [docs/database-security.md](../docs/database-security.md#encrypted-backups).
 
+**A copy on your own computer: `pull-backups.ps1`.** Run on a Windows machine (PowerShell 5.1 or 7, OpenSSH client), it lists the `.age`
+files in the server's backup folder over ssh, downloads the ones it does not have (a `.part` file first, checked for size and for the age header,
+then renamed) and deletes the older local copies so that `-Keep` (8) of each kind stay. Nothing is deleted on the server. Nothing about the
+server or the folder is written in the script; each person who runs it gives their own:
+
+```powershell
+.\deploy\pull-backups.ps1 -Server <user>@<your-server>                         # into <your profile>\tradepulse-backups
+.\deploy\pull-backups.ps1 -Server <user>@<your-server> -Destination <folder> -Keep 12 -Register -At 04:00   # and run it every day
+```
+
+The same can be set with the environment variables `TRADEPULSE_SERVER`, `TRADEPULSE_BACKUP_DIR` and `TRADEPULSE_REMOTE_BACKUP_DIR`.
+`-Register` makes a daily Windows task for the current user (it runs once now, too, unless `-NoRun`), so the ssh key of that user must work
+without a passphrase prompt. Run it more often than the server's cron job makes backups and than `BACKUP_KEEP` can hide: the server keeps only the
+newest four. Plain `.dump` files are refused unless `-AllowPlain`. The files stay encrypted here; decrypt one with your age private key only
+when you restore. Tried: the parsing, the checks and the tidying of the local folder. Not tried: the ssh/scp part against a real server.
+
+**`verify-live.sh`** (run by hand on the server, never from cron; only reads) shows what the unit tests cannot: the funding rate tables
+(rows, oldest and newest settlement, the longest hole), the liquidation stream (lost/restored lines in the collector log, newest event) and the
+shock alerts the watch stored. `./deploy/verify-live.sh 7` reads the last 7 days of the log.
+
 Restoring a backup into an empty database (this is how the data was moved to the server). After a restore of the main database run
 `./deploy/main-db-roles.sh` again (a restore with `--no-owner` makes `postgres` the owner of everything and drops the grants); the vault's dump (`vaultdb-*.dump`) is restored into `vault-db`, see
 [docs/database-security.md](../docs/database-security.md):
