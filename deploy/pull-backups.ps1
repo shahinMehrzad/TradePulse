@@ -118,8 +118,11 @@ $remoteCommand = "cd '$RemoteDir' && stat -c '%s %n' -- $($globs -join ' ') 2>/d
 $listing = & ssh @sshOptions -p $Port $Server $remoteCommand
 $files = @()
 foreach ($line in @($listing)) {
-    if ($line -match '^(?<size>\d+) (?<name>\S+)$' -and $Matches['name'] -match $namePattern) {
-        $files += [pscustomobject]@{ Name = $Matches['name']; Size = [long]$Matches['size'] }
+    if ($line -match '^(?<size>\d+) (?<name>\S+)$') {
+        # Read both groups before the second -match, which replaces $Matches.
+        $size = [long]$Matches['size']
+        $name = $Matches['name']
+        if ($name -match $namePattern) { $files += [pscustomobject]@{ Name = $name; Size = $size } }
     }
 }
 if ($files.Count -eq 0) {
@@ -129,6 +132,7 @@ if ($files.Count -eq 0) {
 
 # --- download what is missing -------------------------------------------------------------------------------------------
 $failed = $false
+$downloaded = 0
 Push-Location $Destination      # scp takes the local name relative to here: no drive letter for it to take for a host
 try {
     foreach ($file in ($files | Sort-Object Name)) {
@@ -156,6 +160,7 @@ try {
             }
         }
         Move-Item -LiteralPath $part -Destination $file.Name -Force
+        $downloaded++
         Write-Log "copied $($file.Name) ($([math]::Round($file.Size / 1MB, 1)) MB)"
     }
 }
@@ -169,4 +174,5 @@ Get-ChildItem -LiteralPath $Destination -File -Filter '*.part' | Where-Object { 
 # Not after a failed copy: the older files are then the only ones there are.
 if ($failed) { exit 1 }
 if (-not (Invoke-Prune)) { exit 1 }
-Write-Log "done: $($files.Count) file(s) on the server, newest $Keep of each kind kept in $Destination"
+$news = if ($downloaded -eq 0) { 'nothing new to copy' } else { "$downloaded new file(s) copied" }
+Write-Log "done: $news; $($files.Count) file(s) on the server, newest $Keep of each kind kept in $Destination"
