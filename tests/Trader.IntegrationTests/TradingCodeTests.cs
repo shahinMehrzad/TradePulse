@@ -193,8 +193,13 @@ public class TradingCodeTests(TraderFixture trader) : IClassFixture<TraderFixtur
         var (client, _, _, _) = Host();
         var (_, _, access) = FreshAdministrator("once");
         var key = (await ReadAsync<SetupBody>(await PostAsync(client, "/trading-code/begin", access))).SharedKey;
-        await PostAsync(client, "/trading-code/setup", access, new { Code = TestTotp.Code(key, DateTimeOffset.UtcNow.AddSeconds(-30)) });   // takes the step before this one
+        // The setup takes the step of now. A code of the step before (now - 30 s) is the very edge of what the vault accepts: when the clock
+        // crossed a 30 second boundary between making the code and its arrival, that code was out of the window and the setup was refused
+        // (once in a while on a slow runner). The step of now is inside the window whichever side of the boundary the request falls.
+        var setup = await PostAsync(client, "/trading-code/setup", access, new { Code = TestTotp.Code(key) });
+        Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
 
+        // The next step is inside the window too (the clock only moves forward), and later than the one taken.
         var later = TestTotp.Code(key, DateTimeOffset.UtcNow.AddSeconds(30));
         Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, "/trading-code/confirmation", access, new { Code = later })).StatusCode);
 
@@ -204,6 +209,21 @@ public class TradingCodeTests(TraderFixture trader) : IClassFixture<TraderFixtur
 
         var older = await PostAsync(client, "/trading-code/confirmation", access, new { Code = TestTotp.Code(key) });
         Assert.Equal(HttpStatusCode.BadRequest, older.StatusCode);   // the step of now is older than the one taken
+    }
+
+    [Fact]
+    public void TheCodeOfTheStepBeforeIsOnlyInsideTheWindowUntilTheClockMovesOnSoATestMustNotRelyOnIt()
+    {
+        // This is what made the test above fail once in a while on a slow runner: its first code was made for now - 30 s, one second
+        // before a boundary, and by the time it arrived the boundary had passed. Fixed times, so that it is shown every time.
+        var secret = Totp.NewSecret();
+        var oneSecondBeforeABoundary = new DateTimeOffset(2026, 11, 5, 12, 0, 29, TimeSpan.Zero);
+        var stepBefore = Totp.CodeAt(secret, Totp.StepOf(oneSecondBeforeABoundary) - 1);
+        var stepOfNow = Totp.CodeAt(secret, Totp.StepOf(oneSecondBeforeABoundary));
+
+        Assert.NotNull(Totp.Match(secret, stepBefore, oneSecondBeforeABoundary));
+        Assert.Null(Totp.Match(secret, stepBefore, oneSecondBeforeABoundary.AddSeconds(2)));     // the clock crossed the boundary: out of the window
+        Assert.NotNull(Totp.Match(secret, stepOfNow, oneSecondBeforeABoundary.AddSeconds(2)));   // the step of now stays inside whichever side it lands
     }
 
     [Fact]
