@@ -194,6 +194,17 @@ public record DashboardDetail(
 /// <summary><c>DataType</c> is <c>fundingrate</c>, <c>openinterest</c> or <c>liquidation</c>; status as in <see cref="DashboardSnapshot"/>.</summary>
 public record DashboardRelated(string DataType, string Status, int? LagSeconds, DateTime? LastTime);
 
+/// <summary>The newest long/short ratio and taker volume rows of one series, oldest first. <c>Collected</c> is false when the series does not collect them.</summary>
+public record MarketStatistics(
+    string Exchange, string Market, string Symbol, string Timeframe, bool Collected,
+    IReadOnlyList<LongShortPoint> LongShort, IReadOnlyList<TakerVolumePoint> TakerVolume);
+
+/// <summary>Ratio is long over short; the two accounts are shares that add up to 1.</summary>
+public record LongShortPoint(DateTime Time, decimal Ratio, decimal LongAccount, decimal ShortAccount);
+
+/// <summary>BuySellRatio is the volume bought by takers over the volume they sold.</summary>
+public record TakerVolumePoint(DateTime Time, decimal BuySellRatio, decimal BuyVolume, decimal SellVolume);
+
 /// <summary>The part of a stored candle the chart draws. Times are UTC.</summary>
 public record ChartCandle(DateTime OpenTime, decimal Open, decimal High, decimal Low, decimal Close, decimal Volume);
 

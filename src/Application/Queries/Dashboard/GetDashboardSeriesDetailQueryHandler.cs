@@ -72,9 +72,7 @@ public sealed class GetDashboardSeriesDetailQueryHandler(ICandleWorkerConfigurat
     }
 
     private static bool IsListing(SymbolListing? listing, GetDashboardSeriesDetailQuery request) =>
-        listing is not null && listing.ExchangeId == (int)request.Exchange && listing.MarketId == (int)request.Market
-        && TableNameRegistry.TryGetSymbolPart(request.Exchange, request.Market, listing.ExchangeSymbol, out var part, out _)
-        && part == request.Symbol;
+        DashboardListings.Matches(listing, request.Exchange, request.Market, request.Symbol);
 
     private static async Task<DashboardRelatedData> ReadAsync<T>(
         MarketDataTypeEnum dataType, string tableName, IMarketDataRepository<T> repository, DateTime now, TimeSpan? lateAfter, CancellationToken cancellationToken)
