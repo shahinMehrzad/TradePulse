@@ -20,5 +20,6 @@
     <Project Path="tests/Infrastructure.UnitTests/Infrastructure.UnitTests.csproj" />
     <Project Path="tests/Trader.IntegrationTests/Trader.IntegrationTests.csproj" />
     <Project Path="tests/WebApi.IntegrationTests/WebApi.IntegrationTests.csproj" />
+    <Project Path="tests/WebRazor.IntegrationTests/WebRazor.IntegrationTests.csproj" />
   </Folder>
 </Solution>
