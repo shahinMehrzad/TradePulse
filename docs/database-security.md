@@ -44,6 +44,7 @@ how to look at and check the databases, and how to define a role yourself.
 | trader | vault (`vault-db` service, database `vault`) | `vault` | Everything in its own database. It is the only one that has the password, and nothing else is stored there. |
 | trader | main | `tp_trader` | `INSERT` on `config.audit_log`; `INSERT`, `DELETE` on `config.traded_symbols`; `USAGE` on schema `config`. It cannot `SELECT` anything, `UPDATE`, or create tables. |
 | price watch | main | `tp_watch` | `SELECT` on `config.shock_watch_configurations`, `config.exchange_symbols`, `config.symbols`, `config.exchanges`, `config.markets`, `config.traded_symbols` and on the data tables in `public`; `SELECT`, `INSERT`, `UPDATE` on `research.shock_alerts`. It cannot see `auth` or the audit log, change the watch list or the configuration, or create tables. |
+| monitoring agent (optional) | main | `tp_monitor` | `pg_monitor`: the statistics views and settings of the server (who is connected, reads, writes, sizes). No table can be read, nothing changed or made. Made only when `MONITOR_DB_PASSWORD` is set. See [monitoring.md](monitoring.md). |
 | panel | none | none | The panel has no database. It asks the API and the trader. |
 | backups, this script | main | `postgres` (superuser) | Used inside the postgres container only (`pg_dump`, `psql` by `docker exec`). No program has its password. |
 
@@ -77,6 +78,7 @@ What lives where:
 | `COLLECTOR_DB_PASSWORD` | Password of the role `tp_collector`. |
 | `TRADER_MAIN_DB_PASSWORD` | Password of the role `tp_trader` in the main database. |
 | `WATCH_DB_PASSWORD` | Password of the role `tp_watch` (the price watch). |
+| `MONITOR_DB_PASSWORD` | Optional. Password of the role `tp_monitor` (the monitoring agent, [monitoring.md](monitoring.md)): `pg_monitor`, so only the statistics of the server and no row of any table. Without it the role is not made. |
 | `POSTGRES_PASSWORD` | As before: the main database's superuser. No program uses it. |
 
 Each of the first five: letters and digits only, 16 or more (`openssl rand -hex 24` makes one), and all six different from each other.

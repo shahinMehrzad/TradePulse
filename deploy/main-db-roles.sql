@@ -10,20 +10,28 @@
 --   tp_trader     The key vault, which has a database of its own. Here it may only add to the audit log and publish the list of enabled symbols.
 --   tp_watch      The price watch (src/Research, `watch`). Reads the symbol lists, the watch list, the enabled symbols and the stored candles; writes
 --                 only its alerts (research.shock_alerts). It can see nothing of auth and cannot change the configuration.
+--   tp_monitor    The monitoring agent (Netdata, compose profile `monitoring`). Only the statistics of the server (pg_monitor: who is connected, how much
+--                 is read and written, sizes). No table can be read and nothing can be changed. Made only when a password is given.
 --
 -- The superuser "postgres" stays, but no program connects with it any more: it is for the backups and for running this script.
 --
--- Variables (psql): api_password, collector_password, trader_password, watch_password.
+-- Variables (psql): api_password, collector_password, trader_password, watch_password, monitor_password (empty: no tp_monitor).
 
 -- ---- the roles (login only: no superuser, no creating databases or roles)
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', r.name, r.pw)
-FROM (VALUES ('tp_api', :'api_password'), ('tp_collector', :'collector_password'), ('tp_trader', :'trader_password'), ('tp_watch', :'watch_password')) AS r(name, pw)
-WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = r.name) \gexec
+FROM (VALUES ('tp_api', :'api_password'), ('tp_collector', :'collector_password'), ('tp_trader', :'trader_password'), ('tp_watch', :'watch_password'),
+             ('tp_monitor', :'monitor_password')) AS r(name, pw)
+WHERE r.pw <> '' AND NOT EXISTS (SELECT FROM pg_roles WHERE rolname = r.name) \gexec
 
 SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', r.name, r.pw)
-FROM (VALUES ('tp_api', :'api_password'), ('tp_collector', :'collector_password'), ('tp_trader', :'trader_password'), ('tp_watch', :'watch_password')) AS r(name, pw) \gexec
+FROM (VALUES ('tp_api', :'api_password'), ('tp_collector', :'collector_password'), ('tp_trader', :'trader_password'), ('tp_watch', :'watch_password'),
+             ('tp_monitor', :'monitor_password')) AS r(name, pw)
+WHERE r.pw <> '' \gexec
 
 SELECT format('GRANT CONNECT ON DATABASE %I TO tp_api, tp_collector, tp_trader, tp_watch', current_database()) \gexec
+-- The monitor may connect and read the server's statistics (pg_monitor: pg_stat_* views, settings), and nothing else: no table, no change.
+SELECT format('GRANT CONNECT ON DATABASE %I TO tp_monitor', current_database()) WHERE EXISTS (SELECT FROM pg_roles WHERE rolname = 'tp_monitor') \gexec
+SELECT 'GRANT pg_monitor TO tp_monitor' WHERE EXISTS (SELECT FROM pg_roles WHERE rolname = 'tp_monitor') \gexec
 -- Only so that the API's migrations can say CREATE SCHEMA IF NOT EXISTS (Postgres checks the right even for a schema that exists).
 -- It lets a role make schemas, nothing else.
 SELECT format('GRANT CREATE ON DATABASE %I TO tp_api', current_database()) \gexec
