@@ -17,6 +17,9 @@
   <ItemGroup>
     <Compile Include="..\Shared\SeededSymbol.cs" Link="Shared\SeededSymbol.cs" />
     <Compile Include="..\Shared\JwtTestKeys.cs" Link="Shared\JwtTestKeys.cs" />
+    <!-- The query that the Series page of the panel builds. It needs nothing from ASP.NET, so it is compiled here and run against the real endpoint. -->
+    <Compile Include="..\..\src\WebRazor\Api\SeriesListQuery.cs" Link="Shared\SeriesListQuery.cs" />
+    <Compile Include="..\..\src\WebRazor\Api\ODataText.cs" Link="Shared\ODataText.cs" />
   </ItemGroup>
 
 </Project>

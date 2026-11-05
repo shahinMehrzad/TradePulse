@@ -1,5 +1,6 @@
 @page
 @model SeriesModel
+@using WebRazor.Api
 @{
     ViewData["Title"] = "Collector series";
 }
@@ -33,7 +34,7 @@
                 The exchange has no candles before then (the symbol was listed later), so nothing is wrong with the data: the start date only asks for more than exists.
                 You may move it to the first candle; until you do, nothing changes.
             </div>
-            <form method="post" asp-page-handler="Align" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" class="ms-auto">
+            <form method="post" asp-page-handler="Align" asp-all-route-data="Model.ListRoute" class="ms-auto">
                 <button type="submit" class="btn btn-sm btn-warning text-nowrap">Move all to the first candle</button>
             </form>
         </div>
@@ -44,24 +45,93 @@
     <div class="col-lg-8">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Configured series (@Model.TotalItems)</h3>
-                <div class="card-actions">
-                    <form method="get" asp-page="/Series" class="d-flex gap-2">
-                        <input type="search" name="Keyword" value="@Model.Keyword" class="form-control form-control-sm" placeholder="Search..." aria-label="Search the series" />
-                        <button type="submit" class="btn btn-sm">Search</button>
-                        @if (!string.IsNullOrWhiteSpace(Model.Keyword))
+                <h3 class="card-title">Configured series (@Model.TotalItems@(Model.List.IsFiltered ? " matching" : ""))</h3>
+            </div>
+            <div class="card-body border-bottom py-3">
+                <form method="get" asp-page="/Series" class="row g-2 align-items-end" aria-label="Search and filter the series">
+                    @* The sort is kept when the filters change; the page is not (the new list has its own first page). *@
+                    @if (Model.List.SortBy is not null)
+                    {
+                        <input type="hidden" name="sort" value="@Model.List.SortBy" />
+                        @if (Model.List.Descending)
                         {
-                            <a class="btn btn-sm btn-ghost-secondary" asp-page="/Series">Clear</a>
+                            <input type="hidden" name="dir" value="desc" />
                         }
-                    </form>
-                </div>
+                    }
+                    <div class="col-12 col-md-4 col-xl">
+                        <label class="form-label small mb-1" for="filter-keyword">Search</label>
+                        <input id="filter-keyword" type="search" name="Keyword" value="@Model.List.Keyword" class="form-control form-control-sm" placeholder="Search..." />
+                    </div>
+                    <div class="col-6 col-md-4 col-xl">
+                        <label class="form-label small mb-1" for="filter-exchange">Exchange</label>
+                        <select id="filter-exchange" name="exchange" class="form-select form-select-sm">
+                            <option value="">All</option>
+                            @foreach (var exchange in Model.Lookups.Exchanges)
+                            {
+                                <option value="@exchange.Id" selected="@(Model.List.ExchangeId == exchange.Id)">@exchange.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl">
+                        <label class="form-label small mb-1" for="filter-market">Market</label>
+                        <select id="filter-market" name="market" class="form-select form-select-sm">
+                            <option value="">All</option>
+                            @foreach (var market in Model.Lookups.Markets)
+                            {
+                                <option value="@market.Id" selected="@(Model.List.MarketId == market.Id)">@market.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl">
+                        <label class="form-label small mb-1" for="filter-timeframe">Time frame</label>
+                        <select id="filter-timeframe" name="timeframe" class="form-select form-select-sm">
+                            <option value="">All</option>
+                            @foreach (var timeFrame in Model.Lookups.TimeFrames.OrderBy(t => t.IntervalToSeconds))
+                            {
+                                <option value="@timeFrame.Id" selected="@(Model.List.TimeFrameId == timeFrame.Id)">@timeFrame.FriendlyName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl">
+                        <label class="form-label small mb-1" for="filter-oi">Open interest</label>
+                        <select id="filter-oi" name="oi" class="form-select form-select-sm">
+                            <option value="">Any</option>
+                            <option value="on" selected="@(Model.List.OpenInterest == FlagFilter.On)">On</option>
+                            <option value="off" selected="@(Model.List.OpenInterest == FlagFilter.Off)">Off</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl">
+                        <label class="form-label small mb-1" for="filter-stats">Statistics</label>
+                        <select id="filter-stats" name="stats" class="form-select form-select-sm">
+                            <option value="">Any</option>
+                            <option value="on" selected="@(Model.List.Statistics == FlagFilter.On)">On</option>
+                            <option value="off" selected="@(Model.List.Statistics == FlagFilter.Off)">Off</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl">
+                        <label class="form-label small mb-1" for="filter-size">Rows per page</label>
+                        <select id="filter-size" name="size" class="form-select form-select-sm">
+                            @foreach (var size in SeriesListQuery.PageSizes)
+                            {
+                                <option value="@size" selected="@Model.IsPageSize(size)">@size</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-12 col-xl-auto d-flex gap-2">
+                        <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                        @if (Model.List.IsFiltered || Model.List.SortBy is not null || Model.List.PageSize != SeriesListQuery.DefaultPageSize)
+                        {
+                            <a class="btn btn-sm btn-ghost-secondary" asp-page="/Series">Reset</a>
+                        }
+                    </div>
+                </form>
             </div>
             @if (Model.Series.Count == 0)
             {
                 <div class="card-body text-secondary">
-                    @(string.IsNullOrWhiteSpace(Model.Keyword)
-                        ? "Nothing is configured yet. Add the first series on the right."
-                        : $"No series match \"{Model.Keyword}\".")
+                    @(Model.List.IsFiltered
+                        ? "No series match the search and the filters."
+                        : "Nothing is configured yet. Add the first series on the right.")
                 </div>
             }
             else
@@ -69,7 +139,17 @@
                 <div class="table-responsive">
                     <table class="table card-table table-vcenter">
                         <thead>
-                            <tr><th>Exchange</th><th>Market</th><th>Symbol</th><th>Time frame</th><th>From (UTC)</th><th>Open interest</th><th>Statistics</th><th></th></tr>
+                            <tr>
+                                @* A click sorts by the column; another click turns it round. The arrow shows the column that is sorted. *@
+                                <th><a class="text-reset text-decoration-none" asp-page="/Series" asp-all-route-data='Model.SortRoute("exchange")'>Exchange@(Model.SortMark("exchange"))</a></th>
+                                <th><a class="text-reset text-decoration-none" asp-page="/Series" asp-all-route-data='Model.SortRoute("market")'>Market@(Model.SortMark("market"))</a></th>
+                                <th><a class="text-reset text-decoration-none" asp-page="/Series" asp-all-route-data='Model.SortRoute("symbol")'>Symbol@(Model.SortMark("symbol"))</a></th>
+                                <th><a class="text-reset text-decoration-none" asp-page="/Series" asp-all-route-data='Model.SortRoute("timeframe")'>Time frame@(Model.SortMark("timeframe"))</a></th>
+                                <th><a class="text-reset text-decoration-none" asp-page="/Series" asp-all-route-data='Model.SortRoute("from")'>From (UTC)@(Model.SortMark("from"))</a></th>
+                                <th><a class="text-reset text-decoration-none" asp-page="/Series" asp-all-route-data='Model.SortRoute("oi")'>Open interest@(Model.SortMark("oi"))</a></th>
+                                <th><a class="text-reset text-decoration-none" asp-page="/Series" asp-all-route-data='Model.SortRoute("stats")'>Statistics@(Model.SortMark("stats"))</a></th>
+                                <th></th>
+                            </tr>
                         </thead>
                         <tbody>
                             @foreach (var series in Model.Series)
@@ -89,10 +169,10 @@
                                     <td>@if (series.CollectOpenInterest) { <span class="badge bg-green-lt">On</span> } else { <span class="text-secondary">-</span> }</td>
                                     <td>@if (series.CollectMarketStatistics) { <span class="badge bg-green-lt">On</span> } else { <span class="text-secondary">-</span> }</td>
                                     <td class="text-nowrap text-end">
-                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-route-edit="@series.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Edit</a>
+                                        <a class="btn btn-sm btn-outline-primary" asp-page="/Series" asp-route-edit="@series.Id" asp-all-route-data="Model.ListRoute">Edit</a>
                                         @if (Model.LateStarts.ContainsKey(series.Id))
                                         {
-                                            <form method="post" asp-page-handler="Align" asp-route-id="@series.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" class="d-inline">
+                                            <form method="post" asp-page-handler="Align" asp-route-id="@series.Id" asp-all-route-data="Model.ListRoute" class="d-inline">
                                                 <button type="submit" class="btn btn-sm btn-outline-warning" title="Move the start date to the first candle">Use first candle</button>
                                             </form>
                                         }
@@ -106,13 +186,13 @@
                 @if (Model.TotalPages > 1)
                 {
                     <div class="card-footer d-flex align-items-center">
-                        <span class="text-secondary">Page @Model.PageNumber of @Model.TotalPages</span>
+                        <span class="text-secondary">Page @Model.List.PageNumber of @Model.TotalPages</span>
                         <ul class="pagination m-0 ms-auto">
                             <li class="page-item @(Model.HasPrevious ? "" : "disabled")">
-                                <a class="page-link" asp-page="/Series" asp-route-pageNumber="@Math.Max(1, Model.PageNumber - 1)" asp-route-keyword="@Model.Keyword">Previous</a>
+                                <a class="page-link" asp-page="/Series" asp-all-route-data="Model.PageRoute(Model.List.PageNumber - 1)">Previous</a>
                             </li>
                             <li class="page-item @(Model.HasNext ? "" : "disabled")">
-                                <a class="page-link" asp-page="/Series" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-keyword="@Model.Keyword">Next</a>
+                                <a class="page-link" asp-page="/Series" asp-all-route-data="Model.PageRoute(Model.List.PageNumber + 1)">Next</a>
                             </li>
                         </ul>
                     </div>
@@ -131,7 +211,7 @@
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn me-auto" data-bs-dismiss="modal">Cancel</button>
-                                <form method="post" asp-page-handler="Delete" asp-route-id="@series.Id" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">
+                                <form method="post" asp-page-handler="Delete" asp-route-id="@series.Id" asp-all-route-data="Model.ListRoute">
                                     <button type="submit" class="btn btn-danger">Remove</button>
                                 </form>
                             </div>
@@ -149,7 +229,7 @@
                 <h3 class="card-title">@(Model.IsEditing ? "Change series" : "Add a series")</h3>
             </div>
             <div class="card-body">
-                <form method="post" asp-page-handler="Save" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword" autocomplete="off" data-support-form>
+                <form method="post" asp-page-handler="Save" asp-all-route-data="Model.ListRoute" autocomplete="off" data-support-form>
                     <input type="hidden" asp-for="Input.Id" />
                     <div class="mb-3">
                         <label asp-for="Input.ExchangeId" class="form-label">Exchange</label>
@@ -202,7 +282,7 @@
                         <button type="submit" class="btn btn-primary flex-fill">@(Model.IsEditing ? "Save changes" : "Add series")</button>
                         @if (Model.IsEditing)
                         {
-                            <a class="btn" asp-page="/Series" asp-route-pageNumber="@Model.PageNumber" asp-route-keyword="@Model.Keyword">Cancel</a>
+                            <a class="btn" asp-page="/Series" asp-all-route-data="Model.ListRoute">Cancel</a>
                         }
                     </div>
                 </form>
