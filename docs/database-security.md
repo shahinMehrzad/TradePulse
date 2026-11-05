@@ -249,7 +249,7 @@ the server only knows the **public** key (it can encrypt, never read back) and t
    and run the programs from there). Make the key pair:
 
    ```powershell
-   .ge-keygen.exe -o age-key.txt
+   .\age-keygen.exe -o age-key.txt
    ```
 
    It prints `Public key: age1...`. The file `age-key.txt` is the private key. **Keep it where you keep your passwords, and print one copy on paper.
@@ -261,8 +261,8 @@ the server only knows the **public** key (it can encrypt, never read back) and t
 4. **Test that you can read one, now, once, before you rely on it.** On your computer:
 
    ```powershell
-   scp "deploy@tp.parsibin.com:/opt/tradepulse-backups/tradepulse-*.dump.age" .
-   .ge.exe -d -i age-key.txt -o test.dump (Get-ChildItem tradepulse-*.dump.age | Sort-Object LastWriteTime | Select-Object -Last 1).Name
+   scp "<user>@<your-server>:/opt/tradepulse-backups/tradepulse-*.dump.age" .
+   .\age.exe -d -i age-key.txt -o test.dump (Get-ChildItem tradepulse-*.dump.age | Sort-Object LastWriteTime | Select-Object -Last 1).Name
    [System.Text.Encoding]::ASCII.GetString((Get-Content test.dump -Encoding Byte -TotalCount 5))
    ```
 
@@ -276,8 +276,8 @@ elsewhere. The cron job (`deploy/README.md`) needs no change.
 **Restoring from an encrypted backup.** Decrypt on your computer, send the plain file to the server only for as long as the restore takes:
 
 ```powershell
-.ge.exe -d -i age-key.txt -o restore.dump tradepulse-YYYYMMDD-HHMMSS.dump.age
-scp restore.dump deploy@tp.parsibin.com:/tmp/restore.dump
+.\age.exe -d -i age-key.txt -o restore.dump tradepulse-YYYYMMDD-HHMMSS.dump.age
+scp restore.dump <user>@<your-server>:/tmp/restore.dump
 ```
 
 ```bash
