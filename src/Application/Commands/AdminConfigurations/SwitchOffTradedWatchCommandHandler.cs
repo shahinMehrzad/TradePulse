@@ -11,9 +11,9 @@ namespace Application.Commands.AdminConfigurations;
 public readonly record struct SwitchOffTradedWatchCommand(int SymbolListingId);
 
 /// <summary>
-/// Turns off the watch of a symbol that is enabled for trading and has no row on the list (it is watched on its own). The admin does
+/// Turns off the watch of a symbol that is enabled for trading (it is watched on its own, or through a row added by hand). The admin does
 /// this on their own responsibility, and it is remembered as a row (<see cref="WatchReasonEnum.Trading"/>, off), so the symbol stays
-/// unwatched until the admin switches it on again. Returns the id of that row.
+/// unwatched until the admin switches it on again. A row added by hand becomes that row. Returns the id of the row.
 /// </summary>
 public sealed class SwitchOffTradedWatchCommandHandler(
     IShockWatchConfigurationRepository repository, ISymbolCatalogRepository catalog, ITradedSymbolSource traded, AuditTrail audit)
@@ -33,26 +33,17 @@ public sealed class SwitchOffTradedWatchCommandHandler(
         var existing = (await repository.GetAll(cancellationToken)).FirstOrDefault(c => c.SymbolListingId == listing.Id);
         if (existing is not null)
         {
-            // A row already decides for this symbol (one added by hand, or an earlier switch-off): switching off is just switching it.
-            if (existing.IsEnabled)
-            {
-                await repository.SetEnabled(existing.Id, false, cancellationToken);
-                await RecordAsync(existing.Id, listing, existing.Reason, cancellationToken);
-            }
-
+            // A row says something about this symbol already (one added by hand, or an earlier switch-off): it becomes the "off" of a
+            // traded symbol, or stays one.
+            await ShockWatchRules.SwitchOffTradedAsync(repository, audit, existing, cancellationToken);
             return existing.Id;
         }
 
         var configuration = new ShockWatchConfiguration { SymbolListingId = listing.Id, SymbolListing = listing, Reason = WatchReasonEnum.Trading, IsEnabled = false };
         var id = await repository.Add(configuration, cancellationToken);
-        await RecordAsync(id, listing, WatchReasonEnum.Trading, cancellationToken);
+        configuration.Id = id;
+        await audit.RecordAsync(AuditAction.Updated, AuditEntityTypes.ShockWatch, id,
+            AuditDescriptions.Summary(configuration), "watch on -> off (enabled for trading)", cancellationToken);
         return id;
-    }
-
-    private Task RecordAsync(int id, SymbolListing listing, WatchReasonEnum reason, CancellationToken cancellationToken)
-    {
-        var row = new ShockWatchConfiguration { Id = id, SymbolListingId = listing.Id, SymbolListing = listing, Reason = reason, IsEnabled = false };
-        return audit.RecordAsync(AuditAction.Updated, AuditEntityTypes.ShockWatch, id,
-            AuditDescriptions.Summary(row), "watch on -> off (enabled for trading)", cancellationToken);
     }
 }

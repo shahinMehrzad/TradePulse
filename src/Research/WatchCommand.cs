@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.InteropServices;
 using Application;
 using Application.Notifications;
@@ -129,7 +128,7 @@ internal static class WatchCommand
         else
         {
             source = scope.ServiceProvider.GetRequiredService<IWatchedSymbolSource>();
-            following = "the symbols switched on in the admin panel (looked at again every 30 s)";
+            following = "the symbols switched on in the admin panel";
         }
 
         await TellStartedAsync(scope.ServiceProvider.GetServices<INotifier>(), following, rule);
@@ -141,11 +140,7 @@ internal static class WatchCommand
     /// <summary>One message when the watch starts, so the admin sees restarts too. A channel that fails is skipped.</summary>
     private static async Task TellStartedAsync(IEnumerable<INotifier> notifiers, string following, ShockWatchOptions rule)
     {
-        var culture = CultureInfo.InvariantCulture;
-        var message = new Alert("Watch started", string.Join(Environment.NewLine,
-            following,
-            string.Create(culture, $"Attention: {rule.AttentionMove:P2} in {rule.WindowSeconds} s, alarm: {rule.AlarmMove:P2}, z >= {rule.MinZScore}"),
-            $"Rule: {rule.Version}"));
+        var message = ShockAlertMessage.Started(following, rule);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         foreach (var notifier in notifiers)

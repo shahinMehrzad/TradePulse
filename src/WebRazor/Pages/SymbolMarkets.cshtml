@@ -73,13 +73,10 @@
                                             if (market.Traded)
                                                 uses.Add(("enabled for trading", "/Trading", null));
 
+                                            // The comma goes right after the link: a space before it would show.
                                             for (var i = 0; i < uses.Count; i++)
                                             {
-                                                if (i > 0)
-                                                {
-                                                    <span>, </span>
-                                                }
-                                                <a asp-page="@uses[i].Page" asp-route-keyword="@uses[i].Keyword">@uses[i].Text</a>
+                                                <a asp-page="@uses[i].Page" asp-route-keyword="@uses[i].Keyword">@uses[i].Text</a>@(i < uses.Count - 1 ? "," : "")
                                             }
                                         }
                                     </td>

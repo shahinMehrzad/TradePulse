@@ -100,6 +100,18 @@ public class ShockWatchConfigurationRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task DecidingChangesWhyTheRowIsThereAndItsSwitchTogether()
+    {
+        var options = await NewDatabaseAsync();
+        var id = await RepositoryOn(options).Add(Row(BtcListing, WatchReasonEnum.Manual), Ct);
+
+        await RepositoryOn(options).Decide(id, WatchReasonEnum.Trading, false, Ct);
+
+        var stored = await RepositoryOn(options).GetById(id, Ct);
+        Assert.Equal((WatchReasonEnum.Trading, false, BtcListing), (stored!.Reason, stored.IsEnabled, stored.SymbolListingId));
+    }
+
+    [Fact]
     public async Task ARowIsRemoved()
     {
         var options = await NewDatabaseAsync();
@@ -117,6 +129,7 @@ public class ShockWatchConfigurationRepositoryTests(PostgresFixture postgres)
         var options = await NewDatabaseAsync();
 
         await Assert.ThrowsAsync<ConfigurationNotFoundException>(() => RepositoryOn(options).SetEnabled(404, true, Ct));
+        await Assert.ThrowsAsync<ConfigurationNotFoundException>(() => RepositoryOn(options).Decide(404, WatchReasonEnum.Trading, false, Ct));
         await Assert.ThrowsAsync<ConfigurationNotFoundException>(() => RepositoryOn(options).Remove(404, Ct));
     }
 

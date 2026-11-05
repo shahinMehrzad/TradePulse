@@ -51,6 +51,98 @@ public class NotifierTests
         Assert.Equal("[box] Collector problem\n🔴 database: unhealthy", body.RootElement.GetProperty("text").GetString());
     }
 
+    /// <summary>Answers each request in turn and keeps every body, for a message that is sent twice.</summary>
+    private sealed class RecordingHandler(params HttpResponseMessage[] answers) : HttpMessageHandler
+    {
+        private int _next;
+
+        public List<JsonDocument> Bodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Bodies.Add(JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)));
+            return answers[Math.Min(_next++, answers.Length - 1)];
+        }
+    }
+
+    private static TelegramNotifier Telegram(HttpMessageHandler handler) =>
+        new(new HttpClient(handler) { BaseAddress = new Uri("https://api.telegram.org/") }, Options());
+
+    private static readonly Alert Formatted = new("BTCUSDT +0.62 % in 30 s", "79893.4 -> 79398.1", "🟢⬆️ <b>BTCUSDT</b> +0.62 % in 30 s\n79893.4 → 79398.1");
+
+    [Fact]
+    public async Task AMessageWithFormattingIsPostedAsHtmlWithoutTheInstanceInFront()
+    {
+        var handler = new RecordingHandler(new HttpResponseMessage(HttpStatusCode.OK));
+
+        await Telegram(handler).SendAsync(Formatted, Ct);
+
+        var body = Assert.Single(handler.Bodies).RootElement;
+        Assert.Equal("HTML", body.GetProperty("parse_mode").GetString());
+        Assert.Equal(Formatted.Html, body.GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task AMessageWithoutFormattingIsPostedAsPlainTextAsBefore()
+    {
+        var handler = new RecordingHandler(new HttpResponseMessage(HttpStatusCode.OK));
+
+        await Telegram(handler).SendAsync(new Alert("t", "b"), Ct);
+
+        var body = Assert.Single(handler.Bodies).RootElement;
+        Assert.False(body.TryGetProperty("parse_mode", out _));
+        Assert.Equal("[box] t\nb", body.GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task IfTelegramCannotReadTheFormattingTheSameWordsGoOnceMoreAsPlainText()
+    {
+        var handler = new RecordingHandler(
+            Refusal(HttpStatusCode.BadRequest, """{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities"}"""),
+            new HttpResponseMessage(HttpStatusCode.OK));
+
+        await Telegram(handler).SendAsync(Formatted, Ct);
+
+        Assert.Equal(2, handler.Bodies.Count);
+        Assert.Equal("HTML", handler.Bodies[0].RootElement.GetProperty("parse_mode").GetString());
+        Assert.False(handler.Bodies[1].RootElement.TryGetProperty("parse_mode", out _));
+        Assert.Equal("[box] BTCUSDT +0.62 % in 30 s\n79893.4 -> 79398.1", handler.Bodies[1].RootElement.GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task AFailureThatIsNotTheFormattingIsNotTriedAgain()
+    {
+        var handler = new RecordingHandler(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+
+        var error = await Assert.ThrowsAsync<NotificationException>(() => Telegram(handler).SendAsync(Formatted, Ct));
+
+        Assert.Equal("Telegram answered 401", error.Message);
+        Assert.Single(handler.Bodies);
+    }
+
+    [Fact]
+    public async Task IfThePlainTextIsRefusedToo()
+    {
+        const string Chat = """{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}""";
+        var handler = new RecordingHandler(Refusal(HttpStatusCode.BadRequest, Chat), Refusal(HttpStatusCode.BadRequest, Chat));
+
+        var error = await Assert.ThrowsAsync<NotificationException>(() => Telegram(handler).SendAsync(Formatted, Ct));
+
+        Assert.Equal("Telegram answered 400: Bad Request: chat not found", error.Message);
+        Assert.Equal(2, handler.Bodies.Count);
+    }
+
+    [Fact]
+    public async Task FormattingTooLongForOneMessageGoesAsPlainText()
+    {
+        var handler = new RecordingHandler(new HttpResponseMessage(HttpStatusCode.OK));
+
+        await Telegram(handler).SendAsync(new Alert("t", "b", new string('x', TelegramNotifier.MaxLength + 1)), Ct);
+
+        var body = Assert.Single(handler.Bodies).RootElement;
+        Assert.False(body.TryGetProperty("parse_mode", out _));
+    }
+
     [Fact]
     public async Task ARefusalIsReportedWithTheStatusAndWithoutTheAddressThatHoldsTheToken()
     {

@@ -26,7 +26,9 @@ public class ShockWatcherTests
     // A symbol normally has the last hour of 1 minute candles stored (the collector keeps them), so the watch starts from them.
     public ShockWatcherTests() => _candles.Stored.AddRange(MinuteCandles());
 
-    private ShockWatcher NewWatcher() => new(_stream, _store, _candles, [_telegram, _email], Options, _time, NullLogger<ShockWatcher>.Instance);
+    private ShockWatchOptions _options = Options;
+
+    private ShockWatcher NewWatcher() => new(_stream, _store, _candles, [_telegram, _email], _options, _time, NullLogger<ShockWatcher>.Instance);
 
     private Task Run() => Task.Run(() => NewWatcher().RunAsync(Symbols, _stop.Token), Ct);
 
@@ -76,14 +78,75 @@ public class ShockWatcherTests
         var listener = await SubscribedAsync();
 
         Quiet(listener, 0, 200, second => Price(second, at: 150, jump: 0.01m));
-        await WaitForAsync(() => _telegram.Sent.Count > 0 && _email.Sent.Count > 0 && _store.Saved.Count > 0, "the alert");
+        await WaitForAsync(() => _telegram.Sent.Count > 0 && _email.Sent.Count > 0 && _store.Saved.Count > 1, "the alert, and the gradual check's");
 
         var message = Assert.Single(_telegram.Sent);
-        Assert.StartsWith("ALARM: BTCUSDT rose 1.", message.Title);   // the jump is 1 %, plus a little wobble
+        Assert.StartsWith("BTCUSDT +1.", message.Title);   // the jump is 1 %, plus a little wobble
+        Assert.StartsWith("🟢⬆️ <b>BTCUSDT</b>", message.Html);
         Assert.EndsWith("% in 10 s", message.Title);
         Assert.Equal(message, Assert.Single(_email.Sent));
-        var saved = Assert.Single(_store.Saved);
-        Assert.Equal((7, AlertLevelEnum.Alarm, EventDirectionEnum.Up), (saved.SymbolListingId, saved.Level, saved.Direction));
+
+        // A jump is seen by both checks, and both are kept; only the first is told, the symbol being kept quiet after it.
+        var saved = Assert.Single(_store.Saved, a => a.RuleVersion == Options.SuddenVersion);
+        Assert.Equal((7, AlertLevelEnum.Attention, EventDirectionEnum.Up), (saved.SymbolListingId, saved.Level, saved.Direction));
+        Assert.Single(_store.Saved, a => a.RuleVersion == Options.GradualVersion);
+        await StopAsync(run);
+    }
+
+    // ---- how much is told ----------------------------------------------------------------------------------------------------
+
+    private const int FallAt = 560;
+
+    /// <summary>A jump up that is told, and a fall a few minutes later that is another alert of the same symbol.</summary>
+    private static decimal JumpThenFall(int second) => Price(second, at: 150, jump: 0.01m) * (second >= FallAt ? 0.98m : 1m);
+
+    [Fact]
+    public async Task AnotherAlertOfTheSameSymbolWhileItIsKeptQuietIsStoredButNotTold()
+    {
+        var run = Run();
+        var listener = await SubscribedAsync();
+
+        Quiet(listener, 0, 200, JumpThenFall);
+        await WaitForAsync(() => _telegram.Sent.Count == 1, "the first alert");
+        Quiet(listener, 200, 700, JumpThenFall);
+        await WaitForAsync(() => _store.Saved.Count(a => a.Direction == EventDirectionEnum.Down) > 0, "the fall, stored");
+
+        // Both are kept; only the first was told.
+        Assert.Equal(1, _telegram.Sent.Count);
+        Assert.Contains(_store.Saved, a => a.Direction == EventDirectionEnum.Up);
+        Assert.Contains(_store.Saved, a => a.Direction == EventDirectionEnum.Down);
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task AnAlertAfterTheQuietTimeIsToldAgain()
+    {
+        _options = Options with { SilenceAfterMessage = TimeSpan.FromSeconds(30) };
+        var run = Run();
+        var listener = await SubscribedAsync();
+
+        Quiet(listener, 0, 200, JumpThenFall);
+        await WaitForAsync(() => _telegram.Sent.Count == 1, "the first alert");
+        await PassAsync(40);   // more than the quiet time
+        Quiet(listener, 200, 700, JumpThenFall);
+        await WaitForAsync(() => _telegram.Sent.Count == 2, "the second alert");
+
+        Assert.StartsWith("BTCUSDT +", _telegram.Sent[0].Title);
+        Assert.StartsWith("BTCUSDT -", _telegram.Sent[1].Title);
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task TheEndOfAnAlertIsStoredButNeverTold()
+    {
+        var run = Run();
+        var listener = await SubscribedAsync();
+
+        Quiet(listener, 0, 500, second => Price(second, at: 150, jump: 0.01m));
+        await WaitForAsync(() => _store.Saved.Count(a => a.RuleVersion == Options.SuddenVersion) >= 2, "the start and the end of the alert");
+
+        Assert.Single(_telegram.Sent);
+        Assert.Equal(2, _store.Saved.Count(a => a.RuleVersion == Options.SuddenVersion));
         await StopAsync(run);
     }
 
@@ -104,6 +167,7 @@ public class ShockWatcherTests
     [Fact]
     public async Task AStoreThatFailsDoesNotStopTheWatch()
     {
+        _options = Options with { SilenceAfterMessage = TimeSpan.Zero };   // so that the second alert is told too
         _store.Throws = true;
         var run = Run();
         var listener = await SubscribedAsync();
@@ -113,7 +177,7 @@ public class ShockWatcherTests
 
         // The watch still judges: a fall later is told as well.
         Quiet(listener, 200, 600, second => Price(second, at: 150, jump: 0.01m) * (second >= 560 ? 0.98m : 1m));
-        await WaitForAsync(() => _telegram.Sent.Any(m => m.Title.Contains("fell")), "the second alert");
+        await WaitForAsync(() => _telegram.Sent.Any(m => m.Title.Contains(" -")), "the second alert");
         await StopAsync(run);
     }
 
@@ -213,7 +277,7 @@ public class ShockWatcherTests
         await StopAsync(run);
     }
 
-    private static bool IsWarmingUp(Application.Notifications.Alert message) => message.Title.StartsWith("Watch is warming up");
+    private static bool IsWarmingUp(Application.Notifications.Alert message) => message.Title.EndsWith(" warming up");
 
     [Fact]
     public async Task WithMinuteCandlesStoredItJudgesFromTheFirstSecondsNotAfterAnHour()
@@ -225,7 +289,7 @@ public class ShockWatcherTests
         Quiet(listener, 0, 60, second => Price(second, at: 30, jump: 0.01m));
         await WaitForAsync(() => _telegram.Sent.Count > 0, "the alert");
 
-        Assert.StartsWith("ALARM: BTCUSDT rose", Assert.Single(_telegram.Sent).Title);
+        Assert.StartsWith("BTCUSDT +", Assert.Single(_telegram.Sent).Title);
         Assert.Equal("binance_futures_btcusdt_1m", _candles.LastRead!.Value.TableName);
         await StopAsync(run);
     }
@@ -242,7 +306,7 @@ public class ShockWatcherTests
         await PassAsync(3);
 
         var message = Assert.Single(_telegram.Sent);
-        Assert.Equal("Watch is warming up: BTCUSDT", message.Title);
+        Assert.Equal("BTCUSDT warming up", message.Title);
         Assert.Contains("no recent 1 minute candles", message.Body, StringComparison.OrdinalIgnoreCase);
         await StopAsync(run);
     }
@@ -272,7 +336,7 @@ public class ShockWatcherTests
         var listener = await SubscribedAsync();
 
         Quiet(listener, 0, 200, second => Price(second, at: 150, jump: 0.01m));
-        await WaitForAsync(() => _telegram.Sent.Any(m => m.Title.StartsWith("ALARM")), "the alert");
+        await WaitForAsync(() => _telegram.Sent.Any(m => m.Title.StartsWith("BTCUSDT +")), "the alert");
         Assert.Single(_telegram.Sent, IsWarmingUp);
         await StopAsync(run);
     }
