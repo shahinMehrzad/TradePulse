@@ -2,7 +2,7 @@ namespace Domain.ValueObjects;
 
 /// <summary>
 /// What the receiver allows from one strategy. The receiver holds these, not the sender: a sender can ask for something stricter
-/// (<see cref="PaperSignal.ValidUntil"/>) but never looser.
+/// (<see cref="TradeSignal.ValidUntil"/>) but never looser.
 /// </summary>
 /// <param name="MaxSignalAge">How long after its candle closed a signal is still taken (S1 holds trades for days, a faster strategy wants seconds).</param>
 /// <param name="MaxMoveOfStopDistance">
@@ -12,14 +12,14 @@ namespace Domain.ValueObjects;
 /// </param>
 /// <param name="MaxOpenPerSymbol">How many trades of this strategy may be open on one symbol; <c>null</c> = no limit (overlap is allowed on purpose, it is a test).</param>
 /// <param name="MaxLeverage">A guard against a typo in the sender, not a trading rule.</param>
-public sealed record PaperStrategySettings(
+public sealed record SignalStrategySettings(
     bool Enabled,
     TimeSpan MaxSignalAge,
     decimal MaxMoveOfStopDistance,
     int? MaxOpenPerSymbol,
     decimal MaxLeverage)
 {
-    public static PaperStrategySettings Default { get; } = new(
+    public static SignalStrategySettings Default { get; } = new(
         Enabled: true,
         MaxSignalAge: TimeSpan.FromMinutes(60),
         MaxMoveOfStopDistance: 0.25m,

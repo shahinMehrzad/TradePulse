@@ -8,10 +8,10 @@ namespace Domain.ValueObjects;
 /// <para>
 /// <paramref name="CandleOpenTime"/> is the open time of the CLOSED candle that produced the signal, so a signal that arrives at
 /// 08:00:02 carries 04:00 for a 4h candle; <paramref name="CandleCloseTime"/> is that time plus the time frame (08:00). The signal id
-/// is built from the open time (<see cref="Domain.Services.PaperSignalId"/>), and a signal's age is counted from the close time.
+/// is built from the open time (<see cref="Domain.Services.SignalId"/>), and a signal's age is counted from the close time.
 /// </para>
 /// </summary>
-public sealed record PaperSignal(
+public sealed record TradeSignal(
     string SignalId,
     string Strategy,
     MarketTypeEnum Market,

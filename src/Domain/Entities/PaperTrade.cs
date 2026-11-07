@@ -48,7 +48,7 @@ public class PaperTrade
 
     private PaperTrade() { }
 
-    public static PaperTrade Open(PaperSignal signal, decimal entryPrice, DateTime openedAt, int openTradesAtEntry)
+    public static PaperTrade Open(TradeSignal signal, decimal entryPrice, DateTime openedAt, int openTradesAtEntry)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(entryPrice);
         ArgumentOutOfRangeException.ThrowIfNegative(openTradesAtEntry);

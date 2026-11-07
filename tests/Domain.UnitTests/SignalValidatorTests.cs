@@ -4,12 +4,12 @@ using Domain.ValueObjects;
 
 namespace Domain.UnitTests;
 
-public class PaperSignalValidatorTests
+public class SignalValidatorTests
 {
-    private static readonly PaperStrategySettings Settings = PaperStrategySettings.Default;
+    private static readonly SignalStrategySettings Settings = SignalStrategySettings.Default;
 
-    private static SignalRejectionEnum? Check(PaperSignal signal, decimal livePrice = 100, DateTime? now = null, PaperStrategySettings? settings = null, int open = 0) =>
-        PaperSignalValidator.Validate(signal, settings ?? Settings, livePrice, now ?? PaperTestData.Now, open);
+    private static SignalRejectionEnum? Check(TradeSignal signal, decimal livePrice = 100, DateTime? now = null, SignalStrategySettings? settings = null, int open = 0) =>
+        SignalValidator.Validate(signal, settings ?? Settings, livePrice, now ?? PaperTestData.Now, open);
 
     [Fact]
     public void ALongAtItsOwnPriceIsTaken() => Assert.Null(Check(PaperTestData.Long()));
@@ -35,7 +35,7 @@ public class PaperSignalValidatorTests
     {
         // The mistake the contract rules out: reading "candle time" as the time the candle closed.
         var signal = PaperTestData.Long();
-        var closeBased = PaperSignalId.Build("S1", "BTC/USDT", TimeFrameEnum._4H, PaperTestData.CandleClose, PositionSideEnum.Long);
+        var closeBased = SignalId.Build("S1", "BTC/USDT", TimeFrameEnum._4H, PaperTestData.CandleClose, PositionSideEnum.Long);
 
         Assert.Equal(SignalRejectionEnum.SignalIdMismatch, Check(signal with { SignalId = closeBased }));
     }
@@ -79,12 +79,12 @@ public class PaperSignalValidatorTests
 
     [Fact]
     public void ACandleThatClosesWithinTheClockSkewIsTaken() =>
-        Assert.Null(Check(PaperTestData.Long(), now: PaperTestData.CandleClose - PaperSignalValidator.ClockSkew));
+        Assert.Null(Check(PaperTestData.Long(), now: PaperTestData.CandleClose - SignalValidator.ClockSkew));
 
     [Fact]
     public void ACandleThatClosesBeyondTheClockSkewIsRefused() =>
         Assert.Equal(SignalRejectionEnum.SignalFromTheFuture,
-            Check(PaperTestData.Long(), now: PaperTestData.CandleClose - PaperSignalValidator.ClockSkew - TimeSpan.FromSeconds(1)));
+            Check(PaperTestData.Long(), now: PaperTestData.CandleClose - SignalValidator.ClockSkew - TimeSpan.FromSeconds(1)));
 
     [Fact]
     public void ASignalIsTakenUpToItsValidUntil() =>

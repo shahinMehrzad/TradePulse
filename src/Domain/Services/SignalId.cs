@@ -9,7 +9,7 @@ namespace Domain.Services;
 /// same five facts, and the receiver refuses a signal whose id differs: if each side read "candle open time" its own way, a repeated
 /// signal would get a different id and be taken twice.
 /// </summary>
-public static class PaperSignalId
+public static class SignalId
 {
     public static string Build(string strategy, string symbol, TimeFrameEnum timeFrame, DateTime candleOpenTime, PositionSideEnum side) =>
         string.Create(CultureInfo.InvariantCulture,
