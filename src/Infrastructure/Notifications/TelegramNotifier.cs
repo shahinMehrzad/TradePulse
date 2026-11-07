@@ -31,9 +31,9 @@ public sealed class TelegramNotifier(HttpClient http, IOptions<AlertsOptions> op
     }
 
     /// <summary>What went wrong with a request to Telegram, or null when it was accepted.</summary>
-    private sealed record Failure(System.Net.HttpStatusCode StatusCode, string? Reason)
+    private sealed record Failure(System.Net.HttpStatusCode StatusCode, string? Reason, TimeSpan? RetryAfter = null)
     {
-        public NotificationException ToException() => new($"Telegram answered {(int)StatusCode}{(Reason is null ? "" : $": {Reason}")}");
+        public NotificationException ToException() => new($"Telegram answered {(int)StatusCode}{(Reason is null ? "" : $": {Reason}")}", RetryAfter);
     }
 
     private async Task<Failure?> PostAsync(object payload, CancellationToken cancellationToken)
@@ -57,7 +57,42 @@ public sealed class TelegramNotifier(HttpClient http, IOptions<AlertsOptions> op
             if (response.IsSuccessStatusCode)
                 return null;
 
-            return new Failure(response.StatusCode, await ReasonAsync(response, settings.Telegram.BotToken, cancellationToken));
+            // The body is read once: the reason and, for a 429, how long Telegram asks us to wait.
+            var body = await ReadBodyAsync(response, cancellationToken);
+            return new Failure(response.StatusCode, ReasonOf(body, settings.Telegram.BotToken), RetryAfterOf(body));
+        }
+    }
+
+    private static async Task<string?> ReadBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Telegram's <c>parameters.retry_after</c> (seconds) of a "Too Many Requests" answer, or null.</summary>
+    private static TimeSpan? RetryAfterOf(string? body)
+    {
+        if (body is null)
+            return null;
+
+        try
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(body);
+            return json.RootElement.TryGetProperty("parameters", out var parameters)
+                && parameters.TryGetProperty("retry_after", out var seconds)
+                && seconds.TryGetInt32(out var value) && value > 0
+                    ? TimeSpan.FromSeconds(value)
+                    : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
         }
     }
 
@@ -66,11 +101,14 @@ public sealed class TelegramNotifier(HttpClient http, IOptions<AlertsOptions> op
     /// chat id or token is told apart without guessing. It is a short sentence about the request and never holds the token; should it
     /// ever, the token is blanked. Null when there is nothing usable.
     /// </summary>
-    private static async Task<string?> ReasonAsync(HttpResponseMessage response, string token, CancellationToken cancellationToken)
+    private static string? ReasonOf(string? responseBody, string token)
     {
+        if (responseBody is null)
+            return null;
+
         try
         {
-            using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            using var body = System.Text.Json.JsonDocument.Parse(responseBody);
             if (!body.RootElement.TryGetProperty("description", out var description) || description.GetString() is not { Length: > 0 } text)
                 return null;
 

@@ -232,6 +232,37 @@ public class ShockWatcherTests
     }
 
     [Fact]
+    public async Task AMessageRefusedAsTooManyRequestsIsSentAgainAfterTheWaitTelegramAsksFor()
+    {
+        _telegram.RetryAfterOnce = TimeSpan.FromSeconds(12);
+        var run = Run();
+        var listener = await SubscribedAsync();
+
+        listener.OnConnectionLost();
+        await PassAsync(17);                               // blind: the first send is refused
+        Assert.Empty(_telegram.Sent);
+
+        await PassAsync(14);                               // the 12 s it asked for, and a second more
+        await WaitForAsync(() => _telegram.Sent.Count == 1, "the blind message, sent again");
+        Assert.Equal("Watch is blind", _telegram.Sent[0].Title);
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task AWaitLongerThanTheLimitIsNotWaitedFor()
+    {
+        _telegram.RetryAfterOnce = TimeSpan.FromMinutes(10);
+        var run = Run();
+        var listener = await SubscribedAsync();
+
+        listener.OnConnectionLost();
+        await PassAsync(100);
+
+        Assert.Empty(_telegram.Sent);                      // dropped, as before; the next message is not held up for ten minutes
+        await StopAsync(run);
+    }
+
+    [Fact]
     public async Task AShortDropThatIsBackBeforeTheBlindTimeIsNotMentioned()
     {
         var run = Run();
