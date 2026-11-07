@@ -15,6 +15,16 @@ internal static class ShockTape
         WindowSeconds = 10,
         BaselineSeconds = 100,
         MergeGap = TimeSpan.FromSeconds(60),
+        ConnectionDigestWindow = TimeSpan.Zero,   // told at once; the digest tests use OptionsWithDigest
+    };
+
+    /// <summary><see cref="Options"/> with the production wait before blind / restored symbols are told together.</summary>
+    public static readonly ShockWatchOptions OptionsWithDigest = new()
+    {
+        WindowSeconds = Options.WindowSeconds,
+        BaselineSeconds = Options.BaselineSeconds,
+        MergeGap = Options.MergeGap,
+        ConnectionDigestWindow = TimeSpan.FromSeconds(5),
     };
 
     /// <summary>The last hour of 1 minute candles as the collector would have stored it, ending <paramref name="endsMinutesBefore"/> minutes before <see cref="Start"/>.</summary>

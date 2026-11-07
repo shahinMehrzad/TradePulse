@@ -78,7 +78,7 @@ public sealed class ShockWatcher(
         var changes = new ConcurrentQueue<Change>();
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var sender = Task.Run(() => SendAsync(outgoing.Reader));
+        var sender = Task.Run(() => SendAsync(outgoing.Reader, linked.Token));
         try
         {
             var following = FollowListAsync(source, trades.Writer, changes, outgoing.Writer, linked.Token);
@@ -266,6 +266,8 @@ public sealed class ShockWatcher(
         var tracked = new Dictionary<string, Tracked>(StringComparer.OrdinalIgnoreCase);
         var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var signals = new List<ShockSignal>();
+        var blind = new ConnectionDigest();
+        var restored = new ConnectionDigest();
 
         using var ticker = new PeriodicTimer(TimeSpan.FromSeconds(1), time);
         var ticks = Task.Run(async () =>
@@ -297,8 +299,11 @@ public sealed class ShockWatcher(
                 {
                     one.Detector.Advance(now.UtcDateTime, signals);
                     Dispatch(one, signals, outgoing);
-                    CheckConnection(one, now, outgoing);
+                    CheckConnection(one, now, blind, restored);
                 }
+
+                blind.Flush(now, options.ConnectionDigestWindow, outgoing, ShockAlertMessage.Blind);
+                restored.Flush(now, options.ConnectionDigestWindow, outgoing, ShockAlertMessage.Restored);
             }
         }
 
@@ -322,7 +327,38 @@ public sealed class ShockWatcher(
         }
     }
 
-    private void CheckConnection(Tracked one, DateTimeOffset now, ChannelWriter<Outgoing> outgoing)
+    /// <summary>
+    /// Symbols that went blind, or came back, are collected here and told together: one outage drops most of them within seconds of each
+    /// other. Used by the judging task only.
+    /// </summary>
+    private sealed class ConnectionDigest
+    {
+        private readonly List<string> _names = [];
+        private DateTimeOffset _since;
+        private TimeSpan _longest;
+
+        public void Add(string name, DateTimeOffset now, TimeSpan offlineFor)
+        {
+            if (_names.Count == 0)
+                _since = now;
+
+            _names.Add(name);
+            _longest = offlineFor > _longest ? offlineFor : _longest;
+        }
+
+        /// <summary>Tells what was collected once the first of it has waited <paramref name="window"/> (a zero window tells it at once).</summary>
+        public void Flush(DateTimeOffset now, TimeSpan window, ChannelWriter<Outgoing> outgoing, Func<string, TimeSpan, Alert> message)
+        {
+            if (_names.Count == 0 || now - _since < window)
+                return;
+
+            outgoing.TryWrite(new Outgoing(message(string.Join(", ", _names), _longest), null));
+            _names.Clear();
+            _longest = TimeSpan.Zero;
+        }
+    }
+
+    private void CheckConnection(Tracked one, DateTimeOffset now, ConnectionDigest blind, ConnectionDigest restored)
     {
         var name = one.Symbol.Symbol.Value;
 
@@ -333,13 +369,13 @@ public sealed class ShockWatcher(
         if (one.Listener.LostAt is { } lostAt && !one.BlindTold && now - lostAt >= options.BlindAfter)
         {
             one.BlindTold = true;
-            outgoing.TryWrite(new Outgoing(ShockAlertMessage.Blind(name, now - lostAt), null));
+            blind.Add(name, now, now - lostAt);
         }
 
         if (one.Listener.TakeRestored() is { } offlineFor && one.BlindTold)
         {
             one.BlindTold = false;
-            outgoing.TryWrite(new Outgoing(ShockAlertMessage.Restored(name, offlineFor), null));
+            restored.Add(name, now, offlineFor);
         }
     }
 
@@ -375,27 +411,14 @@ public sealed class ShockWatcher(
 
     // ---- the task that sends -----------------------------------------------------------------------------------------------
 
-    private async Task SendAsync(ChannelReader<Outgoing> reader)
+    private async Task SendAsync(ChannelReader<Outgoing> reader, CancellationToken stop)
     {
         await foreach (var message in reader.ReadAllAsync())
         {
-            using var timeout = new CancellationTokenSource(SendTimeout, time);
-
             if (message.Message is { } words)
             {
                 foreach (var notifier in notifiers)
-                {
-                    try
-                    {
-                        await notifier.SendAsync(words, timeout.Token);
-                    }
-                    catch (Exception ex)
-                    {
-                        // A NotificationException is written to be told ("Telegram answered 400: group chat was upgraded ..."): the notifier
-                        // keeps its token out of it. Any other exception may carry the address it called, so only its kind is logged.
-                        logger.LogWarning("{Notifier} could not send an alert ({Error})", notifier.Name, FailureText(ex));
-                    }
-                }
+                    await SendOneAsync(notifier, words, stop);
             }
 
             if (message.ToStore is null)
@@ -403,11 +426,50 @@ public sealed class ShockWatcher(
 
             try
             {
+                using var timeout = new CancellationTokenSource(SendTimeout, time);
                 await store.SaveAsync(message.ToStore, timeout.Token);
             }
             catch (Exception ex)
             {
                 logger.LogWarning("An alert could not be stored ({Error})", ex.GetType().Name);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends to one channel. When the channel says it is asked too often and for how long to wait, the message waits that long (up to
+    /// <see cref="ShockWatchOptions.MaxRateLimitWait"/>) and goes once more: dropping it silently is how a "back again" message was lost.
+    /// Only this sending task waits; the trades are not held up.
+    /// </summary>
+    private async Task SendOneAsync(INotifier notifier, Alert words, CancellationToken stop)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                using var timeout = new CancellationTokenSource(SendTimeout, time);
+                await notifier.SendAsync(words, timeout.Token);
+                return;
+            }
+            catch (NotificationException ex) when (attempt == 0 && ex.RetryAfter is { } wait && wait <= options.MaxRateLimitWait)
+            {
+                logger.LogInformation("{Notifier} asked to wait {Seconds:0} s; the message is sent again after that", notifier.Name, wait.TotalSeconds);
+
+                try
+                {
+                    await Task.Delay(wait + TimeSpan.FromSeconds(1), time, stop);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;   // the watch is stopping; it does not wait for a rate limit
+                }
+            }
+            catch (Exception ex)
+            {
+                // A NotificationException is written to be told ("Telegram answered 400: group chat was upgraded ..."): the notifier
+                // keeps its token out of it. Any other exception may carry the address it called, so only its kind is logged.
+                logger.LogWarning("{Notifier} could not send an alert ({Error})", notifier.Name, FailureText(ex));
+                return;
             }
         }
     }

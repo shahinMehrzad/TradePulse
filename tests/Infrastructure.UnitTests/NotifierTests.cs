@@ -121,6 +121,19 @@ public class NotifierTests
     }
 
     [Fact]
+    public async Task TooManyRequestsCarriesTheWaitTelegramAsksFor()
+    {
+        const string Limit = """{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 12","parameters":{"retry_after":12}}""";
+        var handler = new RecordingHandler(Refusal(HttpStatusCode.TooManyRequests, Limit));
+
+        var error = await Assert.ThrowsAsync<NotificationException>(() => Telegram(handler).SendAsync(Formatted, Ct));
+
+        Assert.Equal(TimeSpan.FromSeconds(12), error.RetryAfter);
+        Assert.Equal("Telegram answered 429: Too Many Requests: retry after 12", error.Message);
+        Assert.Single(handler.Bodies);                 // not sent again as plain text: that would only be refused too
+    }
+
+    [Fact]
     public async Task IfThePlainTextIsRefusedToo()
     {
         const string Chat = """{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}""";

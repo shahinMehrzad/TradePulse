@@ -29,8 +29,8 @@ public class ShockWatcherListTests
     // A symbol normally has the last hour of 1 minute candles stored (the collector keeps them), so the watch starts from them.
     public ShockWatcherListTests() => _candles.Stored.AddRange(MinuteCandles());
 
-    private Task Run() => Task.Run(() =>
-        new ShockWatcher(_stream, _store, _candles, [_telegram], Options, _time, NullLogger<ShockWatcher>.Instance).RunAsync(_source, _stop.Token), Ct);
+    private Task Run(ShockWatchOptions? options = null) => Task.Run(() =>
+        new ShockWatcher(_stream, _store, _candles, [_telegram], options ?? Options, _time, NullLogger<ShockWatcher>.Instance).RunAsync(_source, _stop.Token), Ct);
 
     private async Task StopAsync(Task run)
     {
@@ -100,6 +100,37 @@ public class ShockWatcherListTests
         Assert.StartsWith("ETHUSDT +", Assert.Single(_telegram.Sent).Title);
         Assert.All(_store.Saved, a => Assert.Equal(3, a.SymbolListingId));   // a jump is seen by both checks, and both are kept
         Assert.Equal(2, _stream.SubscribeCalls);                  // bitcoin was not subscribed again
+        await StopAsync(run);
+    }
+
+    [Fact]
+    public async Task AnOutageThatDropsSeveralSymbolsIsOneBlindMessageAndOneRestoredMessage()
+    {
+        _source.Symbols.Add(BtcWatched);
+        _source.Symbols.Add(EthWatched);
+        var run = Run(OptionsWithDigest);
+        var btc = await ListenerOfAsync("BTCUSDT");
+        var eth = await ListenerOfAsync("ETHUSDT");
+
+        btc.OnConnectionLost();
+        eth.OnConnectionLost();
+        await PassAsync(25);                                   // blind after 15 s, told together once the digest window is over
+
+        var blind = Assert.Single(_telegram.Sent);
+        Assert.Equal("Watch is blind", blind.Title);
+        Assert.Contains("BTCUSDT", blind.Body);
+        Assert.Contains("ETHUSDT", blind.Body);
+
+        btc.OnConnectionRestored(TimeSpan.FromSeconds(40));
+        eth.OnConnectionRestored(TimeSpan.FromSeconds(42));
+        await PassAsync(8);
+
+        Assert.Equal(2, _telegram.Sent.Count);
+        var back = _telegram.Sent[1];
+        Assert.Equal("Watch sees the market again", back.Title);
+        Assert.Contains("BTCUSDT", back.Body);
+        Assert.Contains("ETHUSDT", back.Body);
+        Assert.Contains("42 s", back.Body);                    // the longest of the two
         await StopAsync(run);
     }
 
