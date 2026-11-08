@@ -91,6 +91,7 @@ public class SignalsDbContext(DbContextOptions<SignalsDbContext> options) : DbCo
             e.Property(x => x.OpenedAt).HasColumnType("timestamp").HasConversion(UtcToTimestamp);
             e.Property(x => x.ExpiresAt).HasColumnType("timestamp").HasConversion(UtcToTimestamp);
             e.Property(x => x.ClosedAt).HasColumnType("timestamp").HasConversion(UtcToTimestamp);
+            e.Property(x => x.LastCheckedAt).HasColumnType("timestamp").HasConversion(UtcToTimestamp);
 
             // A trade belongs to the signal that made it, and one signal makes at most one trade.
             e.HasOne<ReceivedSignal>().WithMany().HasForeignKey(x => x.SignalId).HasPrincipalKey(x => x.SignalId).OnDelete(DeleteBehavior.Restrict);

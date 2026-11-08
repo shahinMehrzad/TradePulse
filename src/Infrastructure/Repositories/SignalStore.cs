@@ -71,6 +71,21 @@ public class SignalStore(SignalsDbContext context) : ISignalStore
         return changed == 1;
     }
 
+    public async Task SaveProgressAsync(IReadOnlyCollection<PaperTrade> openTrades, CancellationToken cancellationToken)
+    {
+        // A handful of rows once a minute: one statement each is simpler than anything cleverer. The condition keeps a trade that ended
+        // meanwhile (closed by another caller) from being touched.
+        foreach (var trade in openTrades)
+        {
+            await context.PaperTrades
+                .Where(t => t.Id == trade.Id && t.Status == PaperTradeStatusEnum.Open)
+                .ExecuteUpdateAsync(set => set
+                    .SetProperty(t => t.LastCheckedAt, trade.LastCheckedAt)
+                    .SetProperty(t => t.BestPrice, trade.BestPrice)
+                    .SetProperty(t => t.WorstPrice, trade.WorstPrice), cancellationToken);
+        }
+    }
+
     public async Task<bool> AttachMessageAsync(int tradeId, long chatId, int messageId, CancellationToken cancellationToken) =>
         await context.PaperTrades
             .Where(t => t.Id == tradeId && t.TelegramMessageId == null)

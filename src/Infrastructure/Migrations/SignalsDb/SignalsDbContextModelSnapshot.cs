@@ -66,6 +66,9 @@ namespace Infrastructure.Migrations.SignalsDb
                         .HasPrecision(18, 8)
                         .HasColumnType("numeric(18,8)");
 
+                    b.Property<DateTime?>("LastCheckedAt")
+                        .HasColumnType("timestamp");
+
                     b.Property<decimal>("Leverage")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)");

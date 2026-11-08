@@ -51,6 +51,13 @@ public class PaperTrade
     public decimal BestPrice { get; private set; }
     public decimal WorstPrice { get; private set; }
 
+    /// <summary>
+    /// Up to when the path of the price has been looked at, without a gap: set at the entry, moved forward by every price and every
+    /// candle that was seen, and saved from time to time. After a restart the stretch from here to now is what has to be looked at again.
+    /// <c>null</c> only in a row from before this existed (the entry is taken then).
+    /// </summary>
+    public DateTime? LastCheckedAt { get; private set; }
+
     /// <summary>The message of this trade in the chat, so it can be edited when the trade ends. Both are set together, once.</summary>
     public long? TelegramChatId { get; private set; }
     public int? TelegramMessageId { get; private set; }
@@ -92,6 +99,7 @@ public class PaperTrade
             BestPrice = entryPrice,
             WorstPrice = entryPrice,
             OpenedAt = openedAt,
+            LastCheckedAt = openedAt,
             OpenTradesAtEntry = openTradesAtEntry,
             ExpiresAt = signal.MaxDuration is { } duration ? openedAt + duration : null,
             Status = PaperTradeStatusEnum.Open,
@@ -170,6 +178,13 @@ public class PaperTrade
     {
         Close(status, price, at);
         return CandleVerdictEnum.Closed;
+    }
+
+    /// <summary>The path of the price is known, without a gap, up to <paramref name="at"/>. Never moves back; ignored once the trade has ended.</summary>
+    public void MarkChecked(DateTime at)
+    {
+        if (IsOpen && (LastCheckedAt is null || at > LastCheckedAt))
+            LastCheckedAt = at;
     }
 
     /// <summary>Remembers where the message of this trade is, so the same message can be edited later. A trade has one message.</summary>

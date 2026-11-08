@@ -26,6 +26,12 @@ public interface ISignalStore
     /// </summary>
     Task<bool> CloseAsync(PaperTrade trade, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Saves how far each open trade has been followed (<see cref="PaperTrade.LastCheckedAt"/>) and its best and worst price so far, so a restart
+    /// only has to look again at what came after. Trades that ended meanwhile are left as they are.
+    /// </summary>
+    Task SaveProgressAsync(IReadOnlyCollection<PaperTrade> openTrades, CancellationToken cancellationToken);
+
     /// <summary>Remembers the message of a trade. False when it already has one.</summary>
     Task<bool> AttachMessageAsync(int tradeId, long chatId, int messageId, CancellationToken cancellationToken);
 
