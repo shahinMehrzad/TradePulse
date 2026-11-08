@@ -26,6 +26,20 @@ networks:
 
 The network is created when the signal service first starts. You can reach nothing else of the stack through it.
 
+## Reading the stored candles (optional)
+
+If the sender wants the candles that this stack collects, it reads them from the database. It does not need to ask Binance, whose request limit is per IP address and is
+shared with the collector on the same server.
+
+| What | Value |
+| --- | --- |
+| Network | `tradepulse-data` (`external: true` in your compose file, like `tradepulse-signals`). Only Postgres is on it, and it has no way out to the internet. |
+| Host, port | `tradepulse-postgres`, `5432` |
+| Database | `tradepulse` |
+| User | `tp_signal_source`, with the password the operator gives you. It can only `SELECT` the candle, funding and other data tables, nothing else. |
+
+Table names are built like `binance_futures_btcusdt_4h` (lower case: exchange, market, symbol without the slash, time frame). Times are `timestamp` columns, always UTC.
+
 ## One request
 
 `POST /api/signals`, a JSON body, three headers.
@@ -36,6 +50,9 @@ The network is created when the signal service first starts. You can reach nothi
 | `X-Signature` | `HMAC-SHA256(secret, X-Timestamp + "." + body)` as lower-case hexadecimal (a leading `sha256=` is accepted). Sign exactly the bytes you send. |
 | `Idempotency-Key` | The `signalId` of the body. |
 | `Content-Type` | `application/json` |
+
+**The key is the secret's text as UTF-8 bytes.** A 64-character hex secret is used as 64 characters, not decoded into 32 bytes (in .NET: `Encoding.UTF8.GetBytes(secret)`,
+never `Convert.FromHexString(secret)`). The message is `X-Timestamp + "." + body`, also UTF-8.
 
 Python:
 
@@ -89,6 +106,10 @@ def send(url, secret, signal):
 | `validUntil` | The last moment you still want the signal taken. After it the service refuses it and you must stop retrying. |
 | `maxHours` | Optional. The trade ends at its current price after this many hours if it reached neither level. `null`: it stays open until it does. |
 
+Prices are taken as sent: the service does not round them to a tick size (a paper trade does not need it). Round to a sensible number of digits anyway (up to 8 decimals).
+**`leverage` is a ceiling, not a recommendation.** Send the highest leverage at which the stop you set still comes before the liquidation, and `1` when no leverage is safe.
+The service shows it in the chat as `Max leverage: ×5 (the highest allowed, not a recommendation)`. It is accepted from 1 up to a guard the operator sets per strategy (at most 125).
+
 Every time carries a zone (`Z`). Unknown fields are ignored. The body is at most 16 KB.
 
 ## The answers, and what to do
@@ -102,6 +123,8 @@ Every time carries a zone (`Z`). Unknown fields are ignored. The body is at most
 | `401` | No or wrong signature, or your clock is more than five minutes off. | Check the secret and the clock. Stop and alert. |
 | `413` | Body over 16 KB. | Fix the sender. |
 | `503` | Could not be judged now (no fresh price of the symbol, or the database is down). `Retry-After` gives seconds. | Send again after that, with a **new** timestamp and signature and the same body and key, until `validUntil`. |
+| `429`, `500`, `502`, `504` | Not from the service's own logic (a proxy or a fault). | Treat like `503`: send again with a new signature and a growing delay until `validUntil`. |
+| Any other `4xx` | Unknown. | Do not retry. Log it and alert. |
 | Timeout or network error | You do not know if it arrived. | Send again the same way. A repeat is safe: you get `200 duplicate` if it did arrive. |
 
 The reasons of a `422`, in the order they are checked: `StrategyDisabled`, `UnsupportedMarket`, `SignalIdMismatch`, `InconsistentCandleTimes`, `LeverageOutOfRange`,

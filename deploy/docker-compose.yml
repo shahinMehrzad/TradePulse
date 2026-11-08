@@ -34,6 +34,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # The stack's own network, and "data-net": the way for the program that makes signals to read the stored candles (role tp_signal_source,
+    # read-only). Under the name tradepulse-postgres there, so it cannot be mistaken for a database of that program's own.
+    networks:
+      default: {}
+      data-net:
+        aliases: [tradepulse-postgres]
     restart: unless-stopped
 
   # Creates and migrates the schema, so it is the first of the three to be healthy.
@@ -289,6 +295,11 @@ networks:
   # reach the webhook (http://signals:8080) and nothing else of the stack.
   signals-net:
     name: tradepulse-signals
+  # Postgres and whoever reads the stored candles (the program that makes the signals joins it from its own compose file as an external network).
+  # "internal": it gives no way out to the internet. The database itself is protected by the roles: tp_signal_source can only read the data tables.
+  data-net:
+    name: tradepulse-data
+    internal: true
 
 volumes:
   pgdata:

@@ -30,22 +30,26 @@ Why paper trades first: they are the strategy's own record, with no slippage, no
    ```bash
    docker compose -f deploy/docker-compose.yml exec -T postgres psql -U postgres -d tradepulse -c \
      "INSERT INTO config.signal_strategy_configurations (\"Strategy\", \"IsEnabled\", \"MaxSignalAgeSeconds\", \"MaxMoveOfStopDistance\", \"MaxOpenPerSymbol\", \"MaxLeverage\") \
-      VALUES ('S1', true, 3600, 0.25, NULL, 20)"
+      VALUES ('S1', true, NULL, 0.25, NULL, 125)"
    ```
 
    | Column | Meaning |
    | --- | --- |
    | `IsEnabled` | Switch a strategy off with `false`; its row stays. |
-   | `MaxSignalAgeSeconds` | How long after its candle closed a signal is still taken (1 s to 7 days). |
+   | `MaxSignalAgeSeconds` | How long after its candle closed a signal is still taken (1 s to 7 days). `NULL` = no limit: the sender's own `validUntil` decides. |
    | `MaxMoveOfStopDistance` | How far the live price may be from the signal's price, as a part of the distance from that price to the stop (0.25 = a quarter; more than 0, at most 1). A fixed percent would not do: the levels are absolute, so any move changes the risk to reward. |
    | `MaxOpenPerSymbol` | How many trades of the strategy may be open on one symbol; `NULL` = no limit (overlap is allowed). |
-   | `MaxLeverage` | A guard against a typo in the sender (1 to 125). |
+   | `MaxLeverage` | Always set (1 to 125). The leverage in a signal is a **ceiling, not a recommendation** (see "The paper trade"); this is only a guard against a typo in the sender. |
 
    The limits live in the database, so they change without a deploy, and the sender can only ask for something stricter (`validUntil`).
 6. **The symbols.** The service follows every Futures symbol listed on the panel's Symbols page, and every symbol with an open trade. A signal for a symbol that is not listed
    is refused (`UnknownSymbol`). A new symbol needs listing only: its candles do not have to be collected.
 7. **The sender** joins the network `tradepulse-signals` (declared `external` in its own compose file) and calls `http://signals:8080/api/signals`. It sees nothing else of the stack.
    From this machine: `http://127.0.0.1:8090` (`SIGNALS_PORT`). There is no public port, and none should be made.
+8. **Reading the stored candles (optional).** A sender that wants the candles collected here reads them from Postgres instead of asking Binance (Binance's request limit is per IP, and the
+   collector lives on the same one). Set `SIGNAL_SOURCE_DB_PASSWORD`, run `./deploy/main-db-roles.sh`, and the sender joins the network `tradepulse-data` (also `external`) and connects to
+   `tradepulse-postgres:5432`, database `tradepulse`, user `tp_signal_source`. That role can only `SELECT` the data tables. The network is `internal` (no way out) and only Postgres is on it.
+   Never give the sender `SIGNALS_DB_PASSWORD`: that role belongs to the service and writes the schema of the signals.
 
 ## The webhook
 
@@ -133,6 +137,8 @@ transaction, so there is never a taken signal without a trade.
   the trade stays open and it asks again. The progress of every open trade (how far it has been followed, its best and worst price) is saved every minute, so a restart only looks at what came after.
 - **Result:** the move with its leverage, the taker fee of entering and leaving (0.04 % per side), and the funding paid or received while it was open, asked of Binance for the trade's own stretch.
   A trade that ended in the first two minutes after a full hour waits until the funding settlement it may have paid is published. Costs are shown as what they did to the result.
+- **Leverage is a ceiling.** The `leverage` of a signal is the highest one at which the stop still comes before the liquidation (1 when the sender sees no safe leverage). The messages say so:
+  `Max leverage: ×5 (the highest allowed, not a recommendation)` and `Result at the max leverage (×5)`.
 - **The message** (English): `Paper trade opened`, then `Target hit` / `Stop hit` / `Expired` with entry, exit, duration, result with leverage, exchange fees, funding, exchange cost (fees + funding),
   net result, the worst drawdown on the way and R. A message that was deleted is replaced by a new one with the whole story. When the chat says "too many requests" the service waits.
 
