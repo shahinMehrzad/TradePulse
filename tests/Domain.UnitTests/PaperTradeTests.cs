@@ -156,7 +156,7 @@ public class PaperTradeTests
         trade.Observe(104m, At(5));
 
         Assert.False(trade.Observe(90m, At(6)));
-        Assert.False(trade.ObserveCandle(At(6), 90m, 95m, 85m, 90m, At(7)));
+        Assert.Equal(CandleVerdictEnum.StillOpen, trade.ObserveCandle(At(6), 90m, 95m, 85m, 90m, At(7)));
 
         Assert.Equal(PaperTradeStatusEnum.TakeProfit, trade.Status);
         Assert.Equal(104m, trade.ExitPrice);
@@ -213,8 +213,11 @@ public class PaperTradeTests
 
     // ---- candles (catching up after the collector was not watching) --------------------------------------------------------
 
-    private static bool Candle(PaperTrade trade, int openMinutes, decimal open, decimal high, decimal low, decimal close) =>
+    private static CandleVerdictEnum Verdict(PaperTrade trade, int openMinutes, decimal open, decimal high, decimal low, decimal close) =>
         trade.ObserveCandle(At(openMinutes), open, high, low, close, At(openMinutes + 1));
+
+    private static bool Candle(PaperTrade trade, int openMinutes, decimal open, decimal high, decimal low, decimal close) =>
+        Verdict(trade, openMinutes, open, high, low, close) == CandleVerdictEnum.Closed;
 
     [Fact]
     public void ObserveCandle_ACandleInsideTheLevelsLeavesTheTradeOpen()
@@ -250,23 +253,63 @@ public class PaperTradeTests
     }
 
     [Fact]
-    public void ObserveCandle_WhenBothLevelsAreInsideTheCandleTheStopWins()
+    public void ObserveCandle_WhenBothLevelsAreInsideTheCandleNothingIsAssumedAndTheTradeIsLeftAlone()
     {
         var trade = PaperTestData.Opened(PaperTestData.Long());
 
-        Candle(trade, 1, 100m, 105m, 97m, 101m);
+        Assert.Equal(CandleVerdictEnum.NeedsTrades, Verdict(trade, 1, 100m, 105m, 97m, 101m));
 
-        Assert.Equal(PaperTradeStatusEnum.StopLoss, trade.Status);
+        Assert.True(trade.IsOpen);
+        Assert.Null(trade.ExitPrice);
+        Assert.Equal((100m, 100m), (trade.BestPrice, trade.WorstPrice));   // what the candle's extremes did is not known yet
     }
 
     [Fact]
-    public void ObserveCandle_WhenBothLevelsAreInsideTheCandleTheStopWinsForAShortToo()
+    public void ObserveCandle_WhenBothLevelsAreInsideTheCandleOfAShortNothingIsAssumedEither()
     {
         var trade = PaperTestData.Opened(PaperTestData.Short());
 
-        Candle(trade, 1, 100m, 103m, 95m, 100m);
+        Assert.Equal(CandleVerdictEnum.NeedsTrades, Verdict(trade, 1, 100m, 103m, 95m, 100m));
+
+        Assert.True(trade.IsOpen);
+    }
+
+    [Fact]
+    public void ReplayingTheTradesOfThatCandleInOrderGivesTheCertainAnswer_TargetFirst()
+    {
+        var trade = PaperTestData.Opened(PaperTestData.Long());
+        Verdict(trade, 1, 100m, 105m, 97m, 101m);
+
+        foreach (var price in new[] { 100.4m, 103m, 104.2m, 99m, 97m })
+            trade.Observe(price, At(1).AddSeconds(10));
+
+        Assert.Equal(PaperTradeStatusEnum.TakeProfit, trade.Status);
+        Assert.Equal(104.2m, trade.ExitPrice);
+    }
+
+    [Fact]
+    public void ReplayingTheTradesOfThatCandleInOrderGivesTheCertainAnswer_StopFirst()
+    {
+        var trade = PaperTestData.Opened(PaperTestData.Long());
+        Verdict(trade, 1, 100m, 105m, 97m, 101m);
+
+        foreach (var price in new[] { 99.5m, 97.8m, 99m, 105m })
+            trade.Observe(price, At(1).AddSeconds(10));
 
         Assert.Equal(PaperTradeStatusEnum.StopLoss, trade.Status);
+        Assert.Equal(97.8m, trade.ExitPrice);
+    }
+
+    [Fact]
+    public void ObserveCandle_AGapThroughOneLevelIsCertainEvenIfTheCandleAlsoReachedTheOther()
+    {
+        var trade = PaperTestData.Opened(PaperTestData.Long());
+
+        // It opened below the stop: that price was the first one, so the stop came first whatever followed.
+        Assert.Equal(CandleVerdictEnum.Closed, Verdict(trade, 1, 97m, 105m, 96m, 101m));
+
+        Assert.Equal(PaperTradeStatusEnum.StopLoss, trade.Status);
+        Assert.Equal(97m, trade.ExitPrice);
     }
 
     [Fact]

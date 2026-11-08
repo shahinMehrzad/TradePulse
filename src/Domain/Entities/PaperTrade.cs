@@ -124,29 +124,48 @@ public class PaperTrade
     /// A finished candle, for the time the collector was not watching ticks (a restart, a dropped socket). Only candles that opened at or after
     /// the entry count: the one that holds the entry cannot tell what came before it.
     /// <para>
-    /// Inside a candle the order of events is unknown. When both the target and the stop lie inside it, the stop wins (the bad outcome is
-    /// the one assumed). A candle that opens beyond a level closes the trade at that opening price, like a gap. The close time is the
-    /// candle's close: the real moment is somewhere inside it.
+    /// Nothing is guessed. A candle that opens beyond a level closes the trade at that opening price, like a gap: the first price already was
+    /// past it, so the order is known. A candle that reaches only one level closes it there. A candle that reaches both while opening between
+    /// them cannot say which came first: <see cref="CandleVerdictEnum.NeedsTrades"/>, the trade is left untouched, and the caller replays the
+    /// trades of that stretch through <see cref="Observe"/>. The close time is the candle's close: the real moment is somewhere inside it.
     /// </para>
     /// </summary>
-    /// <returns>True when this candle closed the trade.</returns>
-    public bool ObserveCandle(DateTime openTime, decimal open, decimal high, decimal low, decimal close, DateTime closeTime)
+    public CandleVerdictEnum ObserveCandle(DateTime openTime, decimal open, decimal high, decimal low, decimal close, DateTime closeTime)
     {
         if (!IsOpen || openTime < OpenedAt)
-            return false;
+            return CandleVerdictEnum.StillOpen;
 
         var isLong = Side == PositionSideEnum.Long;
+        var stopReached = isLong ? low <= StopLoss : high >= StopLoss;
+        var targetReached = isLong ? high >= TakeProfit : low <= TakeProfit;
 
-        if (isLong ? low <= StopLoss : high >= StopLoss)
-            return Close(PaperTradeStatusEnum.StopLoss, isLong ? Math.Min(open, StopLoss) : Math.Max(open, StopLoss), closeTime);
+        if (isLong ? open <= StopLoss : open >= StopLoss)
+            return Ended(PaperTradeStatusEnum.StopLoss, open, closeTime);
 
-        if (isLong ? high >= TakeProfit : low <= TakeProfit)
-            return Close(PaperTradeStatusEnum.TakeProfit, isLong ? Math.Max(open, TakeProfit) : Math.Min(open, TakeProfit), closeTime);
+        if (isLong ? open >= TakeProfit : open <= TakeProfit)
+            return Ended(PaperTradeStatusEnum.TakeProfit, open, closeTime);
+
+        if (stopReached && targetReached)
+            return CandleVerdictEnum.NeedsTrades;
+
+        if (stopReached)
+            return Ended(PaperTradeStatusEnum.StopLoss, StopLoss, closeTime);
+
+        if (targetReached)
+            return Ended(PaperTradeStatusEnum.TakeProfit, TakeProfit, closeTime);
 
         Track(high);
         Track(low);
 
-        return ExpiresAt is { } expires && closeTime >= expires && Close(PaperTradeStatusEnum.Expired, close, closeTime);
+        return ExpiresAt is { } expires && closeTime >= expires
+            ? Ended(PaperTradeStatusEnum.Expired, close, closeTime)
+            : CandleVerdictEnum.StillOpen;
+    }
+
+    private CandleVerdictEnum Ended(PaperTradeStatusEnum status, decimal price, DateTime at)
+    {
+        Close(status, price, at);
+        return CandleVerdictEnum.Closed;
     }
 
     /// <summary>Remembers where the message of this trade is, so the same message can be edited later. A trade has one message.</summary>
