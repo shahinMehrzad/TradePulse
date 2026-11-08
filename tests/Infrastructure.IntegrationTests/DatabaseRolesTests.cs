@@ -23,6 +23,8 @@ public class DatabaseRolesTests(PostgresFixture postgres)
     private const string TraderPassword = "TraderPasswordForTests0123456";
     private const string WatchPassword = "WatchPasswordForTests01234567";
     private const string MonitorPassword = "MonitorPasswordForTests012345";
+    private const string SignalsPassword = "SignalsPasswordForTests0123456";
+    private const string SignalSourcePassword = "SignalSourcePasswordForTests012";
 
     private const string CandleTable = "binance_futures_btcusdt_1h";
     private const string LiquidationTable = "binance_futures_btcusdt_liquidation";
@@ -30,14 +32,14 @@ public class DatabaseRolesTests(PostgresFixture postgres)
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <param name="monitorPassword">Empty: the script makes no tp_monitor (monitoring is optional).</param>
-    private static string RolesScript(string monitorPassword = MonitorPassword)
+    private static string RolesScript(string monitorPassword = MonitorPassword, string signalsPassword = SignalsPassword, string signalSourcePassword = SignalSourcePassword)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "DotNetTradePulse.slnx")))
             directory = directory.Parent;
         var sql = Path.Combine(directory?.FullName ?? throw new FileNotFoundException("The solution folder was not found."), "deploy", "main-db-roles.sql");
 
-        return $"\\set api_password '{ApiPassword}'\n\\set collector_password '{CollectorPassword}'\n\\set trader_password '{TraderPassword}'\n\\set watch_password '{WatchPassword}'\n\\set monitor_password '{monitorPassword}'\n{File.ReadAllText(sql)}";
+        return $"\\set api_password '{ApiPassword}'\n\\set collector_password '{CollectorPassword}'\n\\set trader_password '{TraderPassword}'\n\\set watch_password '{WatchPassword}'\n\\set monitor_password '{monitorPassword}'\n\\set signals_password '{signalsPassword}'\n\\set signal_source_password '{signalSourcePassword}'\n{File.ReadAllText(sql)}";
     }
 
     private async Task<string> NewDatabaseAsync()
@@ -54,7 +56,8 @@ public class DatabaseRolesTests(PostgresFixture postgres)
         {
             Database = database,
             Username = role,
-            Password = role switch { "tp_api" => ApiPassword, "tp_collector" => CollectorPassword, "tp_watch" => WatchPassword, "tp_monitor" => MonitorPassword, _ => TraderPassword }
+            Password = role switch { "tp_api" => ApiPassword, "tp_collector" => CollectorPassword, "tp_watch" => WatchPassword, "tp_monitor" => MonitorPassword,
+                "tp_signals" => SignalsPassword, "tp_signal_source" => SignalSourcePassword, _ => TraderPassword }
         }.ConnectionString;
 
     private static DbContextOptions<T> Options<T>(string connectionString, string historySchema) where T : DbContext =>
@@ -68,6 +71,8 @@ public class DatabaseRolesTests(PostgresFixture postgres)
             await config.Database.MigrateAsync(Ct);
         await using (var research = new ResearchDbContext(Options<ResearchDbContext>(connectionString, "research")))
             await research.Database.MigrateAsync(Ct);
+        await using (var signals = new SignalsDbContext(Options<SignalsDbContext>(connectionString, "signals")))
+            await signals.Database.MigrateAsync(Ct);
     }
 
     private static async Task AssertDeniedAsync(string connectionString, string sql)
@@ -361,13 +366,123 @@ public class DatabaseRolesTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task TheSignalServiceDoesItsWholeJobAsItsOwnRoleAndDeletesNothing()
+    {
+        var database = await OlderServerAsync();
+        await postgres.RunPsqlAsync(database, RolesScript());
+        var asSignals = ConnectionString(database, "tp_signals");
+
+        // Its whole job, with the program's own store: record a signal (once), open the trade, count, load it again, attach the message, end it.
+        await using (var context = new SignalsDbContext(Options<SignalsDbContext>(asSignals, "signals")))
+        {
+            var store = new SignalStore(context);
+            var signal = SignalTestData.Signal();
+
+            Assert.True(await store.RecordAsync(ReceivedSignal.From(signal, SignalTestData.Now, null), Ct));
+            Assert.False(await store.RecordAsync(ReceivedSignal.From(signal, SignalTestData.Now, null), Ct));
+
+            var trade = PaperTrade.Open(signal, 100m, SignalTestData.Now, openTradesAtEntry: 0);
+            await store.AddTradeAsync(trade, Ct);
+            Assert.Equal(1, await store.CountOpenAsync(ExchangeEnum.Binance, "S1", "BTC/USDT", Ct));
+            Assert.True(await store.AttachMessageAsync(trade.Id, -1001234567890, 42, Ct));
+
+            var loaded = Assert.Single(await store.GetOpenTradesAsync(Ct));
+            loaded.Observe(104.5m, SignalTestData.Now.AddHours(1));
+            loaded.Settle([]);
+            Assert.True(await store.CloseAsync(loaded, Ct));
+            Assert.False(await store.CloseAsync(loaded, Ct));
+
+            await store.AddEventAsync(new SignalEvent { SignalId = signal.SignalId, At = SignalTestData.Now, Kind = SignalEventKindEnum.Closed }, Ct);
+        }
+
+        // What it reads besides: the symbol lists, the strategies it takes signals from and the stored candles.
+        Assert.True(await ScalarAsync<long>(asSignals, "SELECT count(*) FROM config.exchange_symbols") > 0);
+        await using (var config = new ConfigDbContext(Options<ConfigDbContext>(asSignals, "config")))
+            Assert.Empty(await new SignalStrategyConfigurationRepository(config).GetAll(Ct));
+        Assert.Equal(5, (await new CandleRepository(asSignals).GetLatestAsync(CandleTable, 10, null, Ct)).Count);
+
+        // And what it must not be able to do: delete or rewrite what it stored, see the rest, change the configuration or the data.
+        await AssertDeniedAsync(asSignals, "DELETE FROM signals.paper_trades");
+        await AssertDeniedAsync(asSignals, "DELETE FROM signals.signals");
+        await AssertDeniedAsync(asSignals, "DELETE FROM signals.events");
+        await AssertDeniedAsync(asSignals, "UPDATE signals.signals SET \"Strategy\" = 'x'");
+        await AssertDeniedAsync(asSignals, "UPDATE signals.events SET \"Detail\" = 'x'");
+        await AssertDeniedAsync(asSignals, "UPDATE config.signal_strategy_configurations SET \"IsEnabled\" = true");
+        await AssertDeniedAsync(asSignals, "DELETE FROM config.signal_strategy_configurations");
+        await AssertDeniedAsync(asSignals, "CREATE TABLE signals.evil (x int)");
+        await AssertDeniedAsync(asSignals, "CREATE TABLE public.evil (x int)");
+        await AssertDeniedAsync(asSignals, "SELECT * FROM auth.users");
+        await AssertDeniedAsync(asSignals, "SELECT * FROM auth.user_tokens");
+        await AssertDeniedAsync(asSignals, "SELECT * FROM config.audit_log");
+        await AssertDeniedAsync(asSignals, "SELECT * FROM config.traded_symbols");
+        await AssertDeniedAsync(asSignals, "SELECT * FROM research.market_events");
+        await AssertDeniedAsync(asSignals, "UPDATE config.candle_worker_configurations SET \"CollectOpenInterest\" = true");
+        await AssertDeniedAsync(asSignals, $"DELETE FROM {CandleTable}");
+    }
+
+    [Fact]
+    public async Task TheSignalSourceReadsTheDataTablesAndNothingElse()
+    {
+        var database = await OlderServerAsync();
+        await postgres.RunPsqlAsync(database, RolesScript());
+        var asSource = ConnectionString(database, "tp_signal_source");
+
+        Assert.Equal(5, (await new CandleRepository(asSource).GetLatestAsync(CandleTable, 10, null, Ct)).Count);
+
+        // Not a signal, not a trade, not a setting, not an account; and no way to change a candle or make a table.
+        await AssertDeniedAsync(asSource, "SELECT * FROM signals.signals");
+        await AssertDeniedAsync(asSource, "SELECT * FROM signals.paper_trades");
+        await AssertDeniedAsync(asSource, "SELECT * FROM signals.events");
+        await AssertDeniedAsync(asSource, "INSERT INTO signals.events (\"SignalId\", \"At\", \"Kind\") VALUES ('x', now(), 1)");
+        await AssertDeniedAsync(asSource, "SELECT * FROM config.exchange_symbols");
+        await AssertDeniedAsync(asSource, "SELECT * FROM config.signal_strategy_configurations");
+        await AssertDeniedAsync(asSource, "SELECT * FROM config.candle_worker_configurations");
+        await AssertDeniedAsync(asSource, "SELECT * FROM config.audit_log");
+        await AssertDeniedAsync(asSource, "SELECT * FROM auth.users");
+        await AssertDeniedAsync(asSource, "SELECT * FROM research.shock_alerts");
+        await AssertDeniedAsync(asSource, $"DELETE FROM {CandleTable}");
+        await AssertDeniedAsync(asSource, $"INSERT INTO {CandleTable} (open_time) VALUES (now())");
+        await AssertDeniedAsync(asSource, "CREATE TABLE public.evil (x int)");
+        await AssertDeniedAsync(asSource, "CREATE SCHEMA evil");
+    }
+
+    [Fact]
+    public async Task TheSignalRolesAreOptionalAndTheScriptRunsWithoutTheirPasswords()
+    {
+        var database = await NewDatabaseAsync();
+
+        // The script is run by a server that has not set the two passwords: no error, and the other roles are made as always.
+        await postgres.RunPsqlAsync(database, RolesScript(signalsPassword: "", signalSourcePassword: ""));
+        await MigrateAllAsync(ConnectionString(database, "tp_api"));
+        await postgres.RunPsqlAsync(database, RolesScript(signalsPassword: "", signalSourcePassword: ""));
+
+        Assert.Equal(1, await ScalarAsync<int>(ConnectionString(database, "tp_api"), "SELECT 1"));
+        Assert.Equal(0, await ScalarAsync<long>(ConnectionString(database, "tp_api"), "SELECT count(*) FROM signals.signals"));
+    }
+
+    [Fact]
+    public async Task TheSignalRolesGetTheirGrantsOnTablesTheApiMadeAfterThem()
+    {
+        var database = await NewDatabaseAsync();
+
+        await postgres.RunPsqlAsync(database, RolesScript());           // the signal tables do not exist yet: skipped with a notice
+        await MigrateAllAsync(ConnectionString(database, "tp_api"));
+        await postgres.RunPsqlAsync(database, RolesScript());           // the grants on what the API just made
+
+        await using var connection = new NpgsqlConnection(ConnectionString(database, "tp_signals"));
+        await connection.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO signals.events (\"SignalId\", \"At\", \"Kind\") VALUES ('x', now() at time zone 'utc', 1)", cancellationToken: Ct));
+        Assert.Equal("tp_api", await ScalarAsync<string>(ConnectionString(database), "SELECT tableowner FROM pg_tables WHERE tablename = 'paper_trades'"));
+    }
+
+    [Fact]
     public async Task NoProgramRoleIsMoreThanAPlainLogin()
     {
         var database = await NewDatabaseAsync();
         await postgres.RunPsqlAsync(database, RolesScript());
 
         var privileged = await ScalarAsync<long>(ConnectionString(database),
-            "SELECT count(*) FROM pg_roles WHERE rolname IN ('tp_api','tp_collector','tp_trader','tp_watch','tp_monitor') AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR NOT rolcanlogin)");
+            "SELECT count(*) FROM pg_roles WHERE rolname IN ('tp_api','tp_collector','tp_trader','tp_watch','tp_monitor','tp_signals','tp_signal_source') AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR NOT rolcanlogin)");
         Assert.Equal(0, privileged);
     }
 }

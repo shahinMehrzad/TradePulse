@@ -54,6 +54,10 @@ A [Tabler](https://tabler.io)-based panel that only administrators can enter (th
 
 A separate console (`src/Research`, its own process, its own `research` schema) works on what the collector stored: it finds the minutes in which the price moved far more than it usually does and what the price did next, and it **watches the live trades** and sends a Telegram/email message within seconds of a sudden move (attention or alarm), saying what happened and never what to do. Details and the figures behind the thresholds: [docs/research.md](docs/research.md).
 
+### Signals and paper trades
+
+A program outside this repository that makes trading signals sends each one to a signed webhook (`src/SignalReceiver`, compose profile `signals`). The service judges it, opens a **paper trade** (a virtual position, no exchange involved) when it is worth taking, follows the live price until the target or the stop is reached (a stretch nobody watched is replayed from Binance's own candles and trades, never guessed), works out the result with the real fees and funding, and tells a Telegram chat: a message when the trade opens, the same message edited when it ends, and a short reply under it. The contract, the setup and the limits: [docs/signals.md](docs/signals.md).
+
 ### More documentation
 
 | Page | What is in it |
@@ -62,6 +66,7 @@ A separate console (`src/Research`, its own process, its own `research` schema) 
 | [docs/health.md](docs/health.md) | `GET /health` and every check behind it. |
 | [docs/alerts.md](docs/alerts.md) | Telegram and email messages when a check changes or a new gap appears. |
 | [docs/research.md](docs/research.md) | The research console: market events and the live watch for sudden price moves. |
+| [docs/signals.md](docs/signals.md) | The signal service: the webhook contract, the paper trades, their Telegram messages, how to set it up. |
 | [deploy/README.md](deploy/README.md) | Running Postgres, the API, the panel and the collector with Docker. |
 | [docs/configuration.md](docs/configuration.md) | Choosing candle series, open interest, funding rate and liquidations in the database. |
 | [docs/api.md](docs/api.md) | The candle read API, the dashboard API, login and refresh tokens. |
