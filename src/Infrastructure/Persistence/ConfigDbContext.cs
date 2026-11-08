@@ -148,7 +148,7 @@ public class ConfigDbContext : DbContext
             e.ToTable("signal_strategy_configurations", "config", t =>
             {
                 // The same rules as SignalStrategyConfiguration.FindProblem: the database says no to what the application would.
-                t.HasCheckConstraint("CK_signal_strategy_configurations_age", "\"MaxSignalAgeSeconds\" BETWEEN 1 AND 604800");
+                t.HasCheckConstraint("CK_signal_strategy_configurations_age", "\"MaxSignalAgeSeconds\" IS NULL OR \"MaxSignalAgeSeconds\" BETWEEN 1 AND 604800");
                 t.HasCheckConstraint("CK_signal_strategy_configurations_move", "\"MaxMoveOfStopDistance\" > 0 AND \"MaxMoveOfStopDistance\" <= 1");
                 t.HasCheckConstraint("CK_signal_strategy_configurations_open", "\"MaxOpenPerSymbol\" IS NULL OR \"MaxOpenPerSymbol\" >= 1");
                 t.HasCheckConstraint("CK_signal_strategy_configurations_leverage", "\"MaxLeverage\" BETWEEN 1 AND 125");

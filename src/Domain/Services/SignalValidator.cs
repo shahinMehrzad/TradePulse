@@ -45,7 +45,7 @@ public static class SignalValidator
         if (now > signal.ValidUntil)
             return SignalRejectionEnum.SignalExpired;
 
-        if (now - signal.CandleCloseTime > settings.MaxSignalAge)
+        if (settings.MaxSignalAge is { } maxAge && now - signal.CandleCloseTime > maxAge)
             return SignalRejectionEnum.SignalTooOld;
 
         if (IsPastALevel(signal, livePrice))

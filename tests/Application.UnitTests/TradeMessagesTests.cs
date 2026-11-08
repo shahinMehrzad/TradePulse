@@ -25,7 +25,8 @@ public class TradeMessagesTests
 
         Assert.Equal("""
             🟢 <b>Paper trade opened · BTC/USDT</b>
-            Side: <b>Long ×5</b>
+            Side: <b>Long</b>
+            Max leverage: ×5 (the highest allowed, not a recommendation)
             Entry: 100.0
             Target: 104.0 (+4.00%)
             Stop: 98.0 (−2.00%)
@@ -40,7 +41,8 @@ public class TradeMessagesTests
     {
         var text = TradeMessages.Opened(Short());
 
-        Assert.Contains("Side: <b>Short ×5</b>", text);
+        Assert.Contains("Side: <b>Short</b>", text);
+        Assert.Contains("Max leverage: ×5 (the highest allowed, not a recommendation)", text);
         Assert.Contains("Target: 96.0 (−4.00%)", text);
         Assert.Contains("Stop: 102.0 (+2.00%)", text);
     }
@@ -57,7 +59,7 @@ public class TradeMessagesTests
 
         Assert.Contains("Entry: 0.4505", text);
         Assert.Contains("Target: 0.46215", text);
-        Assert.Contains("Side: <b>Long ×2.5</b>", text);
+        Assert.Contains("Max leverage: ×2.5", text);
         Assert.Contains("Risk to reward: 1 : 1.1", text);
     }
 
@@ -83,13 +85,14 @@ public class TradeMessagesTests
 
         Assert.Equal("""
             ✅ <b>Target hit · BTC/USDT</b>
-            Side: <b>Long ×5</b>
+            Side: <b>Long</b>
+            Max leverage: ×5 (the highest allowed, not a recommendation)
             Entry: 100.0
             Exit: 104.5
             Closed: 2026-11-07 13:15 UTC
             Duration: 5h 15m
             ────────
-            Result with leverage: +22.50%
+            Result at the max leverage (×5): +22.50%
             Exchange fees (entry and exit): −0.41%
             Funding: −0.05%
             Exchange cost (fees + funding): −0.46%
@@ -111,7 +114,7 @@ public class TradeMessagesTests
 
         Assert.Contains("🛑 <b>Stop hit · BTC/USDT</b>", text);
         Assert.Contains("Duration: 2d 3h 0m", text);
-        Assert.Contains("Result with leverage: −12.50%", text);
+        Assert.Contains("Result at the max leverage (×5): −12.50%", text);
         Assert.Contains("Funding: 0.00%", text);
         Assert.Contains("<b>Net result: −12.90%</b>", text);   // 12.5 and 0.40 of fees
         Assert.Contains("R: −1.3", text);

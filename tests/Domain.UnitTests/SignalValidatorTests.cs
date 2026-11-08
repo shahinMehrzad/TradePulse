@@ -114,6 +114,16 @@ public class SignalValidatorTests
         Assert.Equal(SignalRejectionEnum.SignalTooOld,
             Check(PaperTestData.Long(), settings: Settings with { MaxSignalAge = TimeSpan.FromSeconds(1) }));
 
+    [Fact]
+    public void WithoutAnAgeLimitOnlyTheSendersOwnValidUntilDecides()
+    {
+        var settings = Settings with { MaxSignalAge = null };
+        var old = PaperTestData.Long() with { ValidUntil = PaperTestData.CandleClose.AddDays(30) };
+
+        Assert.Null(Check(old, settings: settings, now: PaperTestData.CandleClose.AddDays(20)));
+        Assert.Equal(SignalRejectionEnum.SignalExpired, Check(old, settings: settings, now: PaperTestData.CandleClose.AddDays(31)));
+    }
+
     public static TheoryData<decimal> LongPricesAtOrPastALevel => new() { 98m, 97m, 104m, 110m };
 
     [Theory]

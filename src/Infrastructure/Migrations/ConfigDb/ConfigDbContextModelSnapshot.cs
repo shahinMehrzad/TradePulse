@@ -215,7 +215,7 @@ namespace Infrastructure.Migrations.ConfigDb
                     b.Property<int?>("MaxOpenPerSymbol")
                         .HasColumnType("integer");
 
-                    b.Property<int>("MaxSignalAgeSeconds")
+                    b.Property<int?>("MaxSignalAgeSeconds")
                         .HasColumnType("integer");
 
                     b.Property<string>("Strategy")
@@ -230,7 +230,7 @@ namespace Infrastructure.Migrations.ConfigDb
 
                     b.ToTable("signal_strategy_configurations", "config", t =>
                         {
-                            t.HasCheckConstraint("CK_signal_strategy_configurations_age", "\"MaxSignalAgeSeconds\" BETWEEN 1 AND 604800");
+                            t.HasCheckConstraint("CK_signal_strategy_configurations_age", "\"MaxSignalAgeSeconds\" IS NULL OR \"MaxSignalAgeSeconds\" BETWEEN 1 AND 604800");
 
                             t.HasCheckConstraint("CK_signal_strategy_configurations_leverage", "\"MaxLeverage\" BETWEEN 1 AND 125");
 

@@ -17,7 +17,8 @@ public static class TradeMessages
     /// <summary>The message when the trade opens.</summary>
     public static string Opened(PaperTrade trade) => Lines(
         $"🟢 <b>Paper trade opened · {Text(trade.Symbol)}</b>",
-        $"Side: <b>{Side(trade)}</b>",
+        $"Side: <b>{trade.Side}</b>",
+            $"Max leverage: ×{Leverage(trade)} (the highest allowed, not a recommendation)",
         $"Entry: {Price(trade.EntryPrice)}",
         $"Target: {Price(trade.TakeProfit)} ({Percent(Move(trade.TakeProfit, trade.EntryPrice))})",
         $"Stop: {Price(trade.StopLoss)} ({Percent(Move(trade.StopLoss, trade.EntryPrice))})",
@@ -33,13 +34,14 @@ public static class TradeMessages
 
         return Lines(
             $"{Icon(trade.Status)} <b>{Outcome(trade.Status)} · {Text(trade.Symbol)}</b>",
-            $"Side: <b>{Side(trade)}</b>",
+            $"Side: <b>{trade.Side}</b>",
+            $"Max leverage: ×{Leverage(trade)} (the highest allowed, not a recommendation)",
             $"Entry: {Price(trade.EntryPrice)}",
             $"Exit: {Price(exit)}",
             $"Closed: {Time(closedAt, withDate: true)}",
             $"Duration: {Duration(closedAt - trade.OpenedAt)}",
             "────────",
-            $"Result with leverage: {Percent(gross)}",
+            $"Result at the max leverage (×{Leverage(trade)}): {Percent(gross)}",
             $"Exchange fees (entry and exit): {Percent(-fees)}",
             $"Funding: {Percent(-funding)}",
             $"Exchange cost (fees + funding): {Percent(cost)}",
@@ -65,7 +67,7 @@ public static class TradeMessages
 
     private static string Text(string value) => WebUtility.HtmlEncode(value);
 
-    private static string Side(PaperTrade trade) => $"{trade.Side} ×{trade.Leverage.ToString("0.##", Invariant)}";
+    private static string Leverage(PaperTrade trade) => trade.Leverage.ToString("0.##", Invariant);
 
     private static string Icon(PaperTradeStatusEnum status) => status switch
     {

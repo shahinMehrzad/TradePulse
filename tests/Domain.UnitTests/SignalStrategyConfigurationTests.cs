@@ -67,6 +67,16 @@ public class SignalStrategyConfigurationTests
     }
 
     [Fact]
+    public void NoAgeLimitIsAllowedAndMeansNoLimit()
+    {
+        var configuration = Valid();
+        configuration.MaxSignalAgeSeconds = null;
+
+        Assert.Null(configuration.FindProblem());
+        Assert.Null(configuration.ToSettings().MaxSignalAge);
+    }
+
+    [Fact]
     public void AMoveLimitOfZeroOrBelowIsAProblem()
     {
         var configuration = Valid();

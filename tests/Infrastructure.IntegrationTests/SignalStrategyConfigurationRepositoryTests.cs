@@ -145,6 +145,18 @@ public class SignalStrategyConfigurationRepositoryTests(PostgresFixture postgres
     }
 
     [Fact]
+    public async Task AStrategyWithoutAnAgeLimitIsStoredAndReadBack()
+    {
+        var options = await NewDatabaseAsync();
+        var configuration = S1();
+        configuration.MaxSignalAgeSeconds = null;
+        await NewRepository(options).Add(configuration, Ct);
+
+        var found = (await NewRepository(options).GetByStrategy("S1", Ct))!;
+        Assert.Null(found.MaxSignalAgeSeconds);
+    }
+
+    [Fact]
     public async Task TheNameOfAStrategyCannotBeChanged()
     {
         var options = await NewDatabaseAsync();

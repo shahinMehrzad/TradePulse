@@ -28,8 +28,8 @@ public class SignalStrategyConfiguration
 
     public bool IsEnabled { get; set; }
 
-    /// <summary>How long after its candle closed a signal is still taken, in seconds (<see cref="SignalStrategySettings.MaxSignalAge"/>).</summary>
-    public int MaxSignalAgeSeconds { get; set; }
+    /// <summary>How long after its candle closed a signal is still taken, in seconds (<see cref="SignalStrategySettings.MaxSignalAge"/>); <c>null</c>: no limit, the sender's own <c>validUntil</c> decides.</summary>
+    public int? MaxSignalAgeSeconds { get; set; }
 
     /// <summary>How far the live price may be from the signal's price, as a part of the distance from that price to the stop (<see cref="SignalStrategySettings.MaxMoveOfStopDistance"/>).</summary>
     public decimal MaxMoveOfStopDistance { get; set; }
@@ -37,6 +37,10 @@ public class SignalStrategyConfiguration
     /// <summary>How many trades of this strategy may be open on one symbol; <c>null</c>: no limit.</summary>
     public int? MaxOpenPerSymbol { get; set; }
 
+    /// <summary>
+    /// The highest leverage a signal of this strategy may carry. Always set (never <c>null</c>). The leverage in a signal is itself a ceiling, not a
+    /// recommendation: the highest one at which the stop still comes before the liquidation (1 when the sender sees no safe leverage).
+    /// </summary>
     public decimal MaxLeverage { get; set; }
 
     /// <summary>UTC. Stored as <c>timestamp</c> (no zone) like every other time column.</summary>
@@ -55,8 +59,8 @@ public class SignalStrategyConfiguration
         if (!IsValidName(Strategy))
             return $"The name of a strategy is 1 to {MaxNameLength} letters, digits, _ or -.";
 
-        if (MaxSignalAgeSeconds < 1 || MaxSignalAgeSeconds > (int)LongestAge.TotalSeconds)
-            return $"The age limit is 1 second to {LongestAge.TotalDays:0} days.";
+        if (MaxSignalAgeSeconds is { } age && (age < 1 || age > (int)LongestAge.TotalSeconds))
+            return $"The age limit is 1 second to {LongestAge.TotalDays:0} days, or empty for no limit.";
 
         if (MaxMoveOfStopDistance <= 0 || MaxMoveOfStopDistance > 1)
             return "The price move limit is a part of the stop distance: more than 0 and at most 1.";
@@ -71,5 +75,5 @@ public class SignalStrategyConfiguration
     }
 
     public SignalStrategySettings ToSettings() =>
-        new(IsEnabled, TimeSpan.FromSeconds(MaxSignalAgeSeconds), MaxMoveOfStopDistance, MaxOpenPerSymbol, MaxLeverage);
+        new(IsEnabled, MaxSignalAgeSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null, MaxMoveOfStopDistance, MaxOpenPerSymbol, MaxLeverage);
 }
