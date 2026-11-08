@@ -1,4 +1,5 @@
 using Application.Exchange;
+using Application.Notifications;
 using Application.Signals;
 using Domain.Entities;
 using Domain.Enums;
@@ -83,11 +84,152 @@ internal sealed class FakeSignalStore : ISignalStore
         lock (_lock) return Task.FromResult<IReadOnlyList<PaperTrade>>(_closed.Where(t => !_settled.Contains(t)).ToList());
     }
 
+    private readonly List<SignalEvent> _events = [];
+    private readonly Dictionary<int, (long ChatId, int MessageId)> _attached = [];
+    private readonly Dictionary<int, DateTime> _endsTold = [];
+
+    /// <summary>The log lines, in order.</summary>
+    public IReadOnlyList<SignalEvent> Events
+    {
+        get { lock (_lock) return _events.ToList(); }
+    }
+
+    public IReadOnlyDictionary<int, (long ChatId, int MessageId)> Attached
+    {
+        get { lock (_lock) return _attached.ToDictionary(p => p.Key, p => p.Value); }
+    }
+
+    public IReadOnlyDictionary<int, DateTime> EndsTold
+    {
+        get { lock (_lock) return _endsTold.ToDictionary(p => p.Key, p => p.Value); }
+    }
+
+    /// <summary>The next calls to write a log line fail (the database is busy).</summary>
+    public bool EventsFail { get; set; }
+
+    public Task<IReadOnlyList<PaperTrade>> GetOpenWithoutMessageAsync(CancellationToken cancellationToken)
+    {
+        lock (_lock) return Task.FromResult<IReadOnlyList<PaperTrade>>(Open.Where(t => t.IsOpen && !_attached.ContainsKey(t.Id) && t.TelegramMessageId is null).ToList());
+    }
+
+    public Task<IReadOnlyList<PaperTrade>> GetEndsToAnnounceAsync(CancellationToken cancellationToken)
+    {
+        lock (_lock) return Task.FromResult<IReadOnlyList<PaperTrade>>(_closed.Where(t => !_endsTold.ContainsKey(t.Id)).ToList());
+    }
+
+    public Task<bool> MarkEndAnnouncedAsync(int tradeId, DateTime at, CancellationToken cancellationToken)
+    {
+        lock (_lock) return Task.FromResult(_endsTold.TryAdd(tradeId, at));
+    }
+
+    public Task<bool> AttachMessageAsync(int tradeId, long chatId, int messageId, CancellationToken cancellationToken)
+    {
+        lock (_lock) return Task.FromResult(_attached.TryAdd(tradeId, (chatId, messageId)));
+    }
+
+    public Task AddEventAsync(SignalEvent signalEvent, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            if (EventsFail)
+                throw new InvalidOperationException("the database is busy");
+
+            _events.Add(signalEvent);
+            return Task.CompletedTask;
+        }
+    }
+
     public Task<bool> RecordAsync(ReceivedSignal signal, CancellationToken cancellationToken) => throw new NotSupportedException();
     public Task<int> CountOpenAsync(ExchangeEnum exchange, string strategy, string symbol, CancellationToken cancellationToken) => throw new NotSupportedException();
     public Task AddTradeAsync(PaperTrade trade, CancellationToken cancellationToken) => throw new NotSupportedException();
-    public Task<bool> AttachMessageAsync(int tradeId, long chatId, int messageId, CancellationToken cancellationToken) => throw new NotSupportedException();
-    public Task AddEventAsync(SignalEvent signalEvent, CancellationToken cancellationToken) => throw new NotSupportedException();
+}
+
+/// <summary>The chat of the paper trades, in memory.</summary>
+internal sealed class FakeTradeChat : ITradeChat
+{
+    private readonly object _lock = new();
+    private readonly List<(ChatMessage Message, string Text)> _sent = [];
+    private readonly List<(ChatMessage Message, string Text)> _edits = [];
+    private readonly List<(ChatMessage To, string Text)> _replies = [];
+    private int _nextId = 100;
+
+    /// <summary>The next sends fail as if the chat were unreachable.</summary>
+    public int SendFailures { get; set; }
+
+    /// <summary>The next call is refused as "too many requests" with this wait; the one after it works.</summary>
+    public TimeSpan? RetryAfterOnce { get; set; }
+
+    /// <summary>The message is gone from the chat (deleted): an edit says so.</summary>
+    public bool MessageGone { get; set; }
+
+    public IReadOnlyList<(ChatMessage Message, string Text)> Sent
+    {
+        get { lock (_lock) return _sent.ToList(); }
+    }
+
+    public IReadOnlyList<(ChatMessage Message, string Text)> Edits
+    {
+        get { lock (_lock) return _edits.ToList(); }
+    }
+
+    public IReadOnlyList<(ChatMessage To, string Text)> Replies
+    {
+        get { lock (_lock) return _replies.ToList(); }
+    }
+
+    public int Attempts { get; private set; }
+
+    public Task<ChatMessage> SendAsync(string html, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            Attempts++;
+            Refuse();
+            if (SendFailures > 0)
+            {
+                SendFailures--;
+                throw new NotificationException("Telegram could not be reached (ConnectionError)");
+            }
+
+            var message = new ChatMessage(-1001, _nextId++);
+            _sent.Add((message, html));
+            return Task.FromResult(message);
+        }
+    }
+
+    public Task<ChatMessage> ReplyAsync(ChatMessage to, string html, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            Attempts++;
+            Refuse();
+            _replies.Add((to, html));
+            return Task.FromResult(new ChatMessage(to.ChatId, _nextId++));
+        }
+    }
+
+    public Task<bool> EditAsync(ChatMessage message, string html, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            Attempts++;
+            Refuse();
+            if (MessageGone)
+                return Task.FromResult(false);
+
+            _edits.Add((message, html));
+            return Task.FromResult(true);
+        }
+    }
+
+    private void Refuse()
+    {
+        if (RetryAfterOnce is not { } wait)
+            return;
+
+        RetryAfterOnce = null;
+        throw new NotificationException("Telegram answered 429: Too Many Requests", wait);
+    }
 }
 
 /// <summary>The exchange's 1 minute candles, scripted.</summary>
@@ -251,17 +393,17 @@ internal static class SignalTestData
     public static readonly FollowedSymbol Eth = new(ExchangeEnum.Binance, MarketTypeEnum.Futures, "ETH/USDT", new ExchangeSymbol("ETHUSDT"));
 
     /// <summary>A long at 100: target 104, stop 98.</summary>
-    public static PaperTrade Long(DateTime? openedAt = null, string symbol = "BTC/USDT", int id = 1, DateTime? candleOpen = null) => Open(PositionSideEnum.Long, 98m, 104m, openedAt, symbol, id, candleOpen);
+    public static PaperTrade Long(DateTime? openedAt = null, string symbol = "BTC/USDT", int id = 1, DateTime? candleOpen = null, TimeSpan? maxDuration = null) => Open(PositionSideEnum.Long, 98m, 104m, openedAt, symbol, id, candleOpen, maxDuration);
 
     /// <summary>A short at 100: target 96, stop 102.</summary>
-    public static PaperTrade Short(DateTime? openedAt = null, string symbol = "BTC/USDT", int id = 1) => Open(PositionSideEnum.Short, 102m, 96m, openedAt, symbol, id, null);
+    public static PaperTrade Short(DateTime? openedAt = null, string symbol = "BTC/USDT", int id = 1) => Open(PositionSideEnum.Short, 102m, 96m, openedAt, symbol, id, null, null);
 
-    private static PaperTrade Open(PositionSideEnum side, decimal stop, decimal target, DateTime? openedAt, string symbol, int id, DateTime? candleOpen)
+    private static PaperTrade Open(PositionSideEnum side, decimal stop, decimal target, DateTime? openedAt, string symbol, int id, DateTime? candleOpen, TimeSpan? maxDuration)
     {
         var open = candleOpen ?? CandleOpen;
         var signal = new TradeSignal(
             SignalId.Build("S1", symbol, TimeFrameEnum._4H, open, side), "S1", MarketTypeEnum.Futures, symbol, side, 5m, target, stop, 100m,
-            TimeFrameEnum._4H, open, open.AddHours(4), open.AddHours(4).AddMinutes(45));
+            TimeFrameEnum._4H, open, open.AddHours(4), open.AddHours(4).AddMinutes(45), maxDuration);
         var trade = PaperTrade.Open(signal, 100m, openedAt ?? Opened, 0);
         typeof(PaperTrade).GetProperty(nameof(PaperTrade.Id))!.SetValue(trade, id);   // the database gives it; the fake store does not
         return trade;

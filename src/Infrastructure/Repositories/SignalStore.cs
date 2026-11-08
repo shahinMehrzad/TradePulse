@@ -87,6 +87,23 @@ public class SignalStore(SignalsDbContext context) : ISignalStore
             .OrderBy(t => t.ClosedAt)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<PaperTrade>> GetOpenWithoutMessageAsync(CancellationToken cancellationToken) =>
+        await context.PaperTrades.AsNoTracking()
+            .Where(t => t.Status == PaperTradeStatusEnum.Open && t.TelegramMessageId == null)
+            .OrderBy(t => t.Id)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<PaperTrade>> GetEndsToAnnounceAsync(CancellationToken cancellationToken) =>
+        await context.PaperTrades.AsNoTracking()
+            .Where(t => t.Status != PaperTradeStatusEnum.Open && t.EndAnnouncedAt == null)
+            .OrderBy(t => t.ClosedAt)
+            .ToListAsync(cancellationToken);
+
+    public async Task<bool> MarkEndAnnouncedAsync(int tradeId, DateTime at, CancellationToken cancellationToken) =>
+        await context.PaperTrades
+            .Where(t => t.Id == tradeId && t.Status != PaperTradeStatusEnum.Open && t.EndAnnouncedAt == null)
+            .ExecuteUpdateAsync(set => set.SetProperty(t => t.EndAnnouncedAt, at), cancellationToken) == 1;
+
     public async Task SaveProgressAsync(IReadOnlyCollection<PaperTrade> openTrades, CancellationToken cancellationToken)
     {
         // A handful of rows once a minute: one statement each is simpler than anything cleverer. The condition keeps a trade that ended

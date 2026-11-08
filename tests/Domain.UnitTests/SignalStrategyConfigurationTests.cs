@@ -22,7 +22,7 @@ public class SignalStrategyConfigurationTests
     [InlineData("has space", false)]
     [InlineData("a:b", false)]
     [InlineData("a/b", false)]
-    [InlineData("سیگنال", false)]
+    [InlineData("señal", false)]
     [InlineData("S1;", false)]
     public void ANameIsLettersDigitsUnderscoreAndDash(string? name, bool valid) =>
         Assert.Equal(valid, SignalStrategyConfiguration.IsValidName(name));

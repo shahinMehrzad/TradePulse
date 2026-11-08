@@ -40,6 +40,15 @@ public interface ISignalStore
     /// <summary>The trades that ended and have no result yet, oldest first: found again after a restart, or after the exchange did not answer.</summary>
     Task<IReadOnlyList<PaperTrade>> GetUnsettledAsync(CancellationToken cancellationToken);
 
+    /// <summary>The trades that are open and have no message yet (the first send failed, or the service stopped before it), oldest first.</summary>
+    Task<IReadOnlyList<PaperTrade>> GetOpenWithoutMessageAsync(CancellationToken cancellationToken);
+
+    /// <summary>The trades that ended and whose end has not been told, oldest end first: a restart, or a chat that did not answer, leaves them here.</summary>
+    Task<IReadOnlyList<PaperTrade>> GetEndsToAnnounceAsync(CancellationToken cancellationToken);
+
+    /// <summary>Marks the end of a trade as told. False when it was marked already or the trade has not ended.</summary>
+    Task<bool> MarkEndAnnouncedAsync(int tradeId, DateTime at, CancellationToken cancellationToken);
+
     /// <summary>Remembers the message of a trade. False when it already has one.</summary>
     Task<bool> AttachMessageAsync(int tradeId, long chatId, int messageId, CancellationToken cancellationToken);
 

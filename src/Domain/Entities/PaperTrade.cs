@@ -58,6 +58,9 @@ public class PaperTrade
     /// </summary>
     public DateTime? LastCheckedAt { get; private set; }
 
+    /// <summary>When the end of the trade was told in its message (the message edited, a reply sent), UTC; <c>null</c> until then.</summary>
+    public DateTime? EndAnnouncedAt { get; private set; }
+
     /// <summary>The message of this trade in the chat, so it can be edited when the trade ends. Both are set together, once.</summary>
     public long? TelegramChatId { get; private set; }
     public int? TelegramMessageId { get; private set; }
@@ -185,6 +188,13 @@ public class PaperTrade
     {
         if (IsOpen && (LastCheckedAt is null || at > LastCheckedAt))
             LastCheckedAt = at;
+    }
+
+    /// <summary>The end of the trade has been told. Only a trade that has ended can be, and only once.</summary>
+    public void MarkEndAnnounced(DateTime at)
+    {
+        if (!IsOpen && EndAnnouncedAt is null)
+            EndAnnouncedAt = at;
     }
 
     /// <summary>Remembers where the message of this trade is, so the same message can be edited later. A trade has one message.</summary>

@@ -38,6 +38,9 @@ namespace Infrastructure.Migrations.SignalsDb
                     b.Property<DateTime?>("ClosedAt")
                         .HasColumnType("timestamp");
 
+                    b.Property<DateTime?>("EndAnnouncedAt")
+                        .HasColumnType("timestamp");
+
                     b.Property<decimal>("EntryPrice")
                         .HasPrecision(28, 8)
                         .HasColumnType("numeric(28,8)");
