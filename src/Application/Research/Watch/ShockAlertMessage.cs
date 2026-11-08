@@ -32,7 +32,7 @@ public static class ShockAlertMessage
 
     /// <summary>The watch cannot see the market: no alert can come until it can.</summary>
     public static Alert Blind(string symbols, TimeSpan offlineFor) =>
-        Message("⚠️", "Watch is blind", string.Create(Culture, $"{symbols}: no trades for {offlineFor.TotalSeconds:0} s. Quiet is not calm."));
+        Message("⚠️", "Watch is blind", string.Create(Culture, $"{symbols}: no connection for {offlineFor.TotalSeconds:0} s. Quiet is not calm."));
 
     /// <summary>
     /// The symbol has no recent 1 minute candles to start from, so for a while the watch only listens. Without this message that time

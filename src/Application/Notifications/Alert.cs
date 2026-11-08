@@ -13,4 +13,8 @@ public interface INotifier
     Task SendAsync(Alert alert, CancellationToken cancellationToken);
 }
 
-public sealed class NotificationException(string message) : Exception(message);
+/// <summary>A channel could not deliver. <see cref="RetryAfter"/> is set when the channel itself said how long to wait (Telegram's 429).</summary>
+public sealed class NotificationException(string message, TimeSpan? retryAfter = null) : Exception(message)
+{
+    public TimeSpan? RetryAfter { get; } = retryAfter;
+}

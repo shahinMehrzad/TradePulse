@@ -178,6 +178,9 @@ internal sealed class RecordingNotifier(string name = "recording") : INotifier
     public string Name { get; } = name;
     public bool Throws { get; set; }
 
+    /// <summary>The next send is refused as "too many requests" with this wait (Telegram's 429); the one after it works.</summary>
+    public TimeSpan? RetryAfterOnce { get; set; }
+
     public IReadOnlyList<Alert> Sent
     {
         get { lock (_sent) return _sent.ToList(); }
@@ -187,6 +190,12 @@ internal sealed class RecordingNotifier(string name = "recording") : INotifier
     {
         if (Throws)
             throw new NotificationException("could not reach the server");
+
+        if (RetryAfterOnce is { } wait)
+        {
+            RetryAfterOnce = null;
+            throw new NotificationException("Telegram answered 429: Too Many Requests", wait);
+        }
 
         lock (_sent) _sent.Add(alert);
         return Task.CompletedTask;

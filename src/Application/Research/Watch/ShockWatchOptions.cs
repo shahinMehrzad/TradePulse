@@ -75,6 +75,15 @@ public sealed record ShockWatchOptions
     /// </summary>
     public TimeSpan BlindAfter { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// A drop of the connection takes down most symbols at once. Symbols that go blind (or come back) within this time of the first one are told as
+    /// one message, so a single outage is two messages, not two per symbol: Telegram refuses about 20 messages a minute per chat.
+    /// </summary>
+    public TimeSpan ConnectionDigestWindow { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>When Telegram answers "too many requests", the message is sent once more after the time it asks for, if that is no longer than this.</summary>
+    public TimeSpan MaxRateLimitWait { get; init; } = TimeSpan.FromSeconds(60);
+
     /// <summary>How often the watch looks again at which symbols it should follow, and adds or drops the ones that changed.</summary>
     public TimeSpan WatchListRefresh { get; init; } = TimeSpan.FromSeconds(30);
 

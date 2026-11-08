@@ -32,4 +32,33 @@ public static class NotificationsRegistration
 
         return services;
     }
+
+    /// <summary>
+    /// The chat of the paper trades (<c>Signals:Telegram</c>: a bot of its own). Without a bot token and chat id the messages only go to the log.
+    /// </summary>
+    public static IServiceCollection AddTradeChat(this IServiceCollection services, IConfiguration configuration)
+    {
+        var section = configuration.GetSection(TradeChatOptions.SectionName);
+        services.Configure<TradeChatOptions>(section);
+
+        if ((section.Get<TradeChatOptions>() ?? new TradeChatOptions()).IsConfigured)
+        {
+            // The bot token is part of the address: the client logs nothing about its requests.
+            services.AddHttpClient<TelegramTradeChat>(client =>
+            {
+                client.BaseAddress = new Uri("https://api.telegram.org/");
+                client.Timeout = TimeSpan.FromSeconds(15);
+            })
+            // The chat is used by one long-lived service: its connections are renewed now and then (a new address of Telegram is found).
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+            .RemoveAllLoggers();
+            services.AddTransient<Application.Signals.ITradeChat>(provider => provider.GetRequiredService<TelegramTradeChat>());
+        }
+        else
+        {
+            services.AddSingleton<Application.Signals.ITradeChat, Application.Signals.LogOnlyTradeChat>();
+        }
+
+        return services;
+    }
 }

@@ -20,6 +20,7 @@ public static class BinanceExchangeRegistration
 
         services.AddSingleton<ICandleGateway, BinanceCandleGateway>();
         services.AddSingleton<IFundingRateGateway, BinanceFundingRateGateway>();
+        services.AddSingleton<IHistoricalTradeGateway, BinanceHistoricalTradeGateway>();
         services.AddSingleton<IOpenInterestGateway, BinanceOpenInterestGateway>();
         services.AddSingleton<IPeriodStatisticGateway<LongShortRatio>, BinanceLongShortRatioGateway>();
         services.AddSingleton<IPeriodStatisticGateway<TakerVolume>, BinanceTakerVolumeGateway>();

@@ -34,6 +34,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # The stack's own network, and "data-net": the way for the program that makes signals to read the stored candles (role tp_signal_source,
+    # read-only). Under the name tradepulse-postgres there, so it cannot be mistaken for a database of that program's own.
+    networks:
+      default: {}
+      data-net:
+        aliases: [tradepulse-postgres]
     restart: unless-stopped
 
   # Creates and migrates the schema, so it is the first of the three to be healthy.
@@ -209,6 +215,33 @@ services:
       Watch__Rule__GradualMinZScore: ${WATCH_GRADUAL_MIN_Z:-4.5}
     restart: unless-stopped
 
+  # The signals (docs/signals.md), with `--profile signals`: the webhook of the program that makes them, the paper trades opened from them, the
+  # follow of their price and the messages of the chat. Its own process and its own database role (tp_signals: writes only schema `signals`,
+  # reads the symbol lists and the data tables), so nothing it does can slow the collector. It has no public port: the sender reaches it on the
+  # network `tradepulse-signals` (which only this service and the sender join), or on 127.0.0.1:SIGNALS_PORT of this machine.
+  signals:
+    profiles: ["signals"]
+    build: { context: .., dockerfile: deploy/Dockerfile, target: signals }
+    depends_on:
+      # The API creates and migrates the schema `signals`.
+      api: { condition: service_healthy }
+    networks: [default, signals-net]
+    environment:
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=tradepulse;Username=tp_signals;Password=${SIGNALS_DB_PASSWORD:-};GSS Encryption Mode=Disable
+      # The secret the sender signs its requests with (at least 32 characters, `openssl rand -hex 32`). The program does not start without it.
+      Signals__Webhook__Secret: ${SIGNALS_WEBHOOK_SECRET:-}
+      # While the secret is being changed: the one before it, still accepted. Empty otherwise.
+      Signals__Webhook__PreviousSecret: ${SIGNALS_WEBHOOK_PREVIOUS_SECRET:-}
+      # A bot of its own for the messages of the paper trades. Empty: they only go to the log (docker compose logs signals).
+      Signals__Telegram__BotToken: ${SIGNALS_TELEGRAM_BOT_TOKEN:-}
+      Signals__Telegram__ChatId: ${SIGNALS_TELEGRAM_CHAT_ID:-}
+    ports:
+      - "127.0.0.1:${SIGNALS_PORT:-8090}:8080"
+    healthcheck:
+      <<: *probe
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+    restart: unless-stopped
+
   # ---- monitoring (optional: `--profile monitoring`, set up with deploy/netdata-setup.sh, see docs/monitoring.md)
   # The server's CPU, memory, disk, the memory of every container over days (a leak shows as a slope), Postgres' connections and more, with
   # alerts to a Telegram bot of its own. Netdata runs with no extra rights: not in the host's process or network space, no capabilities. What
@@ -257,6 +290,15 @@ networks:
     internal: true
   # The monitoring agent and the Docker proxy only.
   monitor-net:
+    internal: true
+  # The signals service and the program that makes the signals (which joins it from its own compose file as an external network): the sender can
+  # reach the webhook (http://signals:8080) and nothing else of the stack.
+  signals-net:
+    name: tradepulse-signals
+  # Postgres and whoever reads the stored candles (the program that makes the signals joins it from its own compose file as an external network).
+  # "internal": it gives no way out to the internet. The database itself is protected by the roles: tp_signal_source can only read the data tables.
+  data-net:
+    name: tradepulse-data
     internal: true
 
 volumes:

@@ -27,6 +27,7 @@ public class ConfigDbContext : DbContext
     public DbSet<CandleWorkerConfiguration> CandleWorkerConfigurations => Set<CandleWorkerConfiguration>();
     public DbSet<SymbolDataConfiguration> SymbolDataConfigurations => Set<SymbolDataConfiguration>();
     public DbSet<ShockWatchConfiguration> ShockWatchConfigurations => Set<ShockWatchConfiguration>();
+    public DbSet<SignalStrategyConfiguration> SignalStrategyConfigurations => Set<SignalStrategyConfiguration>();
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -139,6 +140,29 @@ public class ConfigDbContext : DbContext
 
             // One row per symbol of an exchange market.
             e.HasIndex(x => x.SymbolListingId).IsUnique();
+        });
+
+        // The strategies whose signals are taken, and what the receiver allows from each. A label with no row is refused.
+        builder.Entity<SignalStrategyConfiguration>(e =>
+        {
+            e.ToTable("signal_strategy_configurations", "config", t =>
+            {
+                // The same rules as SignalStrategyConfiguration.FindProblem: the database says no to what the application would.
+                t.HasCheckConstraint("CK_signal_strategy_configurations_age", "\"MaxSignalAgeSeconds\" IS NULL OR \"MaxSignalAgeSeconds\" BETWEEN 1 AND 604800");
+                t.HasCheckConstraint("CK_signal_strategy_configurations_move", "\"MaxMoveOfStopDistance\" > 0 AND \"MaxMoveOfStopDistance\" <= 1");
+                t.HasCheckConstraint("CK_signal_strategy_configurations_open", "\"MaxOpenPerSymbol\" IS NULL OR \"MaxOpenPerSymbol\" >= 1");
+                t.HasCheckConstraint("CK_signal_strategy_configurations_leverage", "\"MaxLeverage\" BETWEEN 1 AND 125");
+            });
+
+            // Time columns are timestamp (no zone), always UTC.
+            e.Property(x => x.CreateDate).HasColumnType("timestamp").HasDefaultValueSql("now() at time zone 'utc'");
+
+            e.Property(x => x.Strategy).HasMaxLength(SignalStrategyConfiguration.MaxNameLength);
+            e.Property(x => x.MaxMoveOfStopDistance).HasPrecision(9, 4);
+            e.Property(x => x.MaxLeverage).HasPrecision(9, 2);
+
+            // One row per strategy.
+            e.HasIndex(x => x.Strategy).IsUnique();
         });
 
         // Who changed which setting. Rows are only ever added; no foreign keys, because a removed setting must keep its history.

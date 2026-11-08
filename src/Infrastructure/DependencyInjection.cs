@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IShockAlertStore, ShockAlertStore>();
         services.AddScoped<IShockWatchConfigurationRepository, ShockWatchConfigurationRepository>();
         services.AddScoped<IWatchedSymbolSource, ConfiguredWatchedSymbols>();
+        services.AddScoped<Application.Signals.ISignalStrategyConfigurationRepository, SignalStrategyConfigurationRepository>();
 
         // Work without a signed-in user (the collector) is done by "system"; the API registers the user of the request after this.
         services.TryAddScoped<ICurrentUser, SystemUser>();
@@ -69,6 +70,16 @@ public static class DependencyInjection
             {
                 npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "research");
             }));
+
+        // The signals schema too: the same database unless SignalsConnection says otherwise. The API makes it (its migrations), the service
+        // that takes signals writes it with a role of its own.
+        var signalsConnectionString = configuration.GetConnectionString("SignalsConnection") ?? connectionString;
+        services.AddDbContext<SignalsDbContext>(options =>
+            options.UseNpgsql(signalsConnectionString, npgsqlOptions =>
+            {
+                npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", "signals");
+            }));
+        services.AddScoped<Application.Signals.ISignalStore, SignalStore>();
 
         services.Configure<JwtConfigurations>(configuration.GetSection(nameof(JwtConfigurations)));
 
@@ -156,12 +167,14 @@ public static class DependencyInjection
             var context = services.GetRequiredService<AuthDbContext>();
             var contextConfig = services.GetRequiredService<ConfigDbContext>();
             var contextResearch = services.GetRequiredService<ResearchDbContext>();
+            var contextSignals = services.GetRequiredService<SignalsDbContext>();
             var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
             var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
 
             await context.Database.MigrateAsync();
             await contextConfig.Database.MigrateAsync();
             await contextResearch.Database.MigrateAsync();
+            await contextSignals.Database.MigrateAsync();
 
             var converted = await UserTokenProtection.ProtectStoredAsync(context,
                 services.GetRequiredService<IDataProtectionProvider>(), services.GetRequiredService<IPasswordHasher<ApplicationUser>>(), CancellationToken.None);
