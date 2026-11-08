@@ -464,6 +464,8 @@ public class PaperTradeWatcherTests
         public Task<IReadOnlyList<PaperTrade>> GetOpenWithoutMessageAsync(CancellationToken cancellationToken) => inner.GetOpenWithoutMessageAsync(cancellationToken);
         public Task<IReadOnlyList<PaperTrade>> GetEndsToAnnounceAsync(CancellationToken cancellationToken) => inner.GetEndsToAnnounceAsync(cancellationToken);
         public Task<bool> MarkEndAnnouncedAsync(int tradeId, DateTime at, CancellationToken cancellationToken) => inner.MarkEndAnnouncedAsync(tradeId, at, cancellationToken);
+        public Task<ReceivedSignal?> FindSignalAsync(string signalId, CancellationToken cancellationToken) => inner.FindSignalAsync(signalId, cancellationToken);
+        public Task<bool> RecordAsync(ReceivedSignal signal, PaperTrade? trade, CancellationToken cancellationToken) => inner.RecordAsync(signal, trade, cancellationToken);
         public Task<bool> RecordAsync(ReceivedSignal signal, CancellationToken cancellationToken) => inner.RecordAsync(signal, cancellationToken);
         public Task<int> CountOpenAsync(ExchangeEnum exchange, string strategy, string symbol, CancellationToken cancellationToken) => inner.CountOpenAsync(exchange, strategy, symbol, cancellationToken);
         public Task AddTradeAsync(PaperTrade trade, CancellationToken cancellationToken) => inner.AddTradeAsync(trade, cancellationToken);

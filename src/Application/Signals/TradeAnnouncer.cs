@@ -28,7 +28,7 @@ public sealed record AnnouncerOptions
 /// </para>
 /// </summary>
 public sealed class TradeAnnouncer(
-    ISignalStore store, ITradeChat chat, TradeSettlement settlement, AnnouncerOptions options, TimeProvider time, ILogger<TradeAnnouncer> logger) : ITradeEvents
+    ISignalStore store, ITradeChat chat, TradeSettlement settlement, AnnouncerOptions options, TimeProvider time, ILogger<TradeAnnouncer> logger) : ITradeEvents, IOpenedTradeSink
 {
     private enum Kind { Opened, Ended, Tick }
 

@@ -31,7 +31,7 @@ public sealed class PaperTradeWatcher(
     PriceBoard board,
     WatcherOptions options,
     TimeProvider time,
-    ILogger<PaperTradeWatcher> logger)
+    ILogger<PaperTradeWatcher> logger) : ITradeTracker
 {
     private enum ItemKind { Trade, Wake, Tick }
 

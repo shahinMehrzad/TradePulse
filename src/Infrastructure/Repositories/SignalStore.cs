@@ -28,6 +28,31 @@ public class SignalStore(SignalsDbContext context) : ISignalStore
         }
     }
 
+    public async Task<ReceivedSignal?> FindSignalAsync(string signalId, CancellationToken cancellationToken) =>
+        await context.Signals.AsNoTracking().SingleOrDefaultAsync(s => s.SignalId == signalId, cancellationToken);
+
+    public async Task<bool> RecordAsync(ReceivedSignal signal, PaperTrade? trade, CancellationToken cancellationToken)
+    {
+        context.Signals.Add(signal);
+        if (trade is not null)
+            context.PaperTrades.Add(trade);
+
+        try
+        {
+            // One SaveChanges is one transaction: the signal and its trade are stored together or not at all.
+            await context.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            return false;
+        }
+        finally
+        {
+            context.ChangeTracker.Clear();
+        }
+    }
+
     public Task<int> CountOpenAsync(ExchangeEnum exchange, string strategy, string symbol, CancellationToken cancellationToken) =>
         context.PaperTrades.CountAsync(
             t => t.Exchange == exchange && t.Strategy == strategy && t.Symbol == symbol && t.Status == PaperTradeStatusEnum.Open, cancellationToken);

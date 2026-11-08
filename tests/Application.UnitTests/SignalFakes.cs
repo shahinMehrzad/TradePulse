@@ -140,7 +140,66 @@ internal sealed class FakeSignalStore : ISignalStore
     }
 
     public Task<bool> RecordAsync(ReceivedSignal signal, CancellationToken cancellationToken) => throw new NotSupportedException();
-    public Task<int> CountOpenAsync(ExchangeEnum exchange, string strategy, string symbol, CancellationToken cancellationToken) => throw new NotSupportedException();
+    private readonly Dictionary<string, ReceivedSignal> _signals = [];
+    private readonly List<PaperTrade> _recorded = [];
+    private bool _findHidden;
+
+    /// <summary>Recording a signal fails as if the database were down.</summary>
+    public bool RecordFails { get; set; }
+
+    /// <summary>The next look for a recorded signal finds nothing, as if it were recorded a moment later by another request.</summary>
+    public void HideSignalOnce() => _findHidden = true;
+
+    public IReadOnlyDictionary<string, ReceivedSignal> Signals
+    {
+        get { lock (_lock) return _signals.ToDictionary(p => p.Key, p => p.Value); }
+    }
+
+    /// <summary>The trades that were stored together with their signal.</summary>
+    public IReadOnlyList<PaperTrade> RecordedTrades
+    {
+        get { lock (_lock) return _recorded.ToList(); }
+    }
+
+    public Task<ReceivedSignal?> FindSignalAsync(string signalId, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            if (_findHidden)
+            {
+                _findHidden = false;
+                return Task.FromResult<ReceivedSignal?>(null);
+            }
+
+            return Task.FromResult(_signals.GetValueOrDefault(signalId));
+        }
+    }
+
+    public Task<bool> RecordAsync(ReceivedSignal signal, PaperTrade? trade, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            if (RecordFails)
+                throw new InvalidOperationException("the database is down");
+
+            if (!_signals.TryAdd(signal.SignalId, signal))
+                return Task.FromResult(false);
+
+            if (trade is not null)
+            {
+                typeof(PaperTrade).GetProperty(nameof(PaperTrade.Id))!.SetValue(trade, 100 + _recorded.Count);   // the database gives it
+                _recorded.Add(trade);
+            }
+
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<int> CountOpenAsync(ExchangeEnum exchange, string strategy, string symbol, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+            return Task.FromResult(Open.Concat(_recorded).Count(t => t.IsOpen && t.Exchange == exchange && t.Strategy == strategy && t.Symbol == symbol));
+    }
     public Task AddTradeAsync(PaperTrade trade, CancellationToken cancellationToken) => throw new NotSupportedException();
 }
 
@@ -342,6 +401,48 @@ internal sealed class FakeFundingGateway : IFundingRateGateway
     }
 }
 
+/// <summary>The strategies the receiver takes signals from.</summary>
+internal sealed class FakeStrategies : ISignalStrategyConfigurationRepository
+{
+    public List<SignalStrategyConfiguration> Rows { get; } = [];
+
+    public Task<SignalStrategyConfiguration?> GetByStrategy(string strategy, CancellationToken cancellationToken) =>
+        Task.FromResult(Rows.FirstOrDefault(r => r.Strategy == strategy));
+
+    public Task<IReadOnlyList<SignalStrategyConfiguration>> GetAll(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SignalStrategyConfiguration>>(Rows.ToList());
+    public Task<int> Add(SignalStrategyConfiguration configuration, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task Update(SignalStrategyConfiguration configuration, CancellationToken cancellationToken) => throw new NotSupportedException();
+    public Task SetEnabled(int id, bool enabled, CancellationToken cancellationToken) => throw new NotSupportedException();
+}
+
+/// <summary>Who the intake hands a new trade to: the price watch and the chat.</summary>
+internal sealed class RecordingHandover : ITradeTracker, IOpenedTradeSink
+{
+    private readonly object _lock = new();
+    private readonly List<PaperTrade> _tracked = [];
+    private readonly List<PaperTrade> _told = [];
+
+    public IReadOnlyList<PaperTrade> Tracked
+    {
+        get { lock (_lock) return _tracked.ToList(); }
+    }
+
+    public IReadOnlyList<PaperTrade> Told
+    {
+        get { lock (_lock) return _told.ToList(); }
+    }
+
+    void ITradeTracker.Track(PaperTrade trade)
+    {
+        lock (_lock) _tracked.Add(trade);
+    }
+
+    void IOpenedTradeSink.Opened(PaperTrade trade)
+    {
+        lock (_lock) _told.Add(trade);
+    }
+}
+
 internal sealed class FakeFollowedSymbols(params FollowedSymbol[] symbols) : IFollowedSymbolSource
 {
     public List<FollowedSymbol> Symbols { get; } = [.. symbols];
@@ -407,6 +508,17 @@ internal static class SignalTestData
         var trade = PaperTrade.Open(signal, 100m, openedAt ?? Opened, 0);
         typeof(PaperTrade).GetProperty(nameof(PaperTrade.Id))!.SetValue(trade, id);   // the database gives it; the fake store does not
         return trade;
+    }
+
+    /// <summary>The signal of the 4h candle of 04:00 to 08:00 the way the sender makes it: a long at 100 (stop 98, target 104) or a short (stop 102, target 96), valid for 45 minutes after the close.</summary>
+    public static TradeSignal Signal(
+        PositionSideEnum side = PositionSideEnum.Long, string strategy = "S1", string symbol = "BTC/USDT", decimal leverage = 5m, TimeSpan? maxDuration = null,
+        ExchangeEnum exchange = ExchangeEnum.Binance)
+    {
+        var (stop, target) = side == PositionSideEnum.Long ? (98m, 104m) : (102m, 96m);
+        return new TradeSignal(
+            SignalId.Build(strategy, symbol, TimeFrameEnum._4H, CandleOpen, side, exchange), strategy, MarketTypeEnum.Futures, symbol, side, leverage, target, stop, 100m,
+            TimeFrameEnum._4H, CandleOpen, CandleOpen.AddHours(4), CandleOpen.AddHours(4).AddMinutes(45), maxDuration, exchange);
     }
 
     /// <summary>The candle of the minute <paramref name="minutesAfter"/> after 08:00.</summary>

@@ -48,7 +48,10 @@ public static class NotificationsRegistration
             {
                 client.BaseAddress = new Uri("https://api.telegram.org/");
                 client.Timeout = TimeSpan.FromSeconds(15);
-            }).RemoveAllLoggers();
+            })
+            // The chat is used by one long-lived service: its connections are renewed now and then (a new address of Telegram is found).
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+            .RemoveAllLoggers();
             services.AddTransient<Application.Signals.ITradeChat>(provider => provider.GetRequiredService<TelegramTradeChat>());
         }
         else

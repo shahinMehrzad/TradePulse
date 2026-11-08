@@ -17,5 +17,8 @@ public enum SignalRejectionEnum : byte
     TooManyOpenTrades = 12,
 
     /// <summary>The strategy has no row in the settings: a signal from a label nobody added is not taken.</summary>
-    UnknownStrategy = 13
+    UnknownStrategy = 13,
+
+    /// <summary>The symbol is not listed on the exchange market (the panel's Symbols page), so its price is not followed.</summary>
+    UnknownSymbol = 14
 }

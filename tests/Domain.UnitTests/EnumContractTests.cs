@@ -35,7 +35,7 @@ public class EnumContractTests
             ("StrategyDisabled", 1), ("UnsupportedMarket", 2), ("SignalIdMismatch", 3), ("InconsistentCandleTimes", 4),
             ("LeverageOutOfRange", 5), ("LevelsOnWrongSide", 6), ("SignalFromTheFuture", 7), ("SignalExpired", 8),
             ("SignalTooOld", 9), ("PriceBeyondLevels", 10), ("PriceMovedTooFar", 11), ("TooManyOpenTrades", 12),
-            ("UnknownStrategy", 13));
+            ("UnknownStrategy", 13), ("UnknownSymbol", 14));
 
     [Fact]
     public void SignalEventKindValuesAreStable() =>
