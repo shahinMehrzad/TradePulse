@@ -197,15 +197,17 @@ public class SignalStoreTests(PostgresFixture postgres)
         var options = await NewDatabaseAsync();
         await OpenATradeAsync(NewStore(options));
 
-        async Task<bool> EndItAsync()
+        // Every caller has seen the trade open before any of them ends it: reading inside the race would let a late reader find nothing.
+        var callers = new List<(SignalStore Store, PaperTrade Trade)>();
+        for (var i = 0; i < 3; i++)
         {
             var store = NewStore(options);
             var trade = Assert.Single(await store.GetOpenTradesAsync(Ct));
             trade.Observe(104.5m, Now.AddHours(1));
-            return await store.CloseAsync(trade, Ct);
+            callers.Add((store, trade));
         }
 
-        var results = await Task.WhenAll(EndItAsync(), EndItAsync(), EndItAsync());
+        var results = await Task.WhenAll(callers.Select(c => c.Store.CloseAsync(c.Trade, Ct)));
 
         Assert.Equal(1, results.Count(won => won));
     }
