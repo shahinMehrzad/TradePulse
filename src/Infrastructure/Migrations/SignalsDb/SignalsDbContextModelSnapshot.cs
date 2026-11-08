@@ -42,6 +42,11 @@ namespace Infrastructure.Migrations.SignalsDb
                         .HasPrecision(28, 8)
                         .HasColumnType("numeric(28,8)");
 
+                    b.Property<int>("Exchange")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<decimal?>("ExitPrice")
                         .HasPrecision(28, 8)
                         .HasColumnType("numeric(28,8)");
@@ -129,7 +134,7 @@ namespace Infrastructure.Migrations.SignalsDb
                     b.HasIndex("SignalId")
                         .IsUnique();
 
-                    b.HasIndex("Strategy", "Symbol")
+                    b.HasIndex("Exchange", "Strategy", "Symbol")
                         .HasFilter("\"Status\" = 1");
 
                     b.ToTable("paper_trades", "signals", t =>
@@ -155,6 +160,11 @@ namespace Infrastructure.Migrations.SignalsDb
 
                     b.Property<DateTime>("CandleOpenTime")
                         .HasColumnType("timestamp");
+
+                    b.Property<int>("Exchange")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.Property<decimal>("Leverage")
                         .HasPrecision(18, 4)

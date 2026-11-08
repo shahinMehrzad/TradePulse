@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
@@ -33,6 +34,7 @@ public class SignalsDbContext(DbContextOptions<SignalsDbContext> options) : DbCo
             e.Property(x => x.SignalId).HasMaxLength(96);
             e.Property(x => x.Strategy).HasMaxLength(32);
             e.Property(x => x.Symbol).HasMaxLength(32);
+            e.Property(x => x.Exchange).HasConversion<int>().HasDefaultValue(ExchangeEnum.Binance).HasSentinel(ExchangeEnum.Binance);
             e.Property(x => x.Market).HasConversion<int>();
             e.Property(x => x.Side).HasConversion<int>();
             e.Property(x => x.TimeFrame).HasConversion<int>();
@@ -69,6 +71,7 @@ public class SignalsDbContext(DbContextOptions<SignalsDbContext> options) : DbCo
             e.Property(x => x.SignalId).HasMaxLength(96);
             e.Property(x => x.Strategy).HasMaxLength(32);
             e.Property(x => x.Symbol).HasMaxLength(32);
+            e.Property(x => x.Exchange).HasConversion<int>().HasDefaultValue(ExchangeEnum.Binance).HasSentinel(ExchangeEnum.Binance);
             e.Property(x => x.Side).HasConversion<int>();
             e.Property(x => x.Status).HasConversion<int>();
             e.Property(x => x.Leverage).HasPrecision(18, 4);
@@ -94,7 +97,7 @@ public class SignalsDbContext(DbContextOptions<SignalsDbContext> options) : DbCo
             e.HasIndex(x => x.SignalId).IsUnique();
 
             // What is asked all day long: the open trades, and how many a strategy has on a symbol.
-            e.HasIndex(x => new { x.Strategy, x.Symbol }).HasFilter("\"Status\" = 1");
+            e.HasIndex(x => new { x.Exchange, x.Strategy, x.Symbol }).HasFilter("\"Status\" = 1");
             e.HasIndex(x => x.OpenedAt);
         });
 

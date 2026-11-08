@@ -96,9 +96,9 @@ public class SignalStoreTests(PostgresFixture postgres)
         var trade = await OpenATradeAsync(store);
 
         Assert.True(trade.Id > 0);
-        Assert.Equal(1, await store.CountOpenAsync("S1", "BTC/USDT", Ct));
-        Assert.Equal(0, await store.CountOpenAsync("S1", "ETH/USDT", Ct));
-        Assert.Equal(0, await store.CountOpenAsync("S2", "BTC/USDT", Ct));
+        Assert.Equal(1, await store.CountOpenAsync(ExchangeEnum.Binance, "S1", "BTC/USDT", Ct));
+        Assert.Equal(0, await store.CountOpenAsync(ExchangeEnum.Binance, "S1", "ETH/USDT", Ct));
+        Assert.Equal(0, await store.CountOpenAsync(ExchangeEnum.Binance, "S2", "BTC/USDT", Ct));
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class SignalStoreTests(PostgresFixture postgres)
         await OpenATradeAsync(store, Signal(candleOpen: CandleOpen));
         await OpenATradeAsync(store, Signal(candleOpen: CandleOpen.AddHours(4)));
 
-        Assert.Equal(2, await store.CountOpenAsync("S1", "BTC/USDT", Ct));
+        Assert.Equal(2, await store.CountOpenAsync(ExchangeEnum.Binance, "S1", "BTC/USDT", Ct));
     }
 
     [Fact]
@@ -220,7 +220,7 @@ public class SignalStoreTests(PostgresFixture postgres)
         await store.CloseAsync(trade, Ct);
 
         Assert.Empty(await store.GetOpenTradesAsync(Ct));
-        Assert.Equal(0, await store.CountOpenAsync("S1", "BTC/USDT", Ct));
+        Assert.Equal(0, await store.CountOpenAsync(ExchangeEnum.Binance, "S1", "BTC/USDT", Ct));
     }
 
     [Fact]

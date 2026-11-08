@@ -10,6 +10,10 @@ namespace Domain.ValueObjects;
 /// 08:00:02 carries 04:00 for a 4h candle; <paramref name="CandleCloseTime"/> is that time plus the time frame (08:00). The signal id
 /// is built from the open time (<see cref="Domain.Services.SignalId"/>), and a signal's age is counted from the close time.
 /// </para>
+/// <para>
+/// <paramref name="Exchange"/> is the exchange the symbol is on. A sender that does not say takes Binance, the only one so far; its signal ids
+/// do not change when another exchange comes (only the ids of that other exchange carry its name).
+/// </para>
 /// </summary>
 public sealed record TradeSignal(
     string SignalId,
@@ -25,4 +29,5 @@ public sealed record TradeSignal(
     DateTime CandleOpenTime,
     DateTime CandleCloseTime,
     DateTime ValidUntil,
-    TimeSpan? MaxDuration = null);
+    TimeSpan? MaxDuration = null,
+    ExchangeEnum Exchange = ExchangeEnum.Binance);

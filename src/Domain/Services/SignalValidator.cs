@@ -27,7 +27,7 @@ public static class SignalValidator
         if (signal.Market != MarketTypeEnum.Futures)
             return SignalRejectionEnum.UnsupportedMarket;
 
-        if (signal.SignalId != SignalId.Build(signal.Strategy, signal.Symbol, signal.TimeFrame, signal.CandleOpenTime, signal.Side))
+        if (signal.SignalId != SignalId.Build(signal.Strategy, signal.Symbol, signal.TimeFrame, signal.CandleOpenTime, signal.Side, signal.Exchange))
             return SignalRejectionEnum.SignalIdMismatch;
 
         if (signal.CandleCloseTime != signal.CandleOpenTime + TimeSpan.FromSeconds((int)signal.TimeFrame))

@@ -383,7 +383,7 @@ public class DatabaseRolesTests(PostgresFixture postgres)
 
             var trade = PaperTrade.Open(signal, 100m, SignalTestData.Now, openTradesAtEntry: 0);
             await store.AddTradeAsync(trade, Ct);
-            Assert.Equal(1, await store.CountOpenAsync("S1", "BTC/USDT", Ct));
+            Assert.Equal(1, await store.CountOpenAsync(ExchangeEnum.Binance, "S1", "BTC/USDT", Ct));
             Assert.True(await store.AttachMessageAsync(trade.Id, -1001234567890, 42, Ct));
 
             var loaded = Assert.Single(await store.GetOpenTradesAsync(Ct));

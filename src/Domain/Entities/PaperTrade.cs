@@ -17,6 +17,9 @@ public class PaperTrade
     public string SignalId { get; private set; } = string.Empty;
     public string Strategy { get; private set; } = string.Empty;
 
+    /// <summary>The exchange the symbol is on: <c>BTC/USDT</c> on two exchanges is two markets.</summary>
+    public ExchangeEnum Exchange { get; private set; } = ExchangeEnum.Binance;
+
     /// <summary>Like <c>BTC/USDT</c>.</summary>
     public string Symbol { get; private set; } = string.Empty;
     public PositionSideEnum Side { get; private set; }
@@ -78,6 +81,7 @@ public class PaperTrade
         {
             SignalId = signal.SignalId,
             Strategy = signal.Strategy,
+            Exchange = signal.Exchange,
             Symbol = signal.Symbol,
             Side = signal.Side,
             Leverage = signal.Leverage,

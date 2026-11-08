@@ -13,6 +13,9 @@ public class ReceivedSignal
     public int Id { get; set; }
     public string SignalId { get; set; } = string.Empty;
     public string Strategy { get; set; } = string.Empty;
+
+    /// <summary>The exchange the symbol is on. Binance when the sender did not say.</summary>
+    public ExchangeEnum Exchange { get; set; } = ExchangeEnum.Binance;
     public MarketTypeEnum Market { get; set; }
     public string Symbol { get; set; } = string.Empty;
     public PositionSideEnum Side { get; set; }
@@ -41,6 +44,7 @@ public class ReceivedSignal
     {
         SignalId = signal.SignalId,
         Strategy = signal.Strategy,
+        Exchange = signal.Exchange,
         Market = signal.Market,
         Symbol = signal.Symbol,
         Side = signal.Side,
@@ -60,5 +64,5 @@ public class ReceivedSignal
     public TradeSignal ToTradeSignal() => new(
         SignalId, Strategy, Market, Symbol, Side, Leverage, TakeProfit, StopLoss, SignalPrice, TimeFrame,
         DateTime.SpecifyKind(CandleOpenTime, DateTimeKind.Utc), DateTime.SpecifyKind(CandleCloseTime, DateTimeKind.Utc),
-        DateTime.SpecifyKind(ValidUntil, DateTimeKind.Utc), MaxDurationSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null);
+        DateTime.SpecifyKind(ValidUntil, DateTimeKind.Utc), MaxDurationSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null, Exchange);
 }

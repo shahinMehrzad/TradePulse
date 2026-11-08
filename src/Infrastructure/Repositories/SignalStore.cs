@@ -28,8 +28,9 @@ public class SignalStore(SignalsDbContext context) : ISignalStore
         }
     }
 
-    public Task<int> CountOpenAsync(string strategy, string symbol, CancellationToken cancellationToken) =>
-        context.PaperTrades.CountAsync(t => t.Strategy == strategy && t.Symbol == symbol && t.Status == PaperTradeStatusEnum.Open, cancellationToken);
+    public Task<int> CountOpenAsync(ExchangeEnum exchange, string strategy, string symbol, CancellationToken cancellationToken) =>
+        context.PaperTrades.CountAsync(
+            t => t.Exchange == exchange && t.Strategy == strategy && t.Symbol == symbol && t.Status == PaperTradeStatusEnum.Open, cancellationToken);
 
     public async Task AddTradeAsync(PaperTrade trade, CancellationToken cancellationToken)
     {

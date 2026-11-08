@@ -11,8 +11,8 @@ public interface ISignalStore
     /// <summary>Records a received signal (taken or refused). False when a signal with the same id was recorded before; nothing is changed then.</summary>
     Task<bool> RecordAsync(ReceivedSignal signal, CancellationToken cancellationToken);
 
-    /// <summary>How many trades of <paramref name="strategy"/> on <paramref name="symbol"/> are open now.</summary>
-    Task<int> CountOpenAsync(string strategy, string symbol, CancellationToken cancellationToken);
+    /// <summary>How many trades of <paramref name="strategy"/> on <paramref name="symbol"/> of <paramref name="exchange"/> are open now.</summary>
+    Task<int> CountOpenAsync(Domain.Enums.ExchangeEnum exchange, string strategy, string symbol, CancellationToken cancellationToken);
 
     /// <summary>Stores a trade that has just opened. Its <see cref="PaperTrade.Id"/> is set.</summary>
     Task AddTradeAsync(PaperTrade trade, CancellationToken cancellationToken);
