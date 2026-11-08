@@ -34,7 +34,8 @@ public class EnumContractTests
         AssertContract<SignalRejectionEnum>(
             ("StrategyDisabled", 1), ("UnsupportedMarket", 2), ("SignalIdMismatch", 3), ("InconsistentCandleTimes", 4),
             ("LeverageOutOfRange", 5), ("LevelsOnWrongSide", 6), ("SignalFromTheFuture", 7), ("SignalExpired", 8),
-            ("SignalTooOld", 9), ("PriceBeyondLevels", 10), ("PriceMovedTooFar", 11), ("TooManyOpenTrades", 12));
+            ("SignalTooOld", 9), ("PriceBeyondLevels", 10), ("PriceMovedTooFar", 11), ("TooManyOpenTrades", 12),
+            ("UnknownStrategy", 13));
 
     [Fact]
     public void SignalEventKindValuesAreStable() =>

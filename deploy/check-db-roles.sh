@@ -129,6 +129,8 @@ if [ -n "$signals_pw" ]; then
   if run tp_signals "$signals_pw" "select 1" >/dev/null; then ok "tp_signals connects with its password"; else fail "tp_signals connects with its password" "run deploy/main-db-roles.sh"; fi
   if run tp_signals "not-the-password-$RANDOM" "select 1" >/dev/null; then fail "tp_signals refuses a wrong password"; else ok "tp_signals refuses a wrong password"; fi
   can    tp_signals "$signals_pw" "read the symbol listings"        "select count(*) from config.exchange_symbols join config.symbols on true join config.exchanges on true join config.markets on true"
+  can    tp_signals "$signals_pw" "read the strategies and their limits" "select count(*) from config.signal_strategy_configurations"
+  cannot tp_signals "$signals_pw" "change the strategies"           "begin; update config.signal_strategy_configurations set \"IsEnabled\" = true; rollback"
   can    tp_signals "$signals_pw" "read the signals"                "select count(*) from signals.signals"
   can    tp_signals "$signals_pw" "update its trades"               "begin; update signals.paper_trades set \"Status\" = \"Status\" where false; rollback"
   can    tp_signals "$signals_pw" "add to the log"                  "begin; insert into signals.events (\"SignalId\", \"At\", \"Kind\") values ('check', now() at time zone 'utc', 1); rollback"
@@ -153,6 +155,7 @@ if [ -n "$signal_source_pw" ]; then
   cannot tp_signal_source "$signal_source_pw" "read the signals"            "select count(*) from signals.signals"
   cannot tp_signal_source "$signal_source_pw" "read the trades"             "select count(*) from signals.paper_trades"
   cannot tp_signal_source "$signal_source_pw" "read the symbol listings"    "select count(*) from config.exchange_symbols"
+  cannot tp_signal_source "$signal_source_pw" "read the strategies"         "select count(*) from config.signal_strategy_configurations"
   cannot tp_signal_source "$signal_source_pw" "read the configuration"      "select count(*) from config.candle_worker_configurations"
   cannot tp_signal_source "$signal_source_pw" "read the accounts"           "select count(*) from auth.users"
   cannot tp_signal_source "$signal_source_pw" "read the audit log"          "select count(*) from config.audit_log"

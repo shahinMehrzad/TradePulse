@@ -395,8 +395,10 @@ public class DatabaseRolesTests(PostgresFixture postgres)
             await store.AddEventAsync(new SignalEvent { SignalId = signal.SignalId, At = SignalTestData.Now, Kind = SignalEventKindEnum.Closed }, Ct);
         }
 
-        // What it reads besides: the symbol lists and the stored candles.
+        // What it reads besides: the symbol lists, the strategies it takes signals from and the stored candles.
         Assert.True(await ScalarAsync<long>(asSignals, "SELECT count(*) FROM config.exchange_symbols") > 0);
+        await using (var config = new ConfigDbContext(Options<ConfigDbContext>(asSignals, "config")))
+            Assert.Empty(await new SignalStrategyConfigurationRepository(config).GetAll(Ct));
         Assert.Equal(5, (await new CandleRepository(asSignals).GetLatestAsync(CandleTable, 10, null, Ct)).Count);
 
         // And what it must not be able to do: delete or rewrite what it stored, see the rest, change the configuration or the data.
@@ -405,6 +407,8 @@ public class DatabaseRolesTests(PostgresFixture postgres)
         await AssertDeniedAsync(asSignals, "DELETE FROM signals.events");
         await AssertDeniedAsync(asSignals, "UPDATE signals.signals SET \"Strategy\" = 'x'");
         await AssertDeniedAsync(asSignals, "UPDATE signals.events SET \"Detail\" = 'x'");
+        await AssertDeniedAsync(asSignals, "UPDATE config.signal_strategy_configurations SET \"IsEnabled\" = true");
+        await AssertDeniedAsync(asSignals, "DELETE FROM config.signal_strategy_configurations");
         await AssertDeniedAsync(asSignals, "CREATE TABLE signals.evil (x int)");
         await AssertDeniedAsync(asSignals, "CREATE TABLE public.evil (x int)");
         await AssertDeniedAsync(asSignals, "SELECT * FROM auth.users");
@@ -431,6 +435,7 @@ public class DatabaseRolesTests(PostgresFixture postgres)
         await AssertDeniedAsync(asSource, "SELECT * FROM signals.events");
         await AssertDeniedAsync(asSource, "INSERT INTO signals.events (\"SignalId\", \"At\", \"Kind\") VALUES ('x', now(), 1)");
         await AssertDeniedAsync(asSource, "SELECT * FROM config.exchange_symbols");
+        await AssertDeniedAsync(asSource, "SELECT * FROM config.signal_strategy_configurations");
         await AssertDeniedAsync(asSource, "SELECT * FROM config.candle_worker_configurations");
         await AssertDeniedAsync(asSource, "SELECT * FROM config.audit_log");
         await AssertDeniedAsync(asSource, "SELECT * FROM auth.users");

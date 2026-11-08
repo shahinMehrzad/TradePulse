@@ -188,6 +188,58 @@ namespace Infrastructure.Migrations.ConfigDb
                     b.ToTable("shock_watch_configurations", "config");
                 });
 
+            modelBuilder.Entity("Domain.Entities.SignalStrategyConfiguration", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreateDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("MaxLeverage")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)");
+
+                    b.Property<decimal>("MaxMoveOfStopDistance")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("numeric(9,4)");
+
+                    b.Property<int?>("MaxOpenPerSymbol")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxSignalAgeSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Strategy")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Strategy")
+                        .IsUnique();
+
+                    b.ToTable("signal_strategy_configurations", "config", t =>
+                        {
+                            t.HasCheckConstraint("CK_signal_strategy_configurations_age", "\"MaxSignalAgeSeconds\" BETWEEN 1 AND 604800");
+
+                            t.HasCheckConstraint("CK_signal_strategy_configurations_leverage", "\"MaxLeverage\" BETWEEN 1 AND 125");
+
+                            t.HasCheckConstraint("CK_signal_strategy_configurations_move", "\"MaxMoveOfStopDistance\" > 0 AND \"MaxMoveOfStopDistance\" <= 1");
+
+                            t.HasCheckConstraint("CK_signal_strategy_configurations_open", "\"MaxOpenPerSymbol\" IS NULL OR \"MaxOpenPerSymbol\" >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Domain.Entities.SymbolDataConfiguration", b =>
                 {
                     b.Property<int>("Id")

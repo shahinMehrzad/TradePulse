@@ -14,5 +14,8 @@ public enum SignalRejectionEnum : byte
     SignalTooOld = 9,
     PriceBeyondLevels = 10,
     PriceMovedTooFar = 11,
-    TooManyOpenTrades = 12
+    TooManyOpenTrades = 12,
+
+    /// <summary>The strategy has no row in the settings: a signal from a label nobody added is not taken.</summary>
+    UnknownStrategy = 13
 }

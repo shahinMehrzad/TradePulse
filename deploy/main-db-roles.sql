@@ -113,6 +113,7 @@ DECLARE
         ['tp_signals', 'SELECT', 'config.symbols'],
         ['tp_signals', 'SELECT', 'config.exchanges'],
         ['tp_signals', 'SELECT', 'config.markets'],
+        ['tp_signals', 'SELECT', 'config.signal_strategy_configurations'],
         ['tp_signals', 'SELECT, INSERT', 'signals.signals'],
         ['tp_signals', 'SELECT, INSERT, UPDATE', 'signals.paper_trades'],
         ['tp_signals', 'SELECT, INSERT', 'signals.events']];

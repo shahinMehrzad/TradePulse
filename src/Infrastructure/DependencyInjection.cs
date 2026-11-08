@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IShockAlertStore, ShockAlertStore>();
         services.AddScoped<IShockWatchConfigurationRepository, ShockWatchConfigurationRepository>();
         services.AddScoped<IWatchedSymbolSource, ConfiguredWatchedSymbols>();
+        services.AddScoped<Application.Signals.ISignalStrategyConfigurationRepository, SignalStrategyConfigurationRepository>();
 
         // Work without a signed-in user (the collector) is done by "system"; the API registers the user of the request after this.
         services.TryAddScoped<ICurrentUser, SystemUser>();
