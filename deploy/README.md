@@ -66,6 +66,9 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
   `VAULT_DB_PASSWORD` for the vault's Postgres). `./deploy/main-db-roles.sh` makes the roles and gives them their rights (run it **before** the API starts the first time and again
   **after** it, and after any restore); `./deploy/check-db-roles.sh` tries each role and says `ok` or `FAIL`. Setting up a new server,
   **upgrading a running one**, restoring, looking at the databases and defining a role yourself: [docs/database-security.md](../docs/database-security.md).
+- **The signal service** (`signals`, compose profile `signals`: add `--profile signals`) takes the signals of a program that lives outside this repository and tells a Telegram chat about the paper trades
+  opened from them. It has no public port: the sender joins the network `tradepulse-signals` (or calls `127.0.0.1:SIGNALS_PORT`). Its roles are `tp_signals` and, for the sender, `tp_signal_source`
+  (`SIGNALS_DB_PASSWORD`, `SIGNAL_SOURCE_DB_PASSWORD`; both optional); the secret of the webhook is `SIGNALS_WEBHOOK_SECRET`. Setting it up and the contract: [docs/signals.md](../docs/signals.md).
 - **Secrets** are only in `deploy/.env` (git-ignored). Use long random values. The tokens are signed with a key pair (`./deploy/make-jwt-keys.sh` prints
   `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY`): the private half only in the API's environment, the public half in the key vault's, which therefore cannot
   make a token. A new pair signs everybody out of the panel once; the sessions come back by themselves from their refresh tokens, and the
