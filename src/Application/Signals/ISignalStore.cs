@@ -32,6 +32,14 @@ public interface ISignalStore
     /// </summary>
     Task SaveProgressAsync(IReadOnlyCollection<PaperTrade> openTrades, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Stores the result of an ended trade (<see cref="PaperTrade.Settle"/>), but only if it has none yet. False when somebody stored it first.
+    /// </summary>
+    Task<bool> SaveResultAsync(PaperTrade trade, CancellationToken cancellationToken);
+
+    /// <summary>The trades that ended and have no result yet, oldest first: found again after a restart, or after the exchange did not answer.</summary>
+    Task<IReadOnlyList<PaperTrade>> GetUnsettledAsync(CancellationToken cancellationToken);
+
     /// <summary>Remembers the message of a trade. False when it already has one.</summary>
     Task<bool> AttachMessageAsync(int tradeId, long chatId, int messageId, CancellationToken cancellationToken);
 

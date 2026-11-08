@@ -58,6 +58,31 @@ internal sealed class FakeSignalStore : ISignalStore
         return Task.CompletedTask;
     }
 
+    private readonly List<PaperTrade> _settled = [];
+
+    /// <summary>The trades whose result was stored.</summary>
+    public IReadOnlyList<PaperTrade> Settled
+    {
+        get { lock (_lock) return _settled.ToList(); }
+    }
+
+    public Task<bool> SaveResultAsync(PaperTrade trade, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            if (_settled.Contains(trade))
+                return Task.FromResult(false);
+
+            _settled.Add(trade);
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<IReadOnlyList<PaperTrade>> GetUnsettledAsync(CancellationToken cancellationToken)
+    {
+        lock (_lock) return Task.FromResult<IReadOnlyList<PaperTrade>>(_closed.Where(t => !_settled.Contains(t)).ToList());
+    }
+
     public Task<bool> RecordAsync(ReceivedSignal signal, CancellationToken cancellationToken) => throw new NotSupportedException();
     public Task<int> CountOpenAsync(ExchangeEnum exchange, string strategy, string symbol, CancellationToken cancellationToken) => throw new NotSupportedException();
     public Task AddTradeAsync(PaperTrade trade, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -134,6 +159,43 @@ internal sealed class FakeHistoricalTrades : IHistoricalTradeGateway
 
             var trades = _minutes.Where(m => m.Key >= from && m.Key < to).SelectMany(m => m.Value).ToList();
             return Task.FromResult(ExchangeResult<IReadOnlyList<LiveTrade>>.Ok(trades));
+        }
+    }
+}
+
+/// <summary>The funding settlements of an exchange, scripted.</summary>
+internal sealed class FakeFundingGateway : IFundingRateGateway
+{
+    private readonly object _lock = new();
+    private readonly List<FundingRate> _rates = [];
+    private readonly List<(ExchangeEnum Exchange, string Symbol, DateTime From)> _calls = [];
+
+    public bool Fail { get; set; }
+
+    public int PageSize { get; set; } = 1_000;
+
+    public void Add(params FundingRate[] rates)
+    {
+        lock (_lock) _rates.AddRange(rates);
+    }
+
+    public IReadOnlyList<(ExchangeEnum Exchange, string Symbol, DateTime From)> Calls
+    {
+        get { lock (_lock) return _calls.ToList(); }
+    }
+
+    public Task<ExchangeResult<ExchangePage<FundingRate>>> GetFundingRatesAsync(
+        ExchangeEnum exchange, ExchangeSymbol symbol, DateTime from, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            _calls.Add((exchange, symbol.Value, from));
+            if (Fail)
+                return Task.FromResult(ExchangeResult<ExchangePage<FundingRate>>.Fail("the exchange is down"));
+
+            var wanted = _rates.Where(r => r.FundingTime >= from).OrderBy(r => r.FundingTime).ToList();
+            var page = wanted.Take(PageSize).ToList();
+            return Task.FromResult(ExchangeResult<ExchangePage<FundingRate>>.Ok(new ExchangePage<FundingRate>(page, wanted.Count > page.Count)));
         }
     }
 }

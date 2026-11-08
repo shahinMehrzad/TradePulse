@@ -71,6 +71,22 @@ public class SignalStore(SignalsDbContext context) : ISignalStore
         return changed == 1;
     }
 
+    public async Task<bool> SaveResultAsync(PaperTrade trade, CancellationToken cancellationToken) =>
+        await context.PaperTrades
+            .Where(t => t.Id == trade.Id && t.Status != PaperTradeStatusEnum.Open && t.NetResult == null)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(t => t.GrossResult, trade.GrossResult)
+                .SetProperty(t => t.FeesPaid, trade.FeesPaid)
+                .SetProperty(t => t.FundingPaid, trade.FundingPaid)
+                .SetProperty(t => t.NetResult, trade.NetResult)
+                .SetProperty(t => t.RMultiple, trade.RMultiple), cancellationToken) == 1;
+
+    public async Task<IReadOnlyList<PaperTrade>> GetUnsettledAsync(CancellationToken cancellationToken) =>
+        await context.PaperTrades.AsNoTracking()
+            .Where(t => t.Status != PaperTradeStatusEnum.Open && t.NetResult == null)
+            .OrderBy(t => t.ClosedAt)
+            .ToListAsync(cancellationToken);
+
     public async Task SaveProgressAsync(IReadOnlyCollection<PaperTrade> openTrades, CancellationToken cancellationToken)
     {
         // A handful of rows once a minute: one statement each is simpler than anything cleverer. The condition keeps a trade that ended
