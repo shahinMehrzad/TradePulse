@@ -36,6 +36,11 @@ public class EnumContractTests
             ("LeverageOutOfRange", 5), ("LevelsOnWrongSide", 6), ("SignalFromTheFuture", 7), ("SignalExpired", 8),
             ("SignalTooOld", 9), ("PriceBeyondLevels", 10), ("PriceMovedTooFar", 11), ("TooManyOpenTrades", 12));
 
+    [Fact]
+    public void SignalEventKindValuesAreStable() =>
+        AssertContract<SignalEventKindEnum>(
+            ("Received", 1), ("Rejected", 2), ("Opened", 3), ("Closed", 4), ("MessageSent", 5), ("MessageEdited", 6), ("MessageFailed", 7));
+
     private static void AssertContract<TEnum>(params (string Name, int Value)[] expected) where TEnum : struct, Enum
     {
         var actual = Enum.GetValues<TEnum>()

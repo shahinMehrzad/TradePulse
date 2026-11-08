@@ -17,6 +17,9 @@ trader_pw="$(setting TRADER_MAIN_DB_PASSWORD)"
 watch_pw="$(setting WATCH_DB_PASSWORD)"
 # Only when monitoring is used (docs/monitoring.md): without this password there is no tp_monitor to check.
 monitor_pw="$(setting MONITOR_DB_PASSWORD)"
+# Only when the signals are used: without these passwords there is no tp_signals or tp_signal_source to check.
+signals_pw="$(setting SIGNALS_DB_PASSWORD)"
+signal_source_pw="$(setting SIGNAL_SOURCE_DB_PASSWORD)"
 failed=0
 
 # run <role> <password> <sql>: the output and the exit code of psql, connecting to the server by its network name (the image trusts
@@ -119,6 +122,45 @@ cannot tp_watch "$watch_pw" "make a table in research"       "create table resea
 if [ -n "$DATA_TABLE" ]; then
   can    tp_watch "$watch_pw" "read the data table $DATA_TABLE"    "select count(*) from public.\"$DATA_TABLE\""
   cannot tp_watch "$watch_pw" "write the data table"               "begin; delete from public.\"$DATA_TABLE\"; rollback"
+fi
+
+# ---- tp_signals (only when it is set up): its own tables in schema signals, the symbol lists and the data tables
+if [ -n "$signals_pw" ]; then
+  if run tp_signals "$signals_pw" "select 1" >/dev/null; then ok "tp_signals connects with its password"; else fail "tp_signals connects with its password" "run deploy/main-db-roles.sh"; fi
+  if run tp_signals "not-the-password-$RANDOM" "select 1" >/dev/null; then fail "tp_signals refuses a wrong password"; else ok "tp_signals refuses a wrong password"; fi
+  can    tp_signals "$signals_pw" "read the symbol listings"        "select count(*) from config.exchange_symbols join config.symbols on true join config.exchanges on true join config.markets on true"
+  can    tp_signals "$signals_pw" "read the signals"                "select count(*) from signals.signals"
+  can    tp_signals "$signals_pw" "update its trades"               "begin; update signals.paper_trades set \"Status\" = \"Status\" where false; rollback"
+  can    tp_signals "$signals_pw" "add to the log"                  "begin; insert into signals.events (\"SignalId\", \"At\", \"Kind\") values ('check', now() at time zone 'utc', 1); rollback"
+  cannot tp_signals "$signals_pw" "delete a trade"                  "begin; delete from signals.paper_trades; rollback"
+  cannot tp_signals "$signals_pw" "change a signal"                 "begin; update signals.signals set \"Strategy\" = 'x'; rollback"
+  cannot tp_signals "$signals_pw" "delete from the log"             "begin; delete from signals.events; rollback"
+  cannot tp_signals "$signals_pw" "make a table in signals"         "create table signals.check_tmp (x int)"
+  cannot tp_signals "$signals_pw" "read the accounts"               "select count(*) from auth.users"
+  cannot tp_signals "$signals_pw" "read the audit log"              "select count(*) from config.audit_log"
+  cannot tp_signals "$signals_pw" "read the research tables"        "select count(*) from research.market_events"
+  cannot tp_signals "$signals_pw" "change the configuration"        "begin; delete from config.candle_worker_configurations; rollback"
+  if [ -n "$DATA_TABLE" ]; then
+    can    tp_signals "$signals_pw" "read the data table $DATA_TABLE"   "select count(*) from public.\"$DATA_TABLE\""
+    cannot tp_signals "$signals_pw" "write the data table"              "begin; delete from public.\"$DATA_TABLE\"; rollback"
+  fi
+fi
+
+# ---- tp_signal_source (only when it is set up): the data tables, and not one row of anything else
+if [ -n "$signal_source_pw" ]; then
+  if run tp_signal_source "$signal_source_pw" "select 1" >/dev/null; then ok "tp_signal_source connects with its password"; else fail "tp_signal_source connects with its password" "run deploy/main-db-roles.sh"; fi
+  if run tp_signal_source "not-the-password-$RANDOM" "select 1" >/dev/null; then fail "tp_signal_source refuses a wrong password"; else ok "tp_signal_source refuses a wrong password"; fi
+  cannot tp_signal_source "$signal_source_pw" "read the signals"            "select count(*) from signals.signals"
+  cannot tp_signal_source "$signal_source_pw" "read the trades"             "select count(*) from signals.paper_trades"
+  cannot tp_signal_source "$signal_source_pw" "read the symbol listings"    "select count(*) from config.exchange_symbols"
+  cannot tp_signal_source "$signal_source_pw" "read the configuration"      "select count(*) from config.candle_worker_configurations"
+  cannot tp_signal_source "$signal_source_pw" "read the accounts"           "select count(*) from auth.users"
+  cannot tp_signal_source "$signal_source_pw" "read the audit log"          "select count(*) from config.audit_log"
+  cannot tp_signal_source "$signal_source_pw" "make a table in public"      "create table public.check_tmp (x int)"
+  if [ -n "$DATA_TABLE" ]; then
+    can    tp_signal_source "$signal_source_pw" "read the data table $DATA_TABLE"   "select count(*) from public.\"$DATA_TABLE\""
+    cannot tp_signal_source "$signal_source_pw" "write the data table"              "begin; delete from public.\"$DATA_TABLE\"; rollback"
+  fi
 fi
 
 # ---- tp_monitor (only when monitoring is set up): the statistics of the server, and no row of anything

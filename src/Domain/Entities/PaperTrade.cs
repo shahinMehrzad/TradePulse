@@ -41,6 +41,27 @@ public class PaperTrade
     public decimal? ExitPrice { get; private set; }
     public DateTime? ClosedAt { get; private set; }
 
+    /// <summary>
+    /// The best and the worst price the trade saw from its entry until it ended (for a long the highest and the lowest, for a short the other
+    /// way round), so the message can say how far the trade went against its holder on the way.
+    /// </summary>
+    public decimal BestPrice { get; private set; }
+    public decimal WorstPrice { get; private set; }
+
+    /// <summary>The message of this trade in the chat, so it can be edited when the trade ends. Both are set together, once.</summary>
+    public long? TelegramChatId { get; private set; }
+    public int? TelegramMessageId { get; private set; }
+
+    /// <summary>
+    /// The result, set by <see cref="Settle"/> when the trade has ended; every part is a fraction of the margin (see <see cref="PaperPnl"/>).
+    /// Costs are positive when paid.
+    /// </summary>
+    public decimal? GrossResult { get; private set; }
+    public decimal? FeesPaid { get; private set; }
+    public decimal? FundingPaid { get; private set; }
+    public decimal? NetResult { get; private set; }
+    public decimal? RMultiple { get; private set; }
+
     public bool IsOpen => Status == PaperTradeStatusEnum.Open;
 
     /// <summary>Reward over risk at the entry: the distance to the target divided by the distance to the stop.</summary>
@@ -64,6 +85,8 @@ public class PaperTrade
             StopLoss = signal.StopLoss,
             SignalPrice = signal.SignalPrice,
             EntryPrice = entryPrice,
+            BestPrice = entryPrice,
+            WorstPrice = entryPrice,
             OpenedAt = openedAt,
             OpenTradesAtEntry = openTradesAtEntry,
             ExpiresAt = signal.MaxDuration is { } duration ? openedAt + duration : null,
@@ -85,6 +108,8 @@ public class PaperTrade
     {
         if (!IsOpen || at < OpenedAt)
             return false;
+
+        Track(price);
 
         if (HitTarget(price))
             return Close(PaperTradeStatusEnum.TakeProfit, price, at);
@@ -118,7 +143,44 @@ public class PaperTrade
         if (isLong ? high >= TakeProfit : low <= TakeProfit)
             return Close(PaperTradeStatusEnum.TakeProfit, isLong ? Math.Max(open, TakeProfit) : Math.Min(open, TakeProfit), closeTime);
 
+        Track(high);
+        Track(low);
+
         return ExpiresAt is { } expires && closeTime >= expires && Close(PaperTradeStatusEnum.Expired, close, closeTime);
+    }
+
+    /// <summary>Remembers where the message of this trade is, so the same message can be edited later. A trade has one message.</summary>
+    public void AttachMessage(long chatId, int messageId)
+    {
+        if (TelegramMessageId is not null)
+            throw new InvalidOperationException("This trade already has a message.");
+
+        TelegramChatId = chatId;
+        TelegramMessageId = messageId;
+    }
+
+    /// <summary>Works out the result of the ended trade (see <see cref="PaperPnl.Calculate"/>) and keeps it on the trade.</summary>
+    public PaperPnl Settle(IEnumerable<FundingRate> fundingHistory, decimal takerFee = PaperPnl.DefaultTakerFee)
+    {
+        var pnl = PaperPnl.Calculate(this, fundingHistory, takerFee);
+
+        GrossResult = pnl.Gross;
+        FeesPaid = pnl.Fees;
+        FundingPaid = pnl.Funding;
+        NetResult = pnl.Net;
+        RMultiple = pnl.RMultiple;
+        return pnl;
+    }
+
+    private void Track(decimal price)
+    {
+        var better = Side == PositionSideEnum.Long ? price > BestPrice : price < BestPrice;
+        var worse = Side == PositionSideEnum.Long ? price < WorstPrice : price > WorstPrice;
+
+        if (better)
+            BestPrice = price;
+        if (worse)
+            WorstPrice = price;
     }
 
     private bool HitTarget(decimal price) => Side == PositionSideEnum.Long ? price >= TakeProfit : price <= TakeProfit;
@@ -129,6 +191,7 @@ public class PaperTrade
 
     private bool Close(PaperTradeStatusEnum status, decimal price, DateTime at)
     {
+        Track(price);
         Status = status;
         ExitPrice = price;
         ClosedAt = at;
