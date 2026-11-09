@@ -7,7 +7,7 @@ You have a program that makes trading signals. This page is all you need to send
 
 | What | Example | Note |
 | --- | --- | --- |
-| The secret | 64 hex characters | Used only to sign requests. Never put it in the code, a log or a message. |
+| The secret | Any text of at least 32 characters (for example 48 or 64 hex characters) | Used exactly as given, as UTF-8 text, to sign requests. Never put it in the code, a log or a message. |
 | The address | `http://signals:8080/api/signals` | Inside the Docker network `tradepulse-signals`. From the server itself: `http://127.0.0.1:8090/api/signals`. There is no public address. |
 | Your strategy label | `S1` | A label with no row on the service is refused (`UnknownStrategy`). |
 | The symbols | `BTC/USDT`, ... | A symbol that is not listed is refused (`UnknownSymbol`). |
@@ -39,6 +39,29 @@ shared with the collector on the same server.
 | User | `tp_signal_source`, with the password the operator gives you. It can only `SELECT` the candle, funding and other data tables, nothing else. |
 
 Table names are built like `binance_futures_btcusdt_4h` (lower case: exchange, market, symbol without the slash, time frame). Times are `timestamp` columns, always UTC.
+
+The columns of a candle table, one row per candle, primary key `open_time`:
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `open_time` | `timestamp` | When the candle opened (UTC). |
+| `open_price`, `high_price`, `low_price`, `close_price` | `numeric(18,8)` | OHLC. |
+| `volume` | `numeric(28,8)` | Volume in the base asset. |
+| `close_time` | `timestamp` | The close time as Binance gives it. |
+| `quote_asset_volume` | `numeric(28,8)` | Volume in the quote asset. |
+| `number_of_trades` | `bigint` | Trades in the candle. |
+| `taker_buy_base_volume`, `taker_buy_quote_volume` | `numeric(28,8)` | Taker buy volume. |
+
+There is no "closed" column: **only closed candles are stored**, so every row is final. The newest row is the last candle that closed. A candle that is still forming is not in the table.
+
+**Gaps.** The collector fills holes in the series by itself (at start and every 24 hours), so a hole is usually temporary. A hole that Binance itself does not have stays open for good, and nothing marks it:
+the table of confirmed gaps does not exist yet. To find a hole, look for two neighbouring rows whose `open_time` differ by more than the time frame.
+The role `tp_signal_source` can read the candle, funding rate, open interest and liquidation tables, and no table of configuration.
+
+## Starting order
+
+The network `tradepulse-data` exists as soon as the main stack is up. The network `tradepulse-signals` is made when the signal service first starts (compose profile `signals`),
+so that must happen before your program starts: a compose file with an `external` network that does not exist yet fails with an error. After that the networks stay, whatever is restarted.
 
 ## One request
 
