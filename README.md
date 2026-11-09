@@ -26,7 +26,7 @@ What makes the collection path fast and safe (details in [docs/collector.md](doc
 
 - **Idempotent writes:** binary `COPY` into a temp table, then `INSERT ... ON CONFLICT DO NOTHING`, so re-fetching any range is always safe.
 - **Rate-limit aware:** one shared weight limiter per market, exponential backoff on failures.
-- **Self-healing:** a daily gap detector refills missing candles, and a database error is never mistaken for an empty table.
+- **Self-healing:** a daily gap detector refills missing candles (and the newest ones are looked at every hour), and a database error is never mistaken for an empty table.
 - **Live candles over WebSocket,** with the REST loop at every candle boundary as the watchdog.
 - **Non-blocking liquidations:** the socket callback only enqueues into a bounded `Channel<T>`; one writer drains it in batches.
 - **Config-driven:** which series to collect is chosen in the admin panel and stored in the database, no code and no redeploy.

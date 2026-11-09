@@ -179,6 +179,55 @@ public class CandleRepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task RecentGapsOnlyLookAtTheStretchFromTheGivenTime()
+    {
+        var table = NewTable();
+        await _repository.EnsureTableExistsAsync(table, Ct);
+        // An old hole (hours 3 and 4) and a recent one (hours 15 and 16).
+        await _repository.BulkInsert(table, Enumerable.Range(0, 24).Where(i => i is not (3 or 4 or 15 or 16)).Select(i => CandleAt(Start + i * Hour)), Ct);
+
+        var gaps = await _repository.GetRecentGapsAsync(table, Hour, Start + 10 * Hour, Ct);
+
+        var gap = Assert.Single(gaps);
+        Assert.Equal((Start + 15 * Hour, Start + 16 * Hour), (gap.FirstMissingOpenTime, gap.LastMissingOpenTime));
+        Assert.False(gap.BeforeFirstCandle);
+    }
+
+    [Fact]
+    public async Task ARecentHoleThatStartsBeforeTheGivenTimeIsFoundWhole()
+    {
+        var table = NewTable();
+        await _repository.EnsureTableExistsAsync(table, Ct);
+        // Hours 9, 10 and 11 are missing; the stretch starts at hour 10, in the middle of the hole.
+        await _repository.BulkInsert(table, Enumerable.Range(0, 20).Where(i => i is not (9 or 10 or 11)).Select(i => CandleAt(Start + i * Hour)), Ct);
+
+        var gap = Assert.Single(await _repository.GetRecentGapsAsync(table, Hour, Start + 10 * Hour, Ct));
+
+        Assert.Equal((Start + 9 * Hour, Start + 11 * Hour), (gap.FirstMissingOpenTime, gap.LastMissingOpenTime));
+    }
+
+    [Fact]
+    public async Task RecentGapsDoNotReportTheRunInFrontOfTheFirstCandle()
+    {
+        var table = NewTable();
+        await _repository.EnsureTableExistsAsync(table, Ct);
+        await _repository.BulkInsert(table, Series(10).Skip(5), Ct);   // the table starts at hour 5
+
+        Assert.Empty(await _repository.GetRecentGapsAsync(table, Hour, Start, Ct));
+    }
+
+    [Fact]
+    public async Task RecentGapsOfAContinuousSeriesOrAnEmptyTableAreNone()
+    {
+        var table = NewTable();
+        await _repository.EnsureTableExistsAsync(table, Ct);
+        Assert.Empty(await _repository.GetRecentGapsAsync(table, Hour, Start, Ct));
+
+        await _repository.BulkInsert(table, Series(20), Ct);
+        Assert.Empty(await _repository.GetRecentGapsAsync(table, Hour, Start + 5 * Hour, Ct));
+    }
+
+    [Fact]
     public async Task ContinuousSeriesHasNoGaps()
     {
         var table = NewTable();

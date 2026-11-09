@@ -21,5 +21,12 @@ namespace Domain.Repositories
         Task<DateTimeOffset?> GetFirstOpenTimeAsync(string tableName, CancellationToken cancellationToken);
 
         Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// The holes between the candles from <paramref name="since"/> on, and only those: the scan reaches the newest rows through the primary key,
+        /// so it costs the same for a table of years as for a table of days. A hole at the very start of the stretch is found too (the candle just
+        /// before <paramref name="since"/> is the other end of it). The run in front of the first candle is not looked at: that is the full scan's.
+        /// </summary>
+        Task<IReadOnlyList<CandleGap>> GetRecentGapsAsync(string tableName, TimeSpan interval, DateTime since, CancellationToken cancellationToken);
     }
 }
