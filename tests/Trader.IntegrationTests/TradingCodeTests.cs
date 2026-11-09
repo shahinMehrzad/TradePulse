@@ -152,10 +152,11 @@ public class TradingCodeTests(TraderFixture trader) : IClassFixture<TraderFixtur
     [Fact]
     public async Task WithoutTheCodeThereIsNoConfirmationAndWithItTheKeysOpen()
     {
-        var (client, _, _, _) = Host();
+        // The vault runs on this clock, which does not move: every code is made for the vault's time, never for the real one.
+        var (client, clock, _, _) = Host();
         var (_, _, access) = FreshAdministrator("confirm");
         var key = (await ReadAsync<SetupBody>(await PostAsync(client, "/trading-code/begin", access))).SharedKey;
-        await PostAsync(client, "/trading-code/setup", access, new { Code = TestTotp.Code(key) });
+        await PostAsync(client, "/trading-code/setup", access, new { Code = TestTotp.Code(key, clock.GetUtcNow()) });
 
         var keyBody = new { Label = "k", Environment = "Demo" };
         var noToken = await PostAsync(client, "/keys", access, keyBody);
@@ -166,7 +167,7 @@ public class TradingCodeTests(TraderFixture trader) : IClassFixture<TraderFixtur
         Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
 
         // The next step's code: the one of this step was taken by the setup, and a code works once.
-        var next = TestTotp.Code(key, DateTimeOffset.UtcNow.AddSeconds(30));
+        var next = TestTotp.Code(key, clock.GetUtcNow().AddSeconds(30));
         var confirmed = await ReadAsync<ConfirmationBody>(await PostAsync(client, "/trading-code/confirmation", access, new { Code = next }));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/keys") { Content = JsonContent.Create(keyBody) };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access);
@@ -190,24 +191,25 @@ public class TradingCodeTests(TraderFixture trader) : IClassFixture<TraderFixtur
     [Fact]
     public async Task ACodeWorksOnceAndAnOlderStepIsNotASecondChance()
     {
-        var (client, _, _, _) = Host();
+        var (client, clock, _, _) = Host();
         var (_, _, access) = FreshAdministrator("once");
         var key = (await ReadAsync<SetupBody>(await PostAsync(client, "/trading-code/begin", access))).SharedKey;
-        // The setup takes the step of now. A code of the step before (now - 30 s) is the very edge of what the vault accepts: when the clock
-        // crossed a 30 second boundary between making the code and its arrival, that code was out of the window and the setup was refused
-        // (once in a while on a slow runner). The step of now is inside the window whichever side of the boundary the request falls.
-        var setup = await PostAsync(client, "/trading-code/setup", access, new { Code = TestTotp.Code(key) });
+        // The vault runs on a clock that does not move, so the codes are made for that clock and not for the real time. With the real time a slow
+        // runner could be a boundary of 30 seconds ahead of the vault when the code was made, and the code of the step after the vault's window
+        // was refused (once in a while). The setup takes the step of the vault's now.
+        var firstStep = clock.GetUtcNow();
+        var setup = await PostAsync(client, "/trading-code/setup", access, new { Code = TestTotp.Code(key, firstStep) });
         Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
 
         // The next step is inside the window too (the clock only moves forward), and later than the one taken.
-        var later = TestTotp.Code(key, DateTimeOffset.UtcNow.AddSeconds(30));
+        var later = TestTotp.Code(key, firstStep.AddSeconds(30));
         Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, "/trading-code/confirmation", access, new { Code = later })).StatusCode);
 
         var again = await PostAsync(client, "/trading-code/confirmation", access, new { Code = later });
         Assert.Equal(HttpStatusCode.BadRequest, again.StatusCode);
         Assert.Contains("already used", DetailOf(await again.Content.ReadAsStringAsync(Ct)));
 
-        var older = await PostAsync(client, "/trading-code/confirmation", access, new { Code = TestTotp.Code(key) });
+        var older = await PostAsync(client, "/trading-code/confirmation", access, new { Code = TestTotp.Code(key, firstStep) });
         Assert.Equal(HttpStatusCode.BadRequest, older.StatusCode);   // the step of now is older than the one taken
     }
 
