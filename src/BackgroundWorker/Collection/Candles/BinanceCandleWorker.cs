@@ -250,12 +250,17 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         var tableName = plan.Series.TableName;
 
         // A failure here must surface, like in the full scan, and the table is not marked: it is tried again at the next wake-up.
-        var gaps = await repository.GetRecentGapsAsync(tableName, plan.Series.Interval, schedule.RecentSince(plan.StartDate), ct);
+        var since = schedule.RecentSince(plan.StartDate);
+        var gaps = await repository.GetRecentGapsAsync(tableName, plan.Series.Interval, since, ct);
 
         foreach (var gap in gaps)
         {
             if (!schedule.MayAsk(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime))
+            {
+                // Asked enough: it is not asked again, but writing it down failed earlier maybe, so that is tried again here.
+                await ConfirmIfSettledAsync(scope.ServiceProvider, tableName, gap, ct);
                 continue;
+            }
 
             var (inserted, completed) = await FetchRangeAsync(plan, repository, tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime, ct);
 
@@ -263,18 +268,20 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 logger.LogWarning("Repaired a recent gap {From:u} .. {To:u} in {Table}: {Count} candles",
                     gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName, inserted);
 
-            // Only an answer counts. A request that failed says nothing about whether the exchange has the candles.
-            if (!completed)
+            // Only an answer counts. A request that failed says nothing about whether the exchange has the candles, and an answer with
+            // candles in it is a hole that is being filled, not one the exchange lacks.
+            if (!completed || inserted > 0)
                 continue;
 
             schedule.RecordAsk(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime);
-            if (inserted == 0)
-                logger.LogInformation("Recent gap {From:u} .. {To:u} in {Table} was not filled (the exchange had nothing, asked {Asked} of {Max} times)",
-                    gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName,
-                    schedule.AsksAbout(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime), schedule.MaxAsksPerHole);
+            logger.LogInformation("Recent gap {From:u} .. {To:u} in {Table} was not filled (the exchange had nothing, asked {Asked} of {Max} times)",
+                gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName,
+                schedule.AsksAbout(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime), schedule.MaxAsksPerHole);
+
+            await ConfirmIfSettledAsync(scope.ServiceProvider, tableName, gap, ct);
         }
 
-        schedule.ForgetAsksExcept(tableName, gaps.Select(g => (g.FirstMissingOpenTime, g.LastMissingOpenTime)).ToList());
+        schedule.ForgetAsksExcept(tableName, gaps.Select(g => (g.FirstMissingOpenTime, g.LastMissingOpenTime)).ToList(), since);
         schedule.MarkRecentRepaired(tableName);
     }
 
@@ -296,13 +303,21 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 continue;
             }
 
-            var (inserted, _) = await FetchRangeAsync(plan, repository, tableName,
+            var (inserted, completed) = await FetchRangeAsync(plan, repository, tableName,
                 gap.FirstMissingOpenTime, gap.LastMissingOpenTime, ct);
 
             // Binance itself has no candle for some periods (maintenance, no trades); those stay open and are retried next run.
-            if (inserted == 0)
+            // Only an answer says so: a request that failed says nothing about the exchange.
+            if (inserted == 0 && !completed)
+                logger.LogWarning("Gap {From:u} .. {To:u} in {Table} could not be filled: the requests to the exchange failed",
+                    gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName);
+            else if (inserted == 0)
+            {
                 logger.LogInformation("Gap {From:u} .. {To:u} in {Table} could not be filled (likely missing on exchange)",
                     gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName);
+                schedule.RecordAsk(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime);
+                await ConfirmIfSettledAsync(scope.ServiceProvider, tableName, gap, ct);
+            }
             else
             {
                 filledSome = true;
@@ -318,6 +333,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         var beforeFirst = open.Where(g => g.BeforeFirstCandle).Select(g => (DateTime?)(g.LastMissingOpenTime + intervalSpan)).FirstOrDefault();
         var holes = open.Where(g => !g.BeforeFirstCandle).ToList();
         var previous = openGaps.Set(tableName, holes, intervalSpan, beforeFirst);
+        schedule.ForgetAsksExcept(tableName, holes.Select(g => (g.FirstMissingOpenTime, g.LastMissingOpenTime)).ToList());
 
         // Not at the first look (the old holes of a new series are not news): only when a later look finds more.
         if (previous is { } before && holes.Count > before.Gaps && openGaps.Get(tableName) is { } now)
@@ -328,6 +344,34 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
         // The full scan has looked at the newest candles too.
         schedule.MarkRecentRepaired(tableName);
+    }
+
+    /// <summary>
+    /// Once the exchange has answered about this very hole often enough (<see cref="GapRepairSchedule.MaxAsksPerHole"/>) and had nothing, writes
+    /// it down for good. A database that cannot take the row only costs a log line: the hole is written at the next look, and nothing here may stop the repair.
+    /// </summary>
+    private async Task ConfirmIfSettledAsync(IServiceProvider services, string tableName, CandleGap gap, CancellationToken ct)
+    {
+        var asks = schedule.AsksAbout(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime);
+        if (asks < schedule.MaxAsksPerHole || schedule.IsConfirmed(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime))
+            return;
+
+        try
+        {
+            await services.GetRequiredService<IConfirmedGapStore>().ConfirmAsync(tableName, gap, asks, ct);
+            schedule.MarkConfirmed(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime);
+            logger.LogWarning("Gap {From:u} .. {To:u} in {Table} is confirmed missing on the exchange ({Asks} answers)",
+                gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName, asks);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not write down the confirmed gap {From:u} .. {To:u} in {Table}; it is tried again at the next look",
+                gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName);
+        }
     }
 
     // Usually the symbol was listed after the start date and the exchange has nothing there: ask once, then not again while the

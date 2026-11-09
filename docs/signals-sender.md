@@ -54,9 +54,8 @@ The columns of a candle table, one row per candle, primary key `open_time`:
 
 There is no "closed" column: **only closed candles are stored**, so every row is final. The newest row is the last candle that closed. A candle that is still forming is not in the table.
 
-**Gaps.** The collector fills holes in the series by itself (at start and every 24 hours), so a hole is usually temporary. A hole that Binance itself does not have stays open for good, and nothing marks it:
-the table of confirmed gaps does not exist yet. To find a hole, look for two neighbouring rows whose `open_time` differ by more than the time frame.
-The role `tp_signal_source` can read the candle, funding rate, open interest and liquidation tables, and no table of configuration.
+**Gaps.** The collector fills holes in the series by itself (the newest 14 days every hour, the whole table every 24 hours), so a hole is usually temporary. A hole that Binance itself does not have never fills. Once the collector has asked Binance about the same hole several times, the requests went through and every answer was empty, it writes the hole to `config.candle_confirmed_gaps`: `"TableName"` (the candle table, e.g. `binance_futures_btcusdt_4h`), `"FirstOpenTime"` and `"LastOpenTime"` (UTC `open_time` of the first and the last missing candle), `"ConfirmedAt"`, `"Asks"`. Rows are only added, never changed. A hole that is **not** in that table may still fill, so wait for it; a hole that is in it will not (a row can only be written when the exchange had nothing, but if the candles do appear later the row stays, so look at the candle table too). To find a hole in the candles, look for two neighbouring rows whose `open_time` differ by more than the time frame.
+The role `tp_signal_source` can read the candle, funding rate, open interest and liquidation tables and `config.candle_confirmed_gaps`, and no other table of configuration.
 
 ## Starting order
 

@@ -104,6 +104,30 @@ public class GapRepairScheduleTests
     }
 
     [Fact]
+    public void AHoleIsWrittenDownOnceAndForgottenWhenItIsGone()
+    {
+        var schedule = NewSchedule();
+        Assert.False(schedule.IsConfirmed(Table, From, To));
+
+        schedule.MarkConfirmed(Table, From, To);
+        Assert.True(schedule.IsConfirmed(Table, From, To));
+
+        schedule.ForgetAsksExcept(Table, []);
+        Assert.False(schedule.IsConfirmed(Table, From, To));
+    }
+
+    [Fact]
+    public void AHoleOlderThanTheLookIsNotForgottenByIt()
+    {
+        var schedule = NewSchedule();
+        schedule.RecordAsk(Table, From, To);
+
+        schedule.ForgetAsksExcept(Table, [], since: To.AddDays(1));   // the short look starts after the hole: it cannot know it is gone
+
+        Assert.Equal(1, schedule.AsksAbout(Table, From, To));
+    }
+
+    [Fact]
     public void ASettingThatMakesNoSenseIsRefusedAtTheStart()
     {
         Assert.Throws<InvalidOperationException>(() => new GapRepairSettings { RecentWindowDays = 0 }.Validate());

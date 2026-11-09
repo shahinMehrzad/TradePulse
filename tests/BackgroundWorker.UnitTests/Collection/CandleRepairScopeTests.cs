@@ -123,8 +123,35 @@ public class CandleRepairScopeTests
         }
     }
 
+    /// <summary>Keeps what is written down as confirmed; can be told to fail, like a database that is away.</summary>
+    private sealed class FakeConfirmedGaps : IConfirmedGapStore
+    {
+        private readonly List<(string Table, CandleGap Gap, int Asks)> _rows = [];
+        public bool Fail { get; set; }
+
+        public IReadOnlyList<(string Table, CandleGap Gap, int Asks)> Rows
+        {
+            get
+            {
+                lock (_rows)
+                    return [.. _rows];
+            }
+        }
+
+        public Task ConfirmAsync(string tableName, CandleGap gap, int asks, CancellationToken cancellationToken)
+        {
+            if (Fail)
+                throw new InvalidOperationException("database is away");
+
+            lock (_rows)
+                _rows.Add((tableName, gap, asks));
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class Rig : IAsyncDisposable
     {
+        public FakeConfirmedGaps Confirmed { get; } = new();
         public RecordingAlerts Alerts { get; } = new();
         public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
         public FakeCandleSeriesSource Source { get; } = new();
@@ -152,7 +179,7 @@ public class CandleRepairScopeTests
             rig.Provider = CandleSeriesTestSupport.NewProvider(rig.Source, rig.Time);
             await rig.Provider.StartAsync(Ct);
 
-            var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(rig.Table).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+            var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(rig.Table).AddSingleton<IConfirmedGapStore>(rig.Confirmed).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
             rig.Schedule = new GapRepairSchedule(rig.Time);
             rig._worker = new BinanceCandleWorker(
                 scopes, NullLogger<BinanceCandleWorker>.Instance, rig.Provider, rig.AnyGateway, rig.Coordinator,
@@ -421,9 +448,109 @@ public class CandleRepairScopeTests
         await WaitUntilAsync(() => rig.Table.GapLooks[TableOf(Btc1h)] >= 2 && rig.Table.GapLooks[TableOf(Eth1h)] >= 2, "both tables to be scanned again");
     }
 
-    // ---- alerts: a hole that appears after the first look is news, the old ones of a new series are not ----
-
     private static readonly CandleGap InnerGap = new(Utc(2021, 8, 13, 2), Utc(2021, 8, 13, 5));
+
+    // ---- holes the exchange does not have are written down, but only on an answer ----
+
+    private static async Task RepairRecentHourlyAsync(Rig rig, int times)
+    {
+        for (var hour = 1; hour <= times; hour++)
+        {
+            rig.Time.Advance(TimeSpan.FromMinutes(61));
+            await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+        }
+    }
+
+    [Fact]
+    public async Task AHoleIsWrittenDownOnlyAfterTheThirdEmptyAnswerAndOnlyOnce()
+    {
+        await using var rig = await Rig.StartAsync(null, new CountingGateway(), Btc1h);   // the exchange has nothing
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+
+        await RepairRecentHourlyAsync(rig, 2);
+        Assert.Empty(rig.Confirmed.Rows);
+
+        await RepairRecentHourlyAsync(rig, 4);
+        Assert.Equal([(TableOf(Btc1h), RecentHole, 3)], rig.Confirmed.Rows);
+    }
+
+    [Fact]
+    public async Task AFailedRequestNeverCreatesARow()
+    {
+        await using var rig = await Rig.StartAsync(null, new FailingGateway(), Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+
+        await RepairRecentHourlyAsync(rig, 8);
+
+        Assert.Empty(rig.Confirmed.Rows);
+    }
+
+    [Fact]
+    public async Task AHoleTheExchangeFillsIsNotWrittenDown()
+    {
+        var gateway = new CountingGateway(Utc(2025, 12, 30, 3), Utc(2025, 12, 30, 4), Utc(2025, 12, 30, 5));
+        await using var rig = await Rig.StartAsync(null, gateway, Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];   // the fake table never shows it filled, the exchange does have the candles
+
+        await RepairRecentHourlyAsync(rig, 5);
+
+        Assert.Empty(rig.Confirmed.Rows);
+    }
+
+    [Fact]
+    public async Task ADatabaseThatCannotTakeTheRowDoesNotStopTheRepairAndTheRowIsWrittenWhenItIsBack()
+    {
+        await using var rig = await Rig.StartAsync(null, new CountingGateway(), Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+        rig.Confirmed.Fail = true;
+
+        await RepairRecentHourlyAsync(rig, 5);   // does not throw: the third answer finds the database away, the later passes try again
+        Assert.Empty(rig.Confirmed.Rows);
+        Assert.Equal(5, rig.Table.RecentLooks[TableOf(Btc1h)]);
+
+        rig.Confirmed.Fail = false;
+        await RepairRecentHourlyAsync(rig, 1);
+
+        Assert.Equal([(TableOf(Btc1h), RecentHole, 3)], rig.Confirmed.Rows);
+    }
+
+    [Fact]
+    public async Task TheDailyScanWritesAHoleDownAfterEnoughEmptyAnswersToo()
+    {
+        await using var rig = await Rig.StartAsync(_ => [InnerGap], new CountingGateway(), Btc1h);
+        await WaitUntilAsync(() => rig.Schedule.AsksAbout(TableOf(Btc1h), InnerGap.FirstMissingOpenTime, InnerGap.LastMissingOpenTime) == 1, "the first scan");
+
+        for (var scan = 2; scan <= 3; scan++)
+        {
+            rig.Coordinator.RequestResync();
+            await WaitUntilAsync(() => rig.Schedule.AsksAbout(TableOf(Btc1h), InnerGap.FirstMissingOpenTime, InnerGap.LastMissingOpenTime) == scan, $"scan {scan}");
+        }
+
+        await WaitUntilAsync(() => rig.Confirmed.Rows.Count == 1, "the row");
+        Assert.Equal((TableOf(Btc1h), InnerGap, 3), rig.Confirmed.Rows[0]);
+    }
+
+    [Fact]
+    public async Task TheDailyScanDoesNotCallAFailedRequestAnAnswer()
+    {
+        await using var rig = await Rig.StartAsync(_ => [InnerGap], new FailingGateway(), Btc1h);
+
+        for (var scan = 2; scan <= 5; scan++)
+        {
+            await WaitUntilAsync(() => rig.Table.GapLooks.GetValueOrDefault(TableOf(Btc1h)) >= scan - 1, $"scan {scan - 1}");
+            rig.Coordinator.RequestResync();
+        }
+        await WaitUntilAsync(() => rig.Table.GapLooks.GetValueOrDefault(TableOf(Btc1h)) >= 5, "five scans");
+
+        Assert.Equal(0, rig.Schedule.AsksAbout(TableOf(Btc1h), InnerGap.FirstMissingOpenTime, InnerGap.LastMissingOpenTime));
+        Assert.Empty(rig.Confirmed.Rows);
+    }
+
+    // ---- alerts: a hole that appears after the first look is news, the old ones of a new series are not ----
 
     [Fact]
     public async Task ANewHoleFoundByALaterLookIsAnnouncedOnceAndNotAgainWhileItStaysTheSame()

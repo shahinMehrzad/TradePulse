@@ -18,7 +18,7 @@ namespace Infrastructure.Migrations.ConfigDb
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("config")
-                .HasAnnotation("ProductVersion", "10.0.13")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -109,6 +109,44 @@ namespace Infrastructure.Migrations.ConfigDb
                         .IsUnique();
 
                     b.ToTable("candle_worker_configurations", "config");
+                });
+
+            modelBuilder.Entity("Domain.Entities.ConfirmedCandleGap", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Asks")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ConfirmedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<DateTime>("FirstOpenTime")
+                        .HasColumnType("timestamp");
+
+                    b.Property<DateTime>("LastOpenTime")
+                        .HasColumnType("timestamp");
+
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(63)
+                        .HasColumnType("character varying(63)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TableName", "FirstOpenTime", "LastOpenTime")
+                        .IsUnique();
+
+                    b.ToTable("candle_confirmed_gaps", "config", t =>
+                        {
+                            t.HasCheckConstraint("CK_candle_confirmed_gaps_range", "\"LastOpenTime\" >= \"FirstOpenTime\"");
+                        });
                 });
 
             modelBuilder.Entity("Domain.Entities.ExchangeLookup", b =>

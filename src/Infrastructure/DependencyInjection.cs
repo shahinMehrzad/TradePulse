@@ -29,6 +29,7 @@ public static class DependencyInjection
         var connectionString = configuration.RequiredConnectionString("DefaultConnection");
 
         services.AddScoped<ICandleRepository>(provider => new CandleRepository(connectionString));
+        services.AddScoped<IConfirmedGapStore>(_ => new ConfirmedGapStore(connectionString));
         services.AddScoped<IMarketDataRepository<FundingRate>>(_ => new TimeSeriesRepository<FundingRate>(connectionString, new FundingRateTable()));
         services.AddScoped<IMarketDataRepository<OpenInterest>>(_ => new TimeSeriesRepository<OpenInterest>(connectionString, new OpenInterestTable()));
         services.AddScoped<IMarketDataRepository<LongShortRatio>>(_ => new TimeSeriesRepository<LongShortRatio>(connectionString, new LongShortRatioTable()));
