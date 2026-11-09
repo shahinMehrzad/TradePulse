@@ -28,6 +28,19 @@ public class WorkerSettingsContractTests
         Assert.True(settings.MaxLimit > 0);
     }
 
+    [Fact]
+    public void TheShippedGapRepairSettingsBindAndMakeSense()
+    {
+        var settings = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: false)
+            .Build()
+            .GetSection(BackgroundWorker.Collection.Candles.GapRepairSettings.SectionName)
+            .Get<BackgroundWorker.Collection.Candles.GapRepairSettings>()!;
+
+        Assert.Equal((14, 60, 3), (settings.RecentWindowDays, settings.RecentPeriodMinutes, settings.MaxAsksPerHole));
+        settings.Validate();
+    }
+
     [Theory]
     [MemberData(nameof(AllTimeFrames))]
     public void EveryTimeFrameHasABinanceKlineInterval(TimeFrameEnum timeFrame)

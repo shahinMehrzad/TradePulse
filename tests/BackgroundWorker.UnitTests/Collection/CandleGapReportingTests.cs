@@ -40,6 +40,9 @@ public class CandleGapReportingTests
             return Task.FromResult(gapsPerLook[Math.Min(look, gapsPerLook.Length - 1)]);
         }
 
+        public Task<IReadOnlyList<CandleGap>> GetRecentGapsAsync(string tableName, TimeSpan interval, DateTime since, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<CandleGap>>([]);
+
         public Task<DateTimeOffset?> GetFirstOpenTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken) =>
             Task.FromResult<DateTimeOffset?>(DateTimeOffset.UtcNow);   // nothing newer can be closed yet
