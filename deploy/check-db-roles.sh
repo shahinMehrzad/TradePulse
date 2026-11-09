@@ -84,6 +84,9 @@ fi
 can    tp_collector "$collector_pw" "read what to collect (series)"       "select count(*) from config.candle_worker_configurations"
 can    tp_collector "$collector_pw" "read what to collect (symbol data)"  "select count(*) from config.symbol_data_configurations"
 can    tp_collector "$collector_pw" "read the symbol listings"            "select count(*) from config.exchange_symbols"
+can    tp_collector "$collector_pw" "add a confirmed candle gap"          "begin; insert into config.candle_confirmed_gaps (\"TableName\", \"FirstOpenTime\", \"LastOpenTime\", \"Asks\") values ('check_tmp', now(), now(), 3); rollback"
+cannot tp_collector "$collector_pw" "change a confirmed candle gap"       "update config.candle_confirmed_gaps set \"Asks\" = 0"
+cannot tp_collector "$collector_pw" "delete a confirmed candle gap"       "delete from config.candle_confirmed_gaps"
 can    tp_collector "$collector_pw" "make a data table"                   "begin; create table public.check_tmp (x int); rollback"
 cannot tp_collector "$collector_pw" "read the accounts"                   "select count(*) from auth.users"
 cannot tp_collector "$collector_pw" "read the second-factor secrets"      "select count(*) from auth.user_tokens"
@@ -152,6 +155,8 @@ fi
 if [ -n "$signal_source_pw" ]; then
   if run tp_signal_source "$signal_source_pw" "select 1" >/dev/null; then ok "tp_signal_source connects with its password"; else fail "tp_signal_source connects with its password" "run deploy/main-db-roles.sh"; fi
   if run tp_signal_source "not-the-password-$RANDOM" "select 1" >/dev/null; then fail "tp_signal_source refuses a wrong password"; else ok "tp_signal_source refuses a wrong password"; fi
+  can    tp_signal_source "$signal_source_pw" "read the confirmed candle gaps"  "select count(*) from config.candle_confirmed_gaps"
+  cannot tp_signal_source "$signal_source_pw" "add a confirmed candle gap"        "insert into config.candle_confirmed_gaps (\"TableName\", \"FirstOpenTime\", \"LastOpenTime\", \"Asks\") values ('check_tmp', now(), now(), 3)"
   cannot tp_signal_source "$signal_source_pw" "read the signals"            "select count(*) from signals.signals"
   cannot tp_signal_source "$signal_source_pw" "read the trades"             "select count(*) from signals.paper_trades"
   cannot tp_signal_source "$signal_source_pw" "read the symbol listings"    "select count(*) from config.exchange_symbols"

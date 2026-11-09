@@ -6,7 +6,8 @@
 --   tp_api        The API. Owns the schemas auth, config and research (its migrations create and change their tables) and may read the data
 --                 tables. It may not write a candle.
 --   tp_collector  The collector. Owns the data tables in schema public (it creates them and writes them), and reads the few config tables that
---                 say what to collect. It can see nothing of auth or research, and nothing else of config.
+--                 say what to collect, and adds the holes the exchange itself does not have (config.candle_confirmed_gaps, insert only). It can see
+--                 nothing of auth or research, and nothing else of config.
 --   tp_trader     The key vault, which has a database of its own. Here it may only add to the audit log and publish the list of enabled symbols.
 --   tp_watch      The price watch (src/Research, `watch`). Reads the symbol lists, the watch list, the enabled symbols and the stored candles; writes
 --                 only its alerts (research.shock_alerts). It can see nothing of auth and cannot change the configuration.
@@ -14,7 +15,8 @@
 --                 own tables in schema signals (it may add signals and log lines, add and update trades, and delete nothing). Made only when
 --                 SIGNALS_DB_PASSWORD is given.
 --   tp_signal_source  The program that MAKES the signals (it lives apart from this repository). Reads the data tables (candles, funding) and nothing else:
---                 no configuration, no signal, no trade. Made only when SIGNAL_SOURCE_DB_PASSWORD is given.
+--                 no configuration (but the one table of confirmed candle gaps, read only), no signal, no trade.
+--                 Made only when SIGNAL_SOURCE_DB_PASSWORD is given.
 --   tp_monitor    The monitoring agent (Netdata, compose profile `monitoring`). Only the statistics of the server (pg_monitor: who is connected, how much
 --                 is read and written, sizes). No table can be read and nothing can be changed. Made only when a password is given.
 --
@@ -86,7 +88,7 @@ FROM pg_roles WHERE rolname IN ('tp_signals', 'tp_signal_source') \gexec
 -- is skipped with a notice: run the script again after the API has started.
 GRANT USAGE ON SCHEMA config TO tp_collector, tp_trader, tp_watch;
 GRANT USAGE ON SCHEMA research TO tp_watch;
-SELECT format('GRANT USAGE ON SCHEMA config TO %I', rolname) FROM pg_roles WHERE rolname = 'tp_signals' \gexec
+SELECT format('GRANT USAGE ON SCHEMA config TO %I', rolname) FROM pg_roles WHERE rolname IN ('tp_signals', 'tp_signal_source') \gexec
 SELECT format('GRANT USAGE ON SCHEMA signals TO %I', rolname) FROM pg_roles WHERE rolname = 'tp_signals' \gexec
 
 DO $$
@@ -97,6 +99,9 @@ DECLARE
         ['tp_collector', 'SELECT', 'config.symbol_data_configurations'],
         ['tp_collector', 'SELECT', 'config.exchange_symbols'],
         ['tp_collector', 'SELECT', 'config.symbols'],
+        -- holes the exchange itself does not have: the collector adds them (it reads the table only for ON CONFLICT), nobody changes or deletes one
+        ['tp_collector', 'SELECT, INSERT', 'config.candle_confirmed_gaps'],
+        ['tp_signal_source', 'SELECT', 'config.candle_confirmed_gaps'],
         ['tp_trader', 'INSERT', 'config.audit_log'],
         ['tp_trader', 'INSERT, DELETE', 'config.traded_symbols'],
         -- the watch: the list of what to watch (and what it points at), the symbols enabled for trading, and its own alerts
