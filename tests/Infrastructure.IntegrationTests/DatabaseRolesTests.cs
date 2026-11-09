@@ -2,6 +2,7 @@ using Dapper;
 using Application.Research.Watch;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.ValueObjects;
 using Infrastructure.Persistence;
 using Infrastructure.Repositories;
 using Infrastructure.Repositories.TimeSeries;
@@ -444,6 +445,33 @@ public class DatabaseRolesTests(PostgresFixture postgres)
         await AssertDeniedAsync(asSource, $"INSERT INTO {CandleTable} (open_time) VALUES (now())");
         await AssertDeniedAsync(asSource, "CREATE TABLE public.evil (x int)");
         await AssertDeniedAsync(asSource, "CREATE SCHEMA evil");
+    }
+
+    [Fact]
+    public async Task TheCollectorWritesAConfirmedGapOnceAndTheSignalSourceReadsItNeitherCanChangeIt()
+    {
+        var database = await OlderServerAsync();
+        await postgres.RunPsqlAsync(database, RolesScript());
+        var asCollector = ConnectionString(database, "tp_collector");
+        var asSource = ConnectionString(database, "tp_signal_source");
+        var gap = new CandleGap(new DateTime(2025, 1, 1, 3, 0, 0, DateTimeKind.Utc), new DateTime(2025, 1, 1, 5, 0, 0, DateTimeKind.Utc));
+
+        var store = new Infrastructure.Repositories.ConfirmedGapStore(asCollector);
+        await store.ConfirmAsync(CandleTable, gap, 3, Ct);
+        await store.ConfirmAsync(CandleTable, gap, 3, Ct);   // a restart that asked again: still one row
+
+        await using (var connection = new NpgsqlConnection(asSource))
+        {
+            var row = await connection.QuerySingleAsync<(string TableName, DateTime FirstOpenTime, DateTime LastOpenTime, int Asks)>(new CommandDefinition(
+                "SELECT \"TableName\", \"FirstOpenTime\", \"LastOpenTime\", \"Asks\" FROM config.candle_confirmed_gaps", cancellationToken: Ct));
+            Assert.Equal((CandleTable, new DateTime(2025, 1, 1, 3, 0, 0), new DateTime(2025, 1, 1, 5, 0, 0), 3), row);   // timestamp, no zone, UTC
+        }
+
+        // Rows are only ever added: not by the one that reads them, and not changed or removed by the one that writes them.
+        await AssertDeniedAsync(asSource, "INSERT INTO config.candle_confirmed_gaps (\"TableName\", \"FirstOpenTime\", \"LastOpenTime\", \"Asks\") VALUES ('x', now(), now(), 3)");
+        await AssertDeniedAsync(asCollector, "UPDATE config.candle_confirmed_gaps SET \"Asks\" = 0");
+        await AssertDeniedAsync(asCollector, "DELETE FROM config.candle_confirmed_gaps");
+        await AssertDeniedAsync(asSource, "DELETE FROM config.candle_confirmed_gaps");
     }
 
     [Fact]
