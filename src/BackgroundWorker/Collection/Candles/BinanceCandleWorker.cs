@@ -32,6 +32,14 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
     private static readonly TimeSpan TableRetryDelay = TimeSpan.FromSeconds(10);
 
+    // The wake-up for the short repair of a long time frame comes a minute after the full hour, well away from the candle boundary (3 s after it).
+    private static readonly TimeSpan RecentRepairOffset = TimeSpan.FromMinutes(1);
+
+    private enum Wake { Boundary, Resync, RecentRepair }
+
+    /// <summary>How long to wait after the n-th failed request of a range (a test sets it to nothing).</summary>
+    internal Func<int, TimeSpan> Backoff { get; init; } = static retry => TimeSpan.FromSeconds(Math.Pow(2, retry));
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         PlanRunner.RunGroupedAsync(seriesProvider,
             plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false, CollectMarketStatistics = false }).ToList(),
@@ -87,11 +95,15 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             {
                 // The boundary sync always runs, even when the live stream delivered the candle (the watchdog):
                 // it is one cheap request per symbol and ON CONFLICT DO NOTHING makes the overlap harmless.
-                var resync = await WaitForBoundaryOrResyncAsync(interval, resyncRequests, ct);
-                await SyncAllSymbolsAsync(plans, ct);
+                var wake = await WaitForBoundaryOrResyncAsync(interval, resyncRequests, ct);
+                if (wake != Wake.RecentRepair)
+                    await SyncAllSymbolsAsync(plans, ct);
 
                 // After a reconnect everything is repaired, otherwise only the tables whose daily turn has come.
-                await RepairGapsAsync(plans, force: resync, ct);
+                await RepairGapsAsync(plans, force: wake == Wake.Resync, ct);
+
+                // Every wake-up asks whose hourly turn has come: a cheap look in memory, and a look at the newest candles only for those.
+                await RepairRecentGapsAsync(plans, ct);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -103,24 +115,33 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         }
     }
 
-    private static async Task<bool> WaitForBoundaryOrResyncAsync(TimeSpan interval, ChannelReader<bool> resyncRequests, CancellationToken ct)
+    /// <summary>
+    /// Waits for the next candle boundary, a resync request, or (only for a time frame longer than the period of the short repair, whose boundaries
+    /// come too seldom for it) the next full hour.
+    /// </summary>
+    private async Task<Wake> WaitForBoundaryOrResyncAsync(TimeSpan interval, ChannelReader<bool> resyncRequests, CancellationToken ct)
     {
         using var stopWaiting = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var boundary = Task.Delay(MarketClock.GetDelayUntilNextBoundary(interval, MarketClock.CloseOffset, DateTime.UtcNow), stopWaiting.Token);
         var request = resyncRequests.WaitToReadAsync(stopWaiting.Token).AsTask();
+        var recent = interval > schedule.RecentPeriod
+            ? Task.Delay(MarketClock.GetDelayUntilNextBoundary(schedule.RecentPeriod, RecentRepairOffset, DateTime.UtcNow), stopWaiting.Token)
+            : Task.Delay(Timeout.InfiniteTimeSpan, stopWaiting.Token);
 
-        var first = await Task.WhenAny(boundary, request);
+        var first = await Task.WhenAny(boundary, request, recent);
         await stopWaiting.CancelAsync();
         ct.ThrowIfCancellationRequested();
 
-        // The loser was cancelled just above; observe it so it does not surface as an unobserved exception.
-        _ = Task.WhenAll(boundary, request).ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        // The losers were cancelled just above; observe them so they do not surface as unobserved exceptions.
+        _ = Task.WhenAll(boundary, request, recent).ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
 
-        if (first != request || !request.IsCompletedSuccessfully)
-            return false;
+        if (first == request && request.IsCompletedSuccessfully)
+        {
+            while (resyncRequests.TryRead(out _)) { }
+            return Wake.Resync;
+        }
 
-        while (resyncRequests.TryRead(out _)) { }
-        return true;
+        return first == recent ? Wake.RecentRepair : Wake.Boundary;
     }
 
     private async Task SyncAllSymbolsAsync(List<CandleSeriesPlan> plans, CancellationToken ct)
@@ -191,6 +212,79 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
             });
     }
 
+    /// <summary>
+    /// The short repair: the holes among the newest candles of the tables whose hourly turn has come. It only fills. What the panel and the alerts say
+    /// about the holes of a table stays the daily full scan's: a look at the last days only must not wipe out what the whole table showed.
+    /// </summary>
+    internal async Task RepairRecentGapsAsync(List<CandleSeriesPlan> plans, CancellationToken ct)
+    {
+        var due = plans.Where(p => schedule.IsRecentDue(p.Series.TableName)).ToList();
+        if (due.Count == 0)
+            return;
+
+        await Parallel.ForEachAsync(
+            due,
+            new ParallelOptions { MaxDegreeOfParallelism = MaxParallelSymbols, CancellationToken = ct },
+            async (plan, token) =>
+            {
+                try
+                {
+                    await RepairRecentSymbolGapsAsync(plan, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Short gap repair failed for {Symbol}", plan.Series.Symbol);
+                }
+            });
+    }
+
+    private async Task RepairRecentSymbolGapsAsync(CandleSeriesPlan plan, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<ICandleRepository>();
+
+        var tableName = plan.Series.TableName;
+
+        // A failure here must surface, like in the full scan, and the table is not marked: it is tried again at the next wake-up.
+        var since = schedule.RecentSince(plan.StartDate);
+        var gaps = await repository.GetRecentGapsAsync(tableName, plan.Series.Interval, since, ct);
+
+        foreach (var gap in gaps)
+        {
+            if (!schedule.MayAsk(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime))
+            {
+                // Asked enough: it is not asked again, but writing it down failed earlier maybe, so that is tried again here.
+                await ConfirmIfSettledAsync(scope.ServiceProvider, tableName, gap, ct);
+                continue;
+            }
+
+            var (inserted, completed) = await FetchRangeAsync(plan, repository, tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime, ct);
+
+            if (inserted > 0)
+                logger.LogWarning("Repaired a recent gap {From:u} .. {To:u} in {Table}: {Count} candles",
+                    gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName, inserted);
+
+            // Only an answer counts. A request that failed says nothing about whether the exchange has the candles, and an answer with
+            // candles in it is a hole that is being filled, not one the exchange lacks.
+            if (!completed || inserted > 0)
+                continue;
+
+            schedule.RecordAsk(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime);
+            logger.LogInformation("Recent gap {From:u} .. {To:u} in {Table} was not filled (the exchange had nothing, asked {Asked} of {Max} times)",
+                gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName,
+                schedule.AsksAbout(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime), schedule.MaxAsksPerHole);
+
+            await ConfirmIfSettledAsync(scope.ServiceProvider, tableName, gap, ct);
+        }
+
+        schedule.ForgetAsksExcept(tableName, gaps.Select(g => (g.FirstMissingOpenTime, g.LastMissingOpenTime)).ToList(), since);
+        schedule.MarkRecentRepaired(tableName);
+    }
+
     private async Task RepairSymbolGapsAsync(CandleSeriesPlan plan, CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
@@ -209,13 +303,21 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 continue;
             }
 
-            var (inserted, _) = await FetchRangeAsync(plan, repository, tableName,
+            var (inserted, completed) = await FetchRangeAsync(plan, repository, tableName,
                 gap.FirstMissingOpenTime, gap.LastMissingOpenTime, ct);
 
             // Binance itself has no candle for some periods (maintenance, no trades); those stay open and are retried next run.
-            if (inserted == 0)
+            // Only an answer says so: a request that failed says nothing about the exchange.
+            if (inserted == 0 && !completed)
+                logger.LogWarning("Gap {From:u} .. {To:u} in {Table} could not be filled: the requests to the exchange failed",
+                    gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName);
+            else if (inserted == 0)
+            {
                 logger.LogInformation("Gap {From:u} .. {To:u} in {Table} could not be filled (likely missing on exchange)",
                     gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName);
+                schedule.RecordAsk(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime);
+                await ConfirmIfSettledAsync(scope.ServiceProvider, tableName, gap, ct);
+            }
             else
             {
                 filledSome = true;
@@ -231,6 +333,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         var beforeFirst = open.Where(g => g.BeforeFirstCandle).Select(g => (DateTime?)(g.LastMissingOpenTime + intervalSpan)).FirstOrDefault();
         var holes = open.Where(g => !g.BeforeFirstCandle).ToList();
         var previous = openGaps.Set(tableName, holes, intervalSpan, beforeFirst);
+        schedule.ForgetAsksExcept(tableName, holes.Select(g => (g.FirstMissingOpenTime, g.LastMissingOpenTime)).ToList());
 
         // Not at the first look (the old holes of a new series are not news): only when a later look finds more.
         if (previous is { } before && holes.Count > before.Gaps && openGaps.Get(tableName) is { } now)
@@ -238,6 +341,37 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 $"{now.Gaps} gap(s), {now.MissingCandles} candle(s) missing, from {now.Oldest:yyyy-MM-dd HH:mm} UTC. The exchange has no candles for them."));
 
         schedule.MarkRepaired(tableName, plan.StartDate);
+
+        // The full scan has looked at the newest candles too.
+        schedule.MarkRecentRepaired(tableName);
+    }
+
+    /// <summary>
+    /// Once the exchange has answered about this very hole often enough (<see cref="GapRepairSchedule.MaxAsksPerHole"/>) and had nothing, writes
+    /// it down for good. A database that cannot take the row only costs a log line: the hole is written at the next look, and nothing here may stop the repair.
+    /// </summary>
+    private async Task ConfirmIfSettledAsync(IServiceProvider services, string tableName, CandleGap gap, CancellationToken ct)
+    {
+        var asks = schedule.AsksAbout(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime);
+        if (asks < schedule.MaxAsksPerHole || schedule.IsConfirmed(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime))
+            return;
+
+        try
+        {
+            await services.GetRequiredService<IConfirmedGapStore>().ConfirmAsync(tableName, gap, asks, ct);
+            schedule.MarkConfirmed(tableName, gap.FirstMissingOpenTime, gap.LastMissingOpenTime);
+            logger.LogWarning("Gap {From:u} .. {To:u} in {Table} is confirmed missing on the exchange ({Asks} answers)",
+                gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName, asks);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not write down the confirmed gap {From:u} .. {To:u} in {Table}; it is tried again at the next look",
+                gap.FirstMissingOpenTime, gap.LastMissingOpenTime, tableName);
+        }
     }
 
     // Usually the symbol was listed after the start date and the exchange has nothing there: ask once, then not again while the
@@ -285,7 +419,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
                 logger.LogWarning("Kline request failed for {Symbol}: {Error}", plan.Series.Symbol, result.Error);
                 if (++retry > MaxRetries)
                     return (totalInserted, false);
-                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retry)), ct); // exponential backoff
+                await Task.Delay(Backoff(retry), ct); // exponential backoff
                 continue;
             }
 

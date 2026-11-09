@@ -29,6 +29,7 @@ public class ConfigDbContext : DbContext
     public DbSet<ShockWatchConfiguration> ShockWatchConfigurations => Set<ShockWatchConfiguration>();
     public DbSet<SignalStrategyConfiguration> SignalStrategyConfigurations => Set<SignalStrategyConfiguration>();
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
+    public DbSet<ConfirmedCandleGap> ConfirmedCandleGaps => Set<ConfirmedCandleGap>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -163,6 +164,23 @@ public class ConfigDbContext : DbContext
 
             // One row per strategy.
             e.HasIndex(x => x.Strategy).IsUnique();
+        });
+
+        // Holes in the candle tables that the exchange itself does not have. Written by the collector (insert only), read by the program that
+        // makes signals. No foreign keys: it names a candle table, and the row must outlive a series that is removed.
+        builder.Entity<ConfirmedCandleGap>(e =>
+        {
+            e.ToTable("candle_confirmed_gaps", "config", t =>
+                t.HasCheckConstraint("CK_candle_confirmed_gaps_range", "\"LastOpenTime\" >= \"FirstOpenTime\""));
+
+            // Time columns are timestamp (no zone), always UTC.
+            e.Property(x => x.FirstOpenTime).HasColumnType("timestamp");
+            e.Property(x => x.LastOpenTime).HasColumnType("timestamp");
+            e.Property(x => x.ConfirmedAt).HasColumnType("timestamp").HasDefaultValueSql("now() at time zone 'utc'");
+
+            e.Property(x => x.TableName).HasMaxLength(ConfirmedCandleGap.MaxTableNameLength);
+
+            e.HasIndex(x => new { x.TableName, x.FirstOpenTime, x.LastOpenTime }).IsUnique();
         });
 
         // Who changed which setting. Rows are only ever added; no foreign keys, because a removed setting must keep its history.

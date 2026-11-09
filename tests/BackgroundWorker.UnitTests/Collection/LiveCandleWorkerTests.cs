@@ -73,6 +73,7 @@ public class LiveCandleWorkerTests
         public Task<DateTimeOffset?> GetFirstOpenTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<CandleGap>> GetRecentGapsAsync(string tableName, TimeSpan interval, DateTime since, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class Rig : IAsyncDisposable

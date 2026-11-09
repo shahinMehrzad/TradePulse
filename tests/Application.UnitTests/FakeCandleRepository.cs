@@ -61,4 +61,7 @@ internal sealed class FakeCandleRepository : ICandleRepository
 
     public Task<IReadOnlyList<CandleGap>> GetGapsAsync(string tableName, TimeSpan interval, DateTime? expectedStart, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
+
+    public Task<IReadOnlyList<CandleGap>> GetRecentGapsAsync(string tableName, TimeSpan interval, DateTime since, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
 }

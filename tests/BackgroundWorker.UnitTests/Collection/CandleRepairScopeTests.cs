@@ -45,6 +45,17 @@ public class CandleRepairScopeTests
             return Task.FromResult(GapsFor(tableName));
         }
 
+        public Func<string, IReadOnlyList<CandleGap>> RecentGapsFor { get; set; } = _ => [];
+        public ConcurrentDictionary<string, int> RecentLooks { get; } = new();
+        public ConcurrentDictionary<string, DateTime> RecentSince { get; } = new();
+
+        public Task<IReadOnlyList<CandleGap>> GetRecentGapsAsync(string tableName, TimeSpan interval, DateTime since, CancellationToken cancellationToken)
+        {
+            Count(RecentLooks, tableName);
+            RecentSince[tableName] = since;
+            return Task.FromResult(RecentGapsFor(tableName));
+        }
+
         public Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken)
         {
             Count(Syncs, tableName);
@@ -99,8 +110,48 @@ public class CandleRepairScopeTests
         }
     }
 
+    /// <summary>An exchange that answers every request with an error.</summary>
+    private sealed class FailingGateway : ICandleGateway
+    {
+        private int _calls;
+        public int Calls => Volatile.Read(ref _calls);
+
+        public Task<ExchangeResult<ExchangePage<Candle>>> GetCandlesAsync(Domain.ValueObjects.CandleSeries series, DateTime from, DateTime? to, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _calls);
+            return Task.FromResult(ExchangeResult<ExchangePage<Candle>>.Fail("down"));
+        }
+    }
+
+    /// <summary>Keeps what is written down as confirmed; can be told to fail, like a database that is away.</summary>
+    private sealed class FakeConfirmedGaps : IConfirmedGapStore
+    {
+        private readonly List<(string Table, CandleGap Gap, int Asks)> _rows = [];
+        public bool Fail { get; set; }
+
+        public IReadOnlyList<(string Table, CandleGap Gap, int Asks)> Rows
+        {
+            get
+            {
+                lock (_rows)
+                    return [.. _rows];
+            }
+        }
+
+        public Task ConfirmAsync(string tableName, CandleGap gap, int asks, CancellationToken cancellationToken)
+        {
+            if (Fail)
+                throw new InvalidOperationException("database is away");
+
+            lock (_rows)
+                _rows.Add((tableName, gap, asks));
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class Rig : IAsyncDisposable
     {
+        public FakeConfirmedGaps Confirmed { get; } = new();
         public RecordingAlerts Alerts { get; } = new();
         public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
         public FakeCandleSeriesSource Source { get; } = new();
@@ -109,11 +160,18 @@ public class CandleRepairScopeTests
         public OpenGaps Gaps { get; } = new();
         public CandleSyncCoordinator Coordinator { get; } = new();
         public CandleSeriesProvider Provider { get; private set; } = null!;
+        public GapRepairSchedule Schedule { get; private set; } = null!;
+        public BinanceCandleWorker Worker => _worker;
         private BinanceCandleWorker _worker = null!;
 
-        public static async Task<Rig> StartAsync(Func<string, IReadOnlyList<CandleGap>>? gapsFor, CountingGateway? gateway, params CandleSeriesPlan[] series)
+        public ICandleGateway AnyGateway { get; private set; } = null!;
+
+        public static Task<Rig> StartAsync(Func<string, IReadOnlyList<CandleGap>>? gapsFor, CountingGateway? gateway, params CandleSeriesPlan[] series) =>
+            StartAsync(gapsFor, (ICandleGateway)(gateway ?? new CountingGateway()), series);
+
+        public static async Task<Rig> StartAsync(Func<string, IReadOnlyList<CandleGap>>? gapsFor, ICandleGateway gateway, params CandleSeriesPlan[] series)
         {
-            var rig = new Rig { Gateway = gateway ?? new CountingGateway() };
+            var rig = new Rig { AnyGateway = gateway, Gateway = gateway as CountingGateway ?? new CountingGateway() };
             if (gapsFor is not null)
                 rig.Table.GapsFor = gapsFor;
 
@@ -121,10 +179,14 @@ public class CandleRepairScopeTests
             rig.Provider = CandleSeriesTestSupport.NewProvider(rig.Source, rig.Time);
             await rig.Provider.StartAsync(Ct);
 
-            var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(rig.Table).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+            var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(rig.Table).AddSingleton<IConfirmedGapStore>(rig.Confirmed).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+            rig.Schedule = new GapRepairSchedule(rig.Time);
             rig._worker = new BinanceCandleWorker(
-                scopes, NullLogger<BinanceCandleWorker>.Instance, rig.Provider, rig.Gateway, rig.Coordinator,
-                new WorkerHealthState(TimeProvider.System), rig.Gaps, new GapRepairSchedule(rig.Time), rig.Alerts, new CollectionStats());
+                scopes, NullLogger<BinanceCandleWorker>.Instance, rig.Provider, rig.AnyGateway, rig.Coordinator,
+                new WorkerHealthState(TimeProvider.System), rig.Gaps, rig.Schedule, rig.Alerts, new CollectionStats())
+            {
+                Backoff = _ => TimeSpan.Zero,   // a request that keeps failing must not make a test wait a minute
+            };
             await rig._worker.StartAsync(Ct);
             return rig;
         }
@@ -250,6 +312,131 @@ public class CandleRepairScopeTests
         Assert.Equal((1, 1), (rig.Table.Syncs[TableOf(Btc1h)], rig.Table.Ensures[TableOf(Btc1h)]));
     }
 
+    // ---- the short repair of the newest candles ----
+
+    private static readonly CandleGap RecentHole = new(Utc(2025, 12, 30, 3), Utc(2025, 12, 30, 5));
+
+    /// <summary>The first pass has run, so the table has had its full repair and, with it, a look at the newest candles.</summary>
+    private static Task WaitForTheFirstRepairAsync(Rig rig, CandleSeriesPlan plan) =>
+        WaitUntilAsync(() => !rig.Schedule.IsRecentDue(TableOf(plan)), "the first repair");
+
+    [Fact]
+    public async Task TheShortRepairWaitsForItsHourAfterTheFullRepairHasLookedAtTheNewestCandles()
+    {
+        var gateway = new CountingGateway(Utc(2025, 12, 30, 3), Utc(2025, 12, 30, 4), Utc(2025, 12, 30, 5));
+        await using var rig = await Rig.StartAsync(null, gateway, Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+
+        await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+
+        Assert.Equal((0, 0), (rig.Table.RecentLooks.GetValueOrDefault(TableOf(Btc1h)), gateway.Calls));
+    }
+
+    [Fact]
+    public async Task ARecentHoleIsFilledWhenTheHourHasPassedWithoutWaitingForTheDailyRepair()
+    {
+        var gateway = new CountingGateway(Utc(2025, 12, 30, 3), Utc(2025, 12, 30, 4), Utc(2025, 12, 30, 5));
+        await using var rig = await Rig.StartAsync(null, gateway, Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+
+        rig.Time.Advance(TimeSpan.FromMinutes(61));
+        await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+
+        Assert.Equal(1, rig.Table.RecentLooks[TableOf(Btc1h)]);
+        Assert.Equal(1, gateway.Calls);   // the one request for the range of the hole
+        Assert.Equal(1, rig.Table.GapLooks[TableOf(Btc1h)]);   // the full scan was not repeated: it is still the daily one
+    }
+
+    [Fact]
+    public async Task TheShortRepairLooksAtTheWindowAndNotBackToTheStartDate()
+    {
+        await using var rig = await Rig.StartAsync(null, null, Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+
+        rig.Time.Advance(TimeSpan.FromMinutes(61));
+        await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+
+        Assert.Equal(rig.Time.GetUtcNow().UtcDateTime - TimeSpan.FromDays(14), rig.Table.RecentSince[TableOf(Btc1h)]);
+    }
+
+    [Fact]
+    public async Task AHoleTheExchangeDoesNotHaveIsAskedAboutThreeTimesAndThenLeftToTheDailyRepair()
+    {
+        var gateway = new CountingGateway();   // the exchange has nothing
+        await using var rig = await Rig.StartAsync(null, gateway, Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+
+        for (var hour = 1; hour <= 5; hour++)
+        {
+            rig.Time.Advance(TimeSpan.FromMinutes(61));
+            await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+        }
+
+        Assert.Equal(5, rig.Table.RecentLooks[TableOf(Btc1h)]);   // looked at every hour
+        Assert.Equal(3, gateway.Calls);                           // asked about only three times
+    }
+
+    [Fact]
+    public async Task AFailedRequestIsNotAnAnswerSoTheHoleIsAskedAboutAgainEveryHour()
+    {
+        var gateway = new FailingGateway();
+        await using var rig = await Rig.StartAsync(null, gateway, Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+
+        var perPass = 0;
+        for (var hour = 1; hour <= 5; hour++)
+        {
+            rig.Time.Advance(TimeSpan.FromMinutes(61));
+            var before = gateway.Calls;
+            await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+            perPass = gateway.Calls - before;
+
+            Assert.True(perPass > 0, $"pass {hour} did not ask the exchange: an error was counted as its answer");
+        }
+
+        Assert.Equal(0, rig.Schedule.AsksAbout(TableOf(Btc1h), RecentHole.FirstMissingOpenTime, RecentHole.LastMissingOpenTime));
+    }
+
+    [Fact]
+    public async Task AHoleThatHasBeenFilledIsForgottenSoItsCountDoesNotStayBehind()
+    {
+        var gateway = new CountingGateway();   // nothing: the hole stays
+        await using var rig = await Rig.StartAsync(null, gateway, Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+        rig.Time.Advance(TimeSpan.FromMinutes(61));
+        await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+        Assert.Equal(1, rig.Schedule.AsksAbout(TableOf(Btc1h), RecentHole.FirstMissingOpenTime, RecentHole.LastMissingOpenTime));
+
+        rig.Table.RecentGapsFor = _ => [];   // somebody filled it
+        rig.Time.Advance(TimeSpan.FromMinutes(61));
+        await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+
+        Assert.Equal(0, rig.Schedule.AsksAbout(TableOf(Btc1h), RecentHole.FirstMissingOpenTime, RecentHole.LastMissingOpenTime));
+    }
+
+    [Fact]
+    public async Task TheShortRepairLeavesWhatTheFullScanShowsAlone()
+    {
+        var inner = new CandleGap(Utc(2021, 8, 13, 2), Utc(2021, 8, 13, 5));
+        await using var rig = await Rig.StartAsync(_ => [inner], null, Btc1h);
+        await WaitUntilAsync(() => rig.Gaps.Get(TableOf(Btc1h)) is not null, "the first repair");
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        var shown = rig.Gaps.Get(TableOf(Btc1h));
+        Assert.Equal(1, shown!.Value.Gaps);
+
+        rig.Table.RecentGapsFor = _ => [];   // the last days are whole: that is no news about the old hole
+        rig.Time.Advance(TimeSpan.FromMinutes(61));
+        await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+
+        Assert.Equal(shown, rig.Gaps.Get(TableOf(Btc1h)));
+        Assert.Empty(rig.Alerts.Raised);
+    }
+
     [Fact]
     public async Task AReconnectStillRepairsEveryTableAgain()
     {
@@ -261,9 +448,109 @@ public class CandleRepairScopeTests
         await WaitUntilAsync(() => rig.Table.GapLooks[TableOf(Btc1h)] >= 2 && rig.Table.GapLooks[TableOf(Eth1h)] >= 2, "both tables to be scanned again");
     }
 
-    // ---- alerts: a hole that appears after the first look is news, the old ones of a new series are not ----
-
     private static readonly CandleGap InnerGap = new(Utc(2021, 8, 13, 2), Utc(2021, 8, 13, 5));
+
+    // ---- holes the exchange does not have are written down, but only on an answer ----
+
+    private static async Task RepairRecentHourlyAsync(Rig rig, int times)
+    {
+        for (var hour = 1; hour <= times; hour++)
+        {
+            rig.Time.Advance(TimeSpan.FromMinutes(61));
+            await rig.Worker.RepairRecentGapsAsync([Btc1h], Ct);
+        }
+    }
+
+    [Fact]
+    public async Task AHoleIsWrittenDownOnlyAfterTheThirdEmptyAnswerAndOnlyOnce()
+    {
+        await using var rig = await Rig.StartAsync(null, new CountingGateway(), Btc1h);   // the exchange has nothing
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+
+        await RepairRecentHourlyAsync(rig, 2);
+        Assert.Empty(rig.Confirmed.Rows);
+
+        await RepairRecentHourlyAsync(rig, 4);
+        Assert.Equal([(TableOf(Btc1h), RecentHole, 3)], rig.Confirmed.Rows);
+    }
+
+    [Fact]
+    public async Task AFailedRequestNeverCreatesARow()
+    {
+        await using var rig = await Rig.StartAsync(null, new FailingGateway(), Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+
+        await RepairRecentHourlyAsync(rig, 8);
+
+        Assert.Empty(rig.Confirmed.Rows);
+    }
+
+    [Fact]
+    public async Task AHoleTheExchangeFillsIsNotWrittenDown()
+    {
+        var gateway = new CountingGateway(Utc(2025, 12, 30, 3), Utc(2025, 12, 30, 4), Utc(2025, 12, 30, 5));
+        await using var rig = await Rig.StartAsync(null, gateway, Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];   // the fake table never shows it filled, the exchange does have the candles
+
+        await RepairRecentHourlyAsync(rig, 5);
+
+        Assert.Empty(rig.Confirmed.Rows);
+    }
+
+    [Fact]
+    public async Task ADatabaseThatCannotTakeTheRowDoesNotStopTheRepairAndTheRowIsWrittenWhenItIsBack()
+    {
+        await using var rig = await Rig.StartAsync(null, new CountingGateway(), Btc1h);
+        await WaitForTheFirstRepairAsync(rig, Btc1h);
+        rig.Table.RecentGapsFor = _ => [RecentHole];
+        rig.Confirmed.Fail = true;
+
+        await RepairRecentHourlyAsync(rig, 5);   // does not throw: the third answer finds the database away, the later passes try again
+        Assert.Empty(rig.Confirmed.Rows);
+        Assert.Equal(5, rig.Table.RecentLooks[TableOf(Btc1h)]);
+
+        rig.Confirmed.Fail = false;
+        await RepairRecentHourlyAsync(rig, 1);
+
+        Assert.Equal([(TableOf(Btc1h), RecentHole, 3)], rig.Confirmed.Rows);
+    }
+
+    [Fact]
+    public async Task TheDailyScanWritesAHoleDownAfterEnoughEmptyAnswersToo()
+    {
+        await using var rig = await Rig.StartAsync(_ => [InnerGap], new CountingGateway(), Btc1h);
+        await WaitUntilAsync(() => rig.Schedule.AsksAbout(TableOf(Btc1h), InnerGap.FirstMissingOpenTime, InnerGap.LastMissingOpenTime) == 1, "the first scan");
+
+        for (var scan = 2; scan <= 3; scan++)
+        {
+            rig.Coordinator.RequestResync();
+            await WaitUntilAsync(() => rig.Schedule.AsksAbout(TableOf(Btc1h), InnerGap.FirstMissingOpenTime, InnerGap.LastMissingOpenTime) == scan, $"scan {scan}");
+        }
+
+        await WaitUntilAsync(() => rig.Confirmed.Rows.Count == 1, "the row");
+        Assert.Equal((TableOf(Btc1h), InnerGap, 3), rig.Confirmed.Rows[0]);
+    }
+
+    [Fact]
+    public async Task TheDailyScanDoesNotCallAFailedRequestAnAnswer()
+    {
+        await using var rig = await Rig.StartAsync(_ => [InnerGap], new FailingGateway(), Btc1h);
+
+        for (var scan = 2; scan <= 5; scan++)
+        {
+            await WaitUntilAsync(() => rig.Table.GapLooks.GetValueOrDefault(TableOf(Btc1h)) >= scan - 1, $"scan {scan - 1}");
+            rig.Coordinator.RequestResync();
+        }
+        await WaitUntilAsync(() => rig.Table.GapLooks.GetValueOrDefault(TableOf(Btc1h)) >= 5, "five scans");
+
+        Assert.Equal(0, rig.Schedule.AsksAbout(TableOf(Btc1h), InnerGap.FirstMissingOpenTime, InnerGap.LastMissingOpenTime));
+        Assert.Empty(rig.Confirmed.Rows);
+    }
+
+    // ---- alerts: a hole that appears after the first look is news, the old ones of a new series are not ----
 
     [Fact]
     public async Task ANewHoleFoundByALaterLookIsAnnouncedOnceAndNotAgainWhileItStaysTheSame()
