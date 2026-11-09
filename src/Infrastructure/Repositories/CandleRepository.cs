@@ -235,6 +235,29 @@ public class CandleRepository(string connectionString) : ICandleRepository
         return gaps;
     }
 
+    public async Task<IReadOnlyList<CandleGap>> GetRecentGapsAsync(string tableName, TimeSpan interval, DateTime since, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+
+        // The window starts at the last candle before "since" (or at "since" when there is none), so that a hole right at the start is between two rows of it.
+        var sql = $@"
+            SELECT prev_open AS PrevOpen, open_time AS NextOpen
+            FROM (
+                SELECT open_time, LAG(open_time) OVER (ORDER BY open_time) AS prev_open
+                FROM {tableName}
+                WHERE open_time >= COALESCE((SELECT max(open_time) FROM {tableName} WHERE open_time < @Since), @Since)
+            ) t
+            WHERE open_time - prev_open > @IntervalSeconds * interval '1 second'
+            ORDER BY open_time;";
+
+        var rows = await connection.QueryAsync<GapRow>(
+            new CommandDefinition(sql, new { IntervalSeconds = (int)interval.TotalSeconds, Since = ToTimestamp(since) }, cancellationToken: cancellationToken));
+
+        return rows
+            .Select(r => new CandleGap(FromTimestamp(r.PrevOpen + interval), FromTimestamp(r.NextOpen - interval)))
+            .ToList();
+    }
+
     private sealed record CandleRow(
         DateTime OpenTime, decimal Open, decimal High, decimal Low, decimal Close, decimal Volume,
         DateTime CloseTime, decimal QuoteAssetVolume, long NumberOfTrades, decimal TakerBuyBaseVolume, decimal TakerBuyQuoteVolume);
