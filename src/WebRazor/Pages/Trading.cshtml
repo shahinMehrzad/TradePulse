@@ -1,12 +1,25 @@
 @page
 @model TradingModel
 @{
-    ViewData["Title"] = "Trading";
+    ViewData["Title"] = "Demo trading";
 }
 
 @if (!Model.Configured)
 {
     <div class="alert alert-info" role="alert">Trading is not part of this installation (<code>Trader:BaseUrl</code> is not set).</div>
+    return;
+}
+
+<div class="alert alert-info" role="alert">
+    <div><strong>This page is for testing, with a Demo key (play money).</strong> Real trading will have its own page.</div>
+</div>
+
+@if (Model.State is not null && !Model.HasDemoKey)
+{
+    <div class="alert alert-warning" role="alert">
+        <div>You have no active Demo key, so nothing can be done here. Add one on <a asp-page="/ExchangeKeys">Exchange keys</a>
+        (environment <strong>Demo</strong>) and wait until it shows <strong>Active</strong>.</div>
+    </div>
     return;
 }
 
@@ -42,7 +55,6 @@
                         <dt class="col-6">Largest single order</dt><dd class="col-6">@state.MaxOrderUsd.ToString("0.##") USDT</dd>
                         <dt class="col-6">Opened today (UTC)</dt><dd class="col-6">@state.OpenedTodayUsd.ToString("0.##") of @state.MaxDailyUsd.ToString("0.##") USDT</dd>
                         <dt class="col-6">Symbols</dt><dd class="col-6">@(state.AllowedSymbols.Length == 0 ? "none enabled" : string.Join(", ", state.AllowedSymbols))</dd>
-                        <dt class="col-6">Live keys</dt><dd class="col-6">@(state.LiveAllowed ? "allowed" : "off (Demo only)")</dd>
                     </dl>
                     <p class="text-secondary small">
                         These limits are set on the server, not here. While halted, no new position can be opened; an order marked
@@ -111,24 +123,25 @@
                     {
                         <p class="text-secondary mb-0">No symbol is enabled for trading yet. Enable one above: a new position can only be opened in an enabled symbol.</p>
                     }
-                    else if (Model.UsableKeys.Count == 0)
-                    {
-                        <p class="text-secondary mb-0">
-                            You have no key that can trade. Add one on <a asp-page="/ExchangeKeys">Exchange keys</a> and wait until it shows <strong>Active</strong>.
-                            @if (!state.LiveAllowed) { <text> Live keys are off on this server, so use a Demo key.</text> }
-                        </p>
-                    }
                     else
                     {
                         <form method="post" asp-page-handler="Order" autocomplete="off">
                             <div class="mb-3">
-                                <label asp-for="Input.KeyId" class="form-label">Key</label>
-                                <select asp-for="Input.KeyId" class="form-select">
-                                    @foreach (var key in Model.UsableKeys)
-                                    {
-                                        <option value="@key.Id">@key.Label (@(key.IsDemo ? "Demo" : "LIVE"))</option>
-                                    }
-                                </select>
+                                <label asp-for="Input.KeyId" class="form-label">Demo key</label>
+                                @if (Model.DemoKeys.Count == 1)
+                                {
+                                    <input type="hidden" asp-for="Input.KeyId" value="@Model.DemoKeys[0].Id" />
+                                    <div class="form-control-plaintext">@Model.DemoKeys[0].Label (Demo)</div>
+                                }
+                                else
+                                {
+                                    <select asp-for="Input.KeyId" class="form-select">
+                                        @foreach (var key in Model.DemoKeys)
+                                        {
+                                            <option value="@key.Id">@key.Label (Demo)</option>
+                                        }
+                                    </select>
+                                }
                             </div>
                             <div class="row">
                                 <div class="col-6 mb-3">
