@@ -1,7 +1,7 @@
 # Trading
 
 Manual **market orders** on Binance USDS-M Futures, sent by the trading service (the `trader` program, the same one that holds the
-[exchange keys](exchange-keys.md)) with the signed-in administrator's own key. The panel page is **Trading**.
+[exchange keys](exchange-keys.md)) with the signed-in administrator's own key. The panel page is **Demo trading**: a test tool that only offers and accepts an active Demo key (a Live key is never listed, and with no Demo key the page shows only a message). The Trader itself still takes Live keys when `TRADING_ALLOW_LIVE=true`; real trading will get a page of its own.
 
 Automatic signals (for example from the ML project) are not built yet; today an order is typed in the panel.
 
@@ -58,4 +58,4 @@ be opened (it is opt-in: a new symbol on the server's list is not traded until s
 - Orders from the ML project (RabbitMQ) and any automatic trading. It needs its own decision about who may sign orders without a human.
 - Stop-loss / take-profit, limit orders, leverage and margin-mode settings (set them at Binance).
 - A daily **loss** limit (needs the realised profit from Binance); today the caps are on what is opened.
-- Not tried against the real Binance, Demo included. Watch the first orders.
+- Tried on Binance Demo on 2026-11-01: opening a position, closing it whole and in parts with reduce-only, and Binance refusing a reduce-only order when no position exists (error -2022). Live has never been tried.

@@ -6,14 +6,18 @@ using WebRazor.Api;
 namespace WebRazor.Pages;
 
 /// <summary>
-/// Manual market orders on the administrator's own keys, with the limits the Trader enforces shown next to the form, and the halt
-/// switch. The panel only forwards: every rule (symbols, caps, halt, Demo or Live) is decided by the Trader, which does not trust this page.
+/// Manual market orders with the administrator's own Demo key (play money), the limits the Trader enforces shown next to the form, and the halt
+/// switch. This page is a test tool: it never offers or accepts a Live key (real trading will have a page of its own). Apart from that the panel
+/// only forwards: every rule (symbols, caps, halt, Demo or Live) is decided by the Trader, which does not trust this page.
 /// </summary>
 public class TradingModel(TraderApiClient trader, IOptions<TraderOptions> options, SessionTokenStore store) : AdminPageModel(store)
 {
     private const string Path = "/Trading";
 
-    public IReadOnlyList<ExchangeKeyInfo> UsableKeys { get; private set; } = [];
+    /// <summary>The administrator's Demo keys that Binance has accepted. A Live key is never listed here.</summary>
+    public IReadOnlyList<ExchangeKeyInfo> DemoKeys { get; private set; } = [];
+
+    public bool HasDemoKey => DemoKeys.Count > 0;
 
     public IReadOnlyList<TradingOrder> Orders { get; private set; } = [];
 
@@ -60,6 +64,13 @@ public class TradingModel(TraderApiClient trader, IOptions<TraderOptions> option
         if (!ModelState.IsValid)
             return await LoadAsync(cancellationToken) ?? Page();
 
+        // This page trades with Demo keys only, whatever the form says.
+        if (!(await LoadDemoKeysAsync(cancellationToken)).Any(key => key.Id == Input.KeyId))
+        {
+            Errors = ["This page only trades with one of your active Demo keys."];
+            return await LoadAsync(cancellationToken) ?? Page();
+        }
+
         return await FinishAsync(
             await trader.PlaceOrderAsync(Input.KeyId!.Value, Input.Symbol, Input.Side, Input.Quantity!.Value, Input.ReduceOnly, cancellationToken),
             "The order was sent. See its result in the list below.", cancellationToken);
@@ -97,6 +108,10 @@ public class TradingModel(TraderApiClient trader, IOptions<TraderOptions> option
         return RedirectToPage();
     }
 
+    /// <summary>Only a key Binance has accepted (Active) can trade, and on this page only a Demo one.</summary>
+    private async Task<IReadOnlyList<ExchangeKeyInfo>> LoadDemoKeysAsync(CancellationToken cancellationToken) =>
+        (await trader.GetKeysAsync(cancellationToken) ?? []).Where(key => key.Status == "Active" && key.IsDemo).ToList();
+
     private async Task<IActionResult?> LoadAsync(CancellationToken cancellationToken)
     {
         if (!Configured)
@@ -110,9 +125,7 @@ public class TradingModel(TraderApiClient trader, IOptions<TraderOptions> option
 
             Symbols = await trader.GetSymbolsAsync(cancellationToken) ?? [];
 
-            // Only a key Binance has accepted can trade, and a live one only when the server owner allows it.
-            UsableKeys = (await trader.GetKeysAsync(cancellationToken) ?? [])
-                .Where(key => key.Status == "Active" && (key.IsDemo || State.LiveAllowed)).ToList();
+            DemoKeys = await LoadDemoKeysAsync(cancellationToken);
             Orders = await trader.GetOrdersAsync(cancellationToken);
         }
         catch (HttpRequestException)

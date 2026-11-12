@@ -18,8 +18,16 @@ public sealed class AlertDispatcher(
 {
     private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(20);
 
+    private const int TitlesInNotice = 5;
+
     private readonly Queue<DateTimeOffset> _sent = new();
+
+    // What the limit held back, until it is said: how many, between when, and which (the first few titles, once each).
     private int _suppressed;
+    private DateTimeOffset _firstSuppressed;
+    private DateTimeOffset _lastSuppressed;
+    private readonly List<string> _suppressedTitles = [];
+    private bool _moreTitles;   // a title did not fit in the list
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -31,10 +39,36 @@ public sealed class AlertDispatcher(
 
         try
         {
-            await foreach (var alert in queue.Reader.ReadAllAsync(stoppingToken))
+            // The note about held-back alerts goes out as soon as the limit has room again, not only with the next alert: that one may
+            // come hours later, and what was held back is often the message that says a problem is over.
+            Task<bool>? waiting = null;
+            while (true)
             {
-                if (channels.Count > 0)
-                    await DispatchAsync(alert, channels, stoppingToken);
+                waiting ??= queue.Reader.WaitToReadAsync(stoppingToken).AsTask();
+
+                if (_suppressed > 0 && channels.Count > 0)
+                {
+                    using var wake = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    var room = Task.Delay(TimeUntilRoom(), timeProvider, wake.Token);
+                    var first = await Task.WhenAny(waiting, room);
+                    await wake.CancelAsync();
+
+                    if (first == room)
+                    {
+                        await SayHeldBackAsync(channels, stoppingToken);
+                        continue;
+                    }
+                }
+
+                if (!await waiting)
+                    break;
+
+                waiting = null;
+                while (queue.Reader.TryRead(out var alert))
+                {
+                    if (channels.Count > 0)
+                        await DispatchAsync(alert, channels, stoppingToken);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -42,27 +76,71 @@ public sealed class AlertDispatcher(
         }
     }
 
+    private void ForgetOldSends(DateTimeOffset now)
+    {
+        while (_sent.Count > 0 && now - _sent.Peek() >= TimeSpan.FromHours(1))
+            _sent.Dequeue();
+    }
+
+    /// <summary>How long until the limit has room again (zero when it has).</summary>
+    private TimeSpan TimeUntilRoom()
+    {
+        var now = timeProvider.GetUtcNow();
+        ForgetOldSends(now);
+        if (_sent.Count < Math.Max(1, options.Value.MaxPerHour))
+            return TimeSpan.Zero;
+
+        var wait = _sent.Peek() + TimeSpan.FromHours(1) - now;
+        return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
+    }
+
+    private async Task SayHeldBackAsync(List<INotifier> channels, CancellationToken stoppingToken)
+    {
+        if (_suppressed == 0)
+            return;
+
+        var max = Math.Max(1, options.Value.MaxPerHour);
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var from = _firstSuppressed.UtcDateTime.ToString("HH:mm", culture);
+        var to = _lastSuppressed.UtcDateTime.ToString("HH:mm", culture);
+        var when = from == to ? $"at {from} UTC" : $"between {from} and {to} UTC";
+        var titles = string.Join(", ", _suppressedTitles) + (_moreTitles ? " and others" : "");
+
+        var held = new Alert("Alerts were held back",
+            string.Create(culture, $"{_suppressed} alert(s) were not sent {when} because the limit of {max} an hour was reached: {titles}."));
+
+        _suppressed = 0;
+        _suppressedTitles.Clear();
+        _moreTitles = false;
+        _sent.Enqueue(timeProvider.GetUtcNow());
+        await SendToAllAsync(held, channels, stoppingToken);
+    }
+
     private async Task DispatchAsync(Alert alert, List<INotifier> channels, CancellationToken stoppingToken)
     {
         var now = timeProvider.GetUtcNow();
-        while (_sent.Count > 0 && now - _sent.Peek() >= TimeSpan.FromHours(1))
-            _sent.Dequeue();
+        ForgetOldSends(now);
 
         var max = Math.Max(1, options.Value.MaxPerHour);
         if (_sent.Count >= max)
         {
-            _suppressed++;
+            if (_suppressed++ == 0)
+                _firstSuppressed = now;
+
+            _lastSuppressed = now;
+            if (!_suppressedTitles.Contains(alert.Title))
+            {
+                if (_suppressedTitles.Count < TitlesInNotice)
+                    _suppressedTitles.Add(alert.Title);
+                else
+                    _moreTitles = true;
+            }
+
             logger.LogWarning("Alert suppressed (the limit of {Max} an hour is reached): {Title}", max, alert.Title);
             return;
         }
 
-        if (_suppressed > 0)
-        {
-            var held = new Alert("Alerts were held back", $"{_suppressed} alert(s) were not sent because the limit of {max} an hour was reached.");
-            _suppressed = 0;
-            _sent.Enqueue(now);
-            await SendToAllAsync(held, channels, stoppingToken);
-        }
+        await SayHeldBackAsync(channels, stoppingToken);
 
         _sent.Enqueue(now);
         await SendToAllAsync(alert, channels, stoppingToken);

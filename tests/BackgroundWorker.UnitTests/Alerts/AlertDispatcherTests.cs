@@ -107,6 +107,53 @@ public class AlertDispatcherTests
     }
 
     [Fact]
+    public async Task TheNoteIsSaidAsSoonAsTheHourIsOverNotOnlyWithTheNextAlertAndNamesWhatWasHeldBack()
+    {
+        var channel = new RecordingChannel("Telegram");
+        using var dispatcher = Dispatcher(2, channel);
+        await dispatcher.StartAsync(Ct);
+
+        foreach (var title in new[] { "A", "B", "Collector is healthy again", "Collector is healthy again" })
+            _queue.Raise(new Alert(title, "x"));
+        await WaitUntilAsync(() => channel.Sent.Count == 2, "the first two");
+        await Task.Delay(100, Ct);
+
+        _time.Advance(TimeSpan.FromHours(1) + TimeSpan.FromSeconds(1));   // nothing new is raised
+        await WaitUntilAsync(() => channel.Sent.Count == 3, "the note, without a new alert");
+
+        var note = channel.Sent[2];
+        Assert.Equal("Alerts were held back", note.Title);
+        Assert.Contains("2 alert(s)", note.Body);
+        Assert.Contains("at 12:00 UTC", note.Body);                         // when they were held back, not when the note is sent
+        Assert.Contains("Collector is healthy again", note.Body);
+        Assert.DoesNotContain("and others", note.Body);                     // one title, said twice: nothing is left out
+        await dispatcher.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task AFewTitlesAreNamedAndTheRestAreSaidToBeOthers()
+    {
+        var channel = new RecordingChannel("Telegram");
+        using var dispatcher = Dispatcher(1, channel);
+        await dispatcher.StartAsync(Ct);
+
+        _queue.Raise(new Alert("first", "x"));
+        foreach (var title in new[] { "t1", "t2", "t3", "t4", "t5", "t6" })
+            _queue.Raise(new Alert(title, "x"));
+        await WaitUntilAsync(() => channel.Sent.Count == 1, "the one that fits");
+        await Task.Delay(100, Ct);
+
+        _time.Advance(TimeSpan.FromHours(1) + TimeSpan.FromSeconds(1));
+        await WaitUntilAsync(() => channel.Sent.Count == 2, "the note");
+
+        Assert.Contains("6 alert(s)", channel.Sent[1].Body);
+        Assert.Contains("t5", channel.Sent[1].Body);
+        Assert.DoesNotContain("t6", channel.Sent[1].Body);
+        Assert.EndsWith("and others.", channel.Sent[1].Body);
+        await dispatcher.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task WithoutAnyChannelAlertsAreDroppedQuietlyAndTheQueueNeverFillsTheMemory()
     {
         using var dispatcher = Dispatcher(20);
