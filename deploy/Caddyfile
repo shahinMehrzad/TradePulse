@@ -20,3 +20,24 @@
 	# Caddy sets X-Forwarded-For/-Proto itself and replaces any a visitor sends. The panel believes them only from the private network.
 	reverse_proxy panel:8080
 }
+
+# A plain static page on the main domain (what this project is, a contact address). Some services, e.g. the cTrader Open API
+# registration, ask for a website the owner controls. Nothing dynamic: no proxy, no cookies. Without SITE_DOMAIN it only answers on
+# site.localhost, which Caddy serves with its own local certificate and never asks Let's Encrypt for.
+{$SITE_DOMAIN:site.localhost} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	root * /srv/site
+	file_server
+}
+
+www.{$SITE_DOMAIN:site.localhost} {
+	redir https://{$SITE_DOMAIN:site.localhost}{uri} permanent
+}
