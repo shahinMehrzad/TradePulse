@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MS Phoenix - TradePulse</title>
+<meta name="description" content="A personal research project: collecting and analysing market data.">
+<style>
+  :root { --bg: #ffffff; --fg: #1b1f24; --muted: #5b6570; --line: #e3e6ea; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14171a; --fg: #e8eaed; --muted: #9aa3ad; --line: #2a2f35; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, sans-serif; }
+  main { max-width: 40rem; margin: 0 auto; padding: 4rem 1rem; }
+  h1 { margin: 0 0 .25rem; font-size: 2rem; }
+  .lead { margin: 0 0 2rem; color: var(--muted); }
+  h2 { margin: 2rem 0 .5rem; font-size: 1.1rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MS Phoenix - TradePulse</h1>
+  <p class="lead">A personal research project on market data.</p>
+
+  <h2>What it is</h2>
+  <p>A software project, written in C# on .NET, that collects market candle data from exchanges and brokers and stores it in a database
+     so that trading ideas can be analysed and tested on historical data. The source code of the collector is public.</p>
+
+  <h2>Integrations</h2>
+  <p>It talks to exchanges and brokers only through their official public APIs. The cTrader Open API application registered for this
+     project reads data from the owner's own accounts and, for testing, places small orders on demo accounts. It is not offered to other people.</p>
+
+  <h2>What it is not</h2>
+  <p>It is not a trading service, a signal service or an investment product, and it does not manage anybody else's money.</p>
+
+  <footer>
+    Contact: <a href="mailto:parsibin@gmail.com">parsibin@gmail.com</a>
+  </footer>
+</main>
+</body>
+</html>
