@@ -164,6 +164,7 @@ services:
       DOMAIN: ${DOMAIN:-localhost}
       ACME_EMAIL: ${ACME_EMAIL:-}
       SITE_DOMAIN: ${SITE_DOMAIN:-site.localhost}
+      SITE_CONTACT_EMAIL: ${SITE_CONTACT_EMAIL:-}
     ports:
       - "80:80"
       - "443:443"
