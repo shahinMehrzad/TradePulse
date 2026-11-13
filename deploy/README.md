@@ -42,7 +42,8 @@ Then open `https://<your domain>`. Only the panel is published; the API, Postgre
 
 - **A plain page on a second domain (optional).** Some services (e.g. registering a cTrader Open API application) ask for a website you control.
   Set `SITE_DOMAIN` in `deploy/.env` (its A record, and `www.`, point to this server) and Caddy serves the static page `deploy/site/index.html` there,
-  with a redirect from `www.`. Edit that page (contact address) before you publish it. Without `SITE_DOMAIN` it is only reachable as `site.localhost`.
+  with a redirect from `www.`. The contact address on the page is `SITE_CONTACT_EMAIL` from `deploy/.env` (no address is kept in the repository).
+  Without `SITE_DOMAIN` it is only reachable as `site.localhost`.
 
 - **Real client addresses.** Caddy passes the visitor's address on; the panel passes it to the API, which counts the login rate limit
   (`RateLimiting:LoginPermitsPerMinute`, per client) by it. The programs believe `X-Forwarded-For` only from a private network, never from the internet.

@@ -33,9 +33,10 @@
   <h2>What it is not</h2>
   <p>It is not a trading service, a signal service or an investment product, and it does not manage anybody else's money.</p>
 
-  <footer>
-    Contact: <a href="mailto:contact@example.invalid">contact@example.invalid</a>
-  </footer>
+  <!-- Caddy fills this in from SITE_CONTACT_EMAIL (deploy/.env), so no address lives in the repository. -->
+  {{if env "SITE_CONTACT_EMAIL"}}<footer>
+    Contact: <a href="mailto:{{env "SITE_CONTACT_EMAIL"}}">{{env "SITE_CONTACT_EMAIL"}}</a>
+  </footer>{{end}}
 </main>
 </body>
 </html>
