@@ -35,6 +35,8 @@
 	}
 
 	root * /srv/site
+	# Only to put SITE_CONTACT_EMAIL into the page; the page uses no other template feature.
+	templates
 	file_server
 }
 
