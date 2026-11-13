@@ -10,6 +10,7 @@
   @media (prefers-color-scheme: dark) { :root { --bg: #14171a; --fg: #e8eaed; --muted: #9aa3ad; --line: #2a2f35; } }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, sans-serif; }
   main { max-width: 40rem; margin: 0 auto; padding: 4rem 1rem; }
+  .logo { display: block; width: 7rem; height: auto; margin: 0 0 1.5rem; padding: .5rem; background: #fff; border-radius: .5rem; }
   h1 { margin: 0 0 .25rem; font-size: 2rem; }
   .lead { margin: 0 0 2rem; color: var(--muted); }
   h2 { margin: 2rem 0 .5rem; font-size: 1.1rem; }
@@ -19,6 +20,8 @@
 </head>
 <body>
 <main>
+  <!-- logo.png is not in the repository (see .gitignore here): copy it next to this page by hand. Without it the image removes itself. -->
+  <img class="logo" src="/logo.png" alt="MS Phoenix" onerror="this.remove()">
   <h1>MS Phoenix - TradePulse</h1>
   <p class="lead">A personal research project on market data.</p>
 
