@@ -40,6 +40,10 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env --profile pub
 
 Then open `https://<your domain>`. Only the panel is published; the API, Postgres and the collector stay inside the stack or on `127.0.0.1`.
 
+- **A plain page on a second domain (optional).** Some services (e.g. registering a cTrader Open API application) ask for a website you control.
+  Set `SITE_DOMAIN` in `deploy/.env` (its A record, and `www.`, point to this server) and Caddy serves the static page `deploy/site/index.html` there,
+  with a redirect from `www.`. Edit that page (contact address) before you publish it. Without `SITE_DOMAIN` it is only reachable as `site.localhost`.
+
 - **Real client addresses.** Caddy passes the visitor's address on; the panel passes it to the API, which counts the login rate limit
   (`RateLimiting:LoginPermitsPerMinute`, per client) by it. The programs believe `X-Forwarded-For` only from a private network, never from the internet.
 - **Keys of data protection** live in the volumes `api-keys` and `panel-keys`. Do not delete them with `down -v` unless you want everyone signed out.
