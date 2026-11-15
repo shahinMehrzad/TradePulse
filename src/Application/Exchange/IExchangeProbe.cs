@@ -15,6 +15,12 @@ public interface IProbeStreamListener : IStreamListener
 /// </summary>
 public interface IExchangeProbe
 {
+    /// <summary>
+    /// Whether this probe can check <paramref name="exchange"/>. The one the program runs on is a router over the probes of every exchange it
+    /// has. The default (every exchange) is for a probe of a single exchange that is only ever asked about its own.
+    /// </summary>
+    bool Serves(ExchangeEnum exchange) => true;
+
     /// <summary>Pings the exchange's REST API of <paramref name="market"/>. The value is how long the round trip took.</summary>
     Task<ExchangeResult<TimeSpan>> PingAsync(ExchangeEnum exchange, MarketTypeEnum market, CancellationToken cancellationToken);
 

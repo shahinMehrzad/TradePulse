@@ -4,6 +4,7 @@ using Application;
 using Application.Interfaces;
 using Infrastructure;
 using Infrastructure.Exchange.Binance;
+using Infrastructure.Exchange.Ctrader;
 using Microsoft.AspNetCore.OData;
 using WebApi.Authentication;
 using WebApi.Controllers;
@@ -44,6 +45,7 @@ builder.Services.AddHostedService<AuthCleanupService>();
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddBinanceSymbolCatalog();
+builder.Services.AddCtraderSymbolCatalog(builder.Configuration);
 builder.Services.AddCollectorHealthClient();
 
 // The audit log names the signed-in user; this replaces the collector's default ("system") that the line above registers.

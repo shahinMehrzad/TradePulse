@@ -126,7 +126,7 @@ Planned, not built yet:
 - Series list in the panel with sortable columns, dropdown filters and a page size (the API side, OData, already exists).
 - A dashboard the admin can arrange: card order, a default time frame per card, hiding a card.
 - Re-checking recent candles for exchange-side revisions.
-- More exchanges and symbols behind a common collector abstraction.
+- More exchanges behind the common collector abstraction (Pepperstone candles through cTrader are written, see [docs/collector.md](docs/collector.md#pepperstone-ctrader), and still to be tried against the broker; live candles and ticks for it are not built).
 - OpenTelemetry.
 
 ## 📄 License

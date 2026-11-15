@@ -11,6 +11,7 @@ using BackgroundWorker.SymbolData;
 using Domain.Services;
 using Infrastructure;
 using Infrastructure.Exchange.Binance;
+using Infrastructure.Exchange.Ctrader;
 using Infrastructure.Notifications;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,7 @@ public static class CollectorRegistration
         services.AddApplicationServices();
         services.AddInfrastructureServices(configuration);
         services.AddBinanceExchange(configuration);
+        services.AddCtraderExchange(configuration);
         services.Configure<LiveCandleSettings>(configuration.GetSection(LiveCandleSettings.SectionName));
 
         services.AddSingleton<ICandleSeriesSource, DatabaseCandleSeriesSource>();
