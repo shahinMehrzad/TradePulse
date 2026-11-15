@@ -29,12 +29,15 @@ public static class MarketDataSupport
         TimeFrameEnum._4H, TimeFrameEnum._6H, TimeFrameEnum._12H, TimeFrameEnum._1D,
     ]);
 
-    // cTrader's trendbar periods (ProtoOATrendbarPeriod) that have a TimeFrameEnum member: it has no 1s, 2H, 6H or 8H. A test keeps this list
-    // and the adapter's mapping equal.
+    // cTrader's trendbar periods (ProtoOATrendbarPeriod) that have a TimeFrameEnum member and are known to sit on the same grid as ours (candles open at
+    // multiples of the period since the epoch): up to 1 hour. cTrader also has 4H, 12H and 1D, but those most likely start at the broker's own midnight (New
+    // York), which moves by an hour with summer time, and the collector would then skip a candle without a word. They are left out until that is checked
+    // against the broker and the collector knows a grid of its own; a day can be made from 1 hour candles meanwhile. A test keeps this list and the
+    // adapter's mapping equal.
     private static readonly FrozenSet<TimeFrameEnum> CfdCandleTimeFrames = FrozenSet.ToFrozenSet(
     [
         TimeFrameEnum._1M, TimeFrameEnum._3M, TimeFrameEnum._5M, TimeFrameEnum._15M, TimeFrameEnum._30M,
-        TimeFrameEnum._1H, TimeFrameEnum._4H, TimeFrameEnum._12H, TimeFrameEnum._1D,
+        TimeFrameEnum._1H,
     ]);
 
     private static readonly FrozenDictionary<(ExchangeEnum Exchange, MarketTypeEnum Market), FrozenDictionary<MarketDataTypeEnum, Rule>> Markets =
