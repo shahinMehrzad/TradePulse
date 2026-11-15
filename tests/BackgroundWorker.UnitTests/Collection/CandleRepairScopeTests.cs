@@ -9,6 +9,7 @@ using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
+using Domain.Services;
 using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -183,7 +184,7 @@ public class CandleRepairScopeTests
             rig.Schedule = new GapRepairSchedule(rig.Time);
             rig._worker = new BinanceCandleWorker(
                 scopes, NullLogger<BinanceCandleWorker>.Instance, rig.Provider, rig.AnyGateway, rig.Coordinator,
-                new WorkerHealthState(TimeProvider.System), rig.Gaps, rig.Schedule, rig.Alerts, new CollectionStats())
+                new WorkerHealthState(TimeProvider.System), rig.Gaps, rig.Schedule, rig.Alerts, new CollectionStats(), MarketCalendar.AlwaysOpen)
             {
                 Backoff = _ => TimeSpan.Zero,   // a request that keeps failing must not make a test wait a minute
             };

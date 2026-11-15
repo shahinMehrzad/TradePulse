@@ -6,6 +6,7 @@ using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
+using Domain.Services;
 using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -57,21 +58,25 @@ public class CandleGapReportingTests
     /// <summary>An exchange that has the candles it is given for a gap's first period, and nothing else.</summary>
     private sealed class FakeCandleGateway(params DateTime[] candlesItHas) : ICandleGateway
     {
+        private int _asked;
+        public int Asked => Volatile.Read(ref _asked);
+
         public Task<ExchangeResult<ExchangePage<Candle>>> GetCandlesAsync(Domain.ValueObjects.CandleSeries series, DateTime from, DateTime? to, CancellationToken cancellationToken)
         {
+            Interlocked.Increment(ref _asked);
             var items = candlesItHas.Where(o => o >= from && (to is null || o <= to)).Select(ClosedCandle).ToList();
             return Task.FromResult(ExchangeResult<ExchangePage<Candle>>.Ok(new ExchangePage<Candle>(items, HasMore: false)));
         }
     }
 
-    private static async Task<OpenGaps> RunRepairAsync(FakeCandleTable table, FakeCandleGateway gateway)
+    private static async Task<OpenGaps> RunRepairAsync(FakeCandleTable table, FakeCandleGateway gateway, IMarketCalendar? calendar = null)
     {
         var openGaps = new OpenGaps();
         var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(table).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
         var provider = await CandleSeriesTestSupport.LoadedProviderAsync(TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
         using var worker = new BinanceCandleWorker(
             scopes, NullLogger<BinanceCandleWorker>.Instance, provider, gateway, new CandleSyncCoordinator(),
-            new WorkerHealthState(TimeProvider.System), openGaps, new GapRepairSchedule(TimeProvider.System), new AlertQueue(), new CollectionStats());
+            new WorkerHealthState(TimeProvider.System), openGaps, new GapRepairSchedule(TimeProvider.System), new AlertQueue(), new CollectionStats(), calendar ?? MarketCalendar.AlwaysOpen);
 
         await worker.StartAsync(Ct);
         var deadline = DateTime.UtcNow.AddSeconds(5);
@@ -84,6 +89,21 @@ public class CandleGapReportingTests
         await worker.StopAsync(CancellationToken.None);
         provider.Dispose();
         return openGaps;
+    }
+
+    [Fact]
+    public async Task AGapInTheTimeTheMarketWasClosedIsNotAskedForAndNotReported()
+    {
+        // The test series is on a Friday (2021-08-13); the market is open from Sunday to Thursday only.
+        var calendar = new MarketCalendar();
+        var series = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H).Series;
+        calendar.SetHours(series.Exchange, series.MarketType, series.Symbol, new TradingHours([(TimeSpan.Zero, TimeSpan.FromDays(5))]));
+        var gateway = new FakeCandleGateway();
+
+        var gaps = await RunRepairAsync(new FakeCandleTable([Gap(2, 5)]), gateway, calendar);
+
+        Assert.Equal(0, gaps.Get(Table)!.Value.Gaps);
+        Assert.Equal(0, gateway.Asked);
     }
 
     [Fact]

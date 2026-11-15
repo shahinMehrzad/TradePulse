@@ -1,10 +1,9 @@
-using Domain.Services;
 using BackgroundWorker.CandleSeries;
-using Domain.Enums;
 using Domain.Repositories;
+using Domain.Services;
+using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Options;
 
 namespace BackgroundWorker.Health;
 
@@ -19,7 +18,7 @@ public sealed record TableFreshness(string Table, DateTime? LatestOpen, int Cand
 /// database answer (health checks are re-created on every run) and remembers the previous observation to see progress.
 /// </summary>
 public sealed class CandleFreshnessMonitor(
-    IServiceScopeFactory scopeFactory, CandleSeriesProvider seriesProvider, TimeProvider timeProvider)
+    IServiceScopeFactory scopeFactory, CandleSeriesProvider seriesProvider, TimeProvider timeProvider, IMarketCalendar calendar)
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(30);
 
@@ -59,7 +58,7 @@ public sealed class CandleFreshnessMonitor(
                     && (before is null || latest > before);
 
                 _previous[table] = latest;
-                result.Add(new TableFreshness(table, latest, CandlesBehind(latest, interval, now), progressing));
+                result.Add(new TableFreshness(table, latest, CandlesBehind(calendar, plan.Series, latest, now), progressing));
             }
 
             // Nothing to measure yet (the series are not known) is not worth remembering: the answer changes the moment they are.
@@ -75,6 +74,20 @@ public sealed class CandleFreshnessMonitor(
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Like <see cref="CandlesBehind(DateTime?, TimeSpan, DateTime)"/>, but only the candles the market was open for count: a broker's
+    /// market is closed at the weekend, and a series that stopped with the last candle before it is not behind.
+    /// </summary>
+    public static int CandlesBehind(IMarketCalendar calendar, Domain.ValueObjects.CandleSeries series, DateTime? latestOpen, DateTime now)
+    {
+        var behind = CandlesBehind(latestOpen, series.Interval, now);
+        if (behind == 0)
+            return 0;
+
+        var missing = new CandleGap(latestOpen!.Value + series.Interval, latestOpen.Value + behind * series.Interval);
+        return calendar.ExpectedPart(series, missing).Sum(g => (int)((g.LastMissingOpenTime - g.FirstMissingOpenTime) / series.Interval) + 1);
     }
 
     /// <summary>

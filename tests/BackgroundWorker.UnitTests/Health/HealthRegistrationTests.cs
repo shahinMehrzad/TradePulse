@@ -2,6 +2,7 @@ using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
 using BackgroundWorker.UnitTests.SymbolData;
 using Domain.Enums;
+using Domain.Services;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,6 +36,7 @@ public class HealthRegistrationTests
         services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
             TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: true)));
 
+        services.AddSingleton(MarketCalendar.AlwaysOpen);
         services.AddWorkerHealth(configuration);
         return services.BuildServiceProvider();
     }
@@ -77,6 +79,7 @@ public class HealthRegistrationTests
             TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H)));
         services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
             TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: false)));
+        services.AddSingleton(MarketCalendar.AlwaysOpen);
         services.AddWorkerHealth(Config(new()));
         await using var provider = services.BuildServiceProvider();
 

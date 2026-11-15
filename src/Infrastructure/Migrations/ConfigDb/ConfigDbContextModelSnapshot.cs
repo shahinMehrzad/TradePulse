@@ -167,6 +167,11 @@ namespace Infrastructure.Migrations.ConfigDb
                         {
                             Id = 1,
                             Name = "Binance"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Pepperstone"
                         });
                 });
 
@@ -193,6 +198,11 @@ namespace Infrastructure.Migrations.ConfigDb
                         {
                             Id = 2,
                             Name = "Futures"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "Cfd"
                         });
                 });
 

@@ -8,6 +8,7 @@ using BackgroundWorker.Collection.MarketStatistics;
 using BackgroundWorker.Collection.OpenInterests;
 using BackgroundWorker.Health;
 using BackgroundWorker.SymbolData;
+using Domain.Services;
 using Infrastructure;
 using Infrastructure.Exchange.Binance;
 using Infrastructure.Notifications;
@@ -37,6 +38,8 @@ public static class CollectorRegistration
         services.AddSingleton<SymbolDataProvider>();
         services.AddHostedService(provider => provider.GetRequiredService<SymbolDataProvider>());
 
+        services.AddSingleton<MarketCalendar>();
+        services.AddSingleton<IMarketCalendar>(provider => provider.GetRequiredService<MarketCalendar>());
         services.AddSingleton<CandleSyncCoordinator>();
         services.AddSingleton(configuration.GetSection(GapRepairSettings.SectionName).Get<GapRepairSettings>()?.Validate() ?? new GapRepairSettings());
         services.AddSingleton<GapRepairSchedule>();
