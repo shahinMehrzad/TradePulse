@@ -130,4 +130,42 @@ public class MarketCalendarTests
     {
         Assert.Throws<ArgumentException>(() => new TradingHours([]));
     }
+
+    // New York's week: opens Sunday 17:00 local, closes Friday 17:00 local. Summer time (UTC-4) from 2026-03-08 to 2026-11-01.
+    private static readonly TradingHours NewYorkWeek = new(
+        [(TimeSpan.FromHours(17), TimeSpan.FromDays(5) + TimeSpan.FromHours(17))], TimeZoneInfo.FindSystemTimeZoneById("America/New_York"));
+
+    [Theory]
+    [InlineData(2026, 10, 18, 21)]   // summer time: 17:00 local is 21:00 UTC
+    [InlineData(2026, 11, 8, 22)]    // winter time: 17:00 local is 22:00 UTC
+    public void TheSameSessionIsAnHourEarlierInUtcInSummerTime(int year, int month, int day, int openUtcHour)
+    {
+        // The Sunday in question and the five days that follow it.
+        var sunday = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+
+        var first = NewYorkWeek.OpenRanges(sunday, sunday.AddDays(2)).First();
+
+        Assert.Equal(sunday.AddHours(openUtcHour), first.Start);
+    }
+
+    [Fact]
+    public void AWeekThatHasTheClocksChangeInItKeepsItsWallClockSessions()
+    {
+        // The week of 2026-11-01 (clocks back at 02:00 on Sunday): it opens the Sunday before at 17:00 EDT = 21:00 UTC and closes Friday 17:00 EST = 22:00 UTC.
+        var ranges = NewYorkWeek.OpenRanges(new DateTime(2026, 10, 25, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 11, 8, 0, 0, 0, DateTimeKind.Utc)).ToList();
+
+        Assert.Equal((new DateTime(2026, 10, 25, 21, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 30, 21, 0, 0, DateTimeKind.Utc)), ranges[0]);
+        Assert.Equal((new DateTime(2026, 11, 1, 22, 0, 0, DateTimeKind.Utc), new DateTime(2026, 11, 6, 22, 0, 0, DateTimeKind.Utc)), ranges[1]);
+    }
+
+    [Fact]
+    public void ASessionStartingInTheHourThatDoesNotExistStartsTheHourAfter()
+    {
+        // 2026-03-08: at 02:00 New York the clocks go forward to 03:00. A session that opens at Sunday 02:30 local starts at 03:30 local = 07:30 UTC.
+        var hours = new TradingHours([(TimeSpan.FromHours(2.5), TimeSpan.FromHours(6))], TimeZoneInfo.FindSystemTimeZoneById("America/New_York"));
+
+        var first = hours.OpenRanges(new DateTime(2026, 3, 8, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 3, 9, 0, 0, 0, DateTimeKind.Utc)).First();
+
+        Assert.Equal(new DateTime(2026, 3, 8, 7, 30, 0, DateTimeKind.Utc), first.Start);
+    }
 }

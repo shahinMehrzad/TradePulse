@@ -4,6 +4,7 @@ using Domain.Enums;
 using Domain.ValueObjects;
 using Infrastructure.Exchange;
 using Infrastructure.Exchange.Binance;
+using Infrastructure.Exchange.Ctrader;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -103,5 +104,44 @@ public class ExchangeRouterTests
         Assert.False(gateway.Serves(ExchangeEnum.Pepperstone));
         Assert.True(catalog.Serves(ExchangeEnum.Binance));
         Assert.False(catalog.Serves(ExchangeEnum.Pepperstone));
+    }
+
+    private static IConfiguration Ctrader(bool complete) => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["CtraderExchangeConfigurations:ClientId"] = "id",
+        ["CtraderExchangeConfigurations:ClientSecret"] = "secret",
+        ["CtraderExchangeConfigurations:AccessToken"] = complete ? "token" : null,
+        ["CtraderExchangeConfigurations:AccountId"] = "1",
+    }).Build();
+
+    [Fact]
+    public async Task PepperstoneIsServedOnlyWhenTheSettingsToSignInAreAllThere()
+    {
+        foreach (var complete in new[] { false, true })
+        {
+            var services = new ServiceCollection().AddLogging();
+            services.AddBinanceExchange(Ctrader(complete));
+            services.AddBinanceSymbolCatalog();
+            services.AddCtraderExchange(Ctrader(complete));
+            await using var provider = services.BuildServiceProvider();
+
+            Assert.Equal(complete, provider.GetRequiredService<ICandleGateway>().Serves(ExchangeEnum.Pepperstone));
+            Assert.Equal(complete, provider.GetRequiredService<IExchangeSymbolCatalog>().Serves(ExchangeEnum.Pepperstone));
+            Assert.True(provider.GetRequiredService<ICandleGateway>().Serves(ExchangeEnum.Binance));
+        }
+    }
+
+    [Fact]
+    public async Task TheAdminApisCatalogServesPepperstoneToo()
+    {
+        var services = new ServiceCollection().AddLogging();
+        services.AddBinanceSymbolCatalog();
+        services.AddCtraderSymbolCatalog(Ctrader(complete: true));
+        await using var provider = services.BuildServiceProvider();
+
+        var catalog = provider.GetRequiredService<IExchangeSymbolCatalog>();
+
+        Assert.True(catalog.Serves(ExchangeEnum.Pepperstone));
+        Assert.True(catalog.Serves(ExchangeEnum.Binance));
     }
 }
