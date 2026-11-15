@@ -50,6 +50,7 @@ public class HealthEndpointTests
                 services.AddWorkerHealth(configuration);
                 // The probe worker needs real Binance clients; only the endpoint and the checks are under test here.
                 services.Remove(services.Single(s => s.ImplementationType == typeof(BinanceConnectivityWorker)));
+                services.Remove(services.Single(s => s.ImplementationType == typeof(CtraderConnectivityWorker)));
             })
             .Build();
 

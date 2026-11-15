@@ -128,7 +128,29 @@ public class ExchangeRouterTests
             Assert.Equal(complete, provider.GetRequiredService<ICandleGateway>().Serves(ExchangeEnum.Pepperstone));
             Assert.Equal(complete, provider.GetRequiredService<IExchangeSymbolCatalog>().Serves(ExchangeEnum.Pepperstone));
             Assert.True(provider.GetRequiredService<ICandleGateway>().Serves(ExchangeEnum.Binance));
+            Assert.Equal(complete, provider.GetRequiredService<IExchangeProbe>().Serves(ExchangeEnum.Pepperstone));
+            Assert.True(provider.GetRequiredService<IExchangeProbe>().Serves(ExchangeEnum.Binance));
         }
+    }
+
+    [Fact]
+    public async Task SettingsThatDeployLeavesEmptyMeanNotConfiguredAndNotACrash()
+    {
+        // deploy/docker-compose.yml passes every setting, empty when deploy/.env has none: an empty account id must not stop the host.
+        var empty = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CtraderExchangeConfigurations:ClientId"] = "",
+            ["CtraderExchangeConfigurations:ClientSecret"] = "",
+            ["CtraderExchangeConfigurations:AccessToken"] = "",
+            ["CtraderExchangeConfigurations:AccountId"] = "",
+            ["CtraderExchangeConfigurations:Environment"] = "Demo",
+        }).Build();
+        var services = new ServiceCollection().AddLogging();
+        services.AddBinanceExchange(empty);
+        services.AddCtraderExchange(empty);
+        await using var provider = services.BuildServiceProvider();
+
+        Assert.False(provider.GetRequiredService<ICandleGateway>().Serves(ExchangeEnum.Pepperstone));
     }
 
     [Fact]

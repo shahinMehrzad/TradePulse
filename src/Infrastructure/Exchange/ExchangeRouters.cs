@@ -38,3 +38,19 @@ public sealed class ExchangeSymbolCatalogRouter(IServiceProvider services) : IEx
         return catalog.FindTradingAsync(exchange, market, symbol, cancellationToken);
     }
 }
+
+/// <summary>The same for <see cref="IExchangeProbe"/>: the probe of the exchange asked about.</summary>
+public sealed class ExchangeProbeRouter(IServiceProvider services) : IExchangeProbe
+{
+    public bool Serves(ExchangeEnum exchange) => services.GetKeyedService<IExchangeProbe>(exchange) is not null;
+
+    public Task<ExchangeResult<TimeSpan>> PingAsync(ExchangeEnum exchange, MarketTypeEnum market, CancellationToken cancellationToken) =>
+        Probe(exchange).PingAsync(exchange, market, cancellationToken);
+
+    public Task<ExchangeResult<IAsyncDisposable>> SubscribeToProbeStreamAsync(
+        ExchangeEnum exchange, ExchangeSymbol symbol, IProbeStreamListener listener, CancellationToken cancellationToken) =>
+        Probe(exchange).SubscribeToProbeStreamAsync(exchange, symbol, listener, cancellationToken);
+
+    private IExchangeProbe Probe(ExchangeEnum exchange) =>
+        services.GetKeyedService<IExchangeProbe>(exchange) ?? throw new NotSupportedException($"No probe is registered for {exchange}.");
+}

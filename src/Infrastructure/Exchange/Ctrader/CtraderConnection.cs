@@ -40,7 +40,7 @@ public sealed class CtraderConnection(IOptions<CtraderExchangeConfigurations> op
     private Session? _session;
     private bool _disposed;
 
-    public long AccountId => _settings.AccountId;
+    public long AccountId => _settings.AccountId ?? 0;
 
     /// <summary>
     /// A message cTrader sent without being asked (a price, a closed bar). It runs on the read loop: it must be quick and must not throw.
@@ -212,7 +212,7 @@ public sealed class CtraderConnection(IOptions<CtraderExchangeConfigurations> op
             Expect(app, ProtoOAPayloadType.ProtoOaApplicationAuthRes);
 
             var account = await RequestAsync((uint)ProtoOAPayloadType.ProtoOaAccountAuthReq,
-                new ProtoOAAccountAuthReq { CtidTraderAccountId = _settings.AccountId, AccessToken = _settings.AccessToken }, cancellationToken);
+                new ProtoOAAccountAuthReq { CtidTraderAccountId = _settings.AccountId ?? 0, AccessToken = _settings.AccessToken }, cancellationToken);
             Expect(account, ProtoOAPayloadType.ProtoOaAccountAuthRes);
         }
 

@@ -33,7 +33,8 @@ public static class BinanceExchangeRegistration
         services.AddSingleton<ILiquidationStream, BinanceLiquidationStream>();
         services.AddSingleton<ILiveTradeStream, BinanceTradeStream>();
 
-        services.AddSingleton<IExchangeProbe, BinanceExchangeProbe>();
+        services.AddKeyedSingleton<IExchangeProbe, BinanceExchangeProbe>(ExchangeEnum.Binance);
+        services.TryAddSingleton<IExchangeProbe, ExchangeProbeRouter>();
 
         return services;
     }

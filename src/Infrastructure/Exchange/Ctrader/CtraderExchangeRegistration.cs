@@ -20,6 +20,8 @@ public static class CtraderExchangeRegistration
 
         services.AddKeyedSingleton<ICandleGateway, CtraderCandleGateway>(ExchangeEnum.Pepperstone);
         services.TryAddSingleton<ICandleGateway, CandleGatewayRouter>();
+        services.AddKeyedSingleton<IExchangeProbe, CtraderExchangeProbe>(ExchangeEnum.Pepperstone);
+        services.TryAddSingleton<IExchangeProbe, ExchangeProbeRouter>();
         AddCatalog(services);
 
         return services;

@@ -45,6 +45,10 @@ internal static class CandleSeriesTestSupport
 
 internal static class TestPlans
 {
+    public static Domain.ValueObjects.CandleSeriesPlan Pepperstone(string symbol = "EURUSD", Domain.Enums.TimeFrameEnum timeframe = Domain.Enums.TimeFrameEnum._1H) =>
+        new(new Domain.ValueObjects.CandleSeries(Domain.Enums.ExchangeEnum.Pepperstone, Domain.Enums.MarketTypeEnum.Cfd, new Domain.ValueObjects.ExchangeSymbol(symbol), timeframe),
+            new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
     public static Domain.ValueObjects.CandleSeriesPlan Binance(Domain.Enums.MarketTypeEnum market, SeededSymbol symbol, Domain.Enums.TimeFrameEnum timeframe) =>
         new(new Domain.ValueObjects.CandleSeries(Domain.Enums.ExchangeEnum.Binance, market, symbol.Sym(), timeframe), new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 }

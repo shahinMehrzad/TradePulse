@@ -28,8 +28,11 @@ public sealed class CtraderExchangeConfigurations
     /// <summary>The access token the account owner gave the application.</summary>
     public string? AccessToken { get; set; }
 
-    /// <summary>The cTrader account id (<c>ctidTraderAccountId</c>), not the number the broker shows.</summary>
-    public long AccountId { get; set; }
+    /// <summary>
+    /// The cTrader account id (<c>ctidTraderAccountId</c>), not the number the broker shows. Nullable so that an empty value (what deploy passes when
+    /// there is none) reads as "not set" instead of stopping the program.
+    /// </summary>
+    public long? AccountId { get; set; }
 
     /// <summary>Replaces the host of <see cref="Environment"/> (a proxy, or a test server).</summary>
     public string? Host { get; set; }

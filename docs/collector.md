@@ -10,6 +10,16 @@
 | **Long/short ratio, taker volume** | REST | Futures, per period (5m to 1d), like open interest: Binance keeps ~30 days, so they must run continuously. One admin flag (`CollectMarketStatistics`) turns on both for a series. |
 | **Liquidations** | WebSocket | Futures. No history exists, so only what arrives while the worker runs is stored. Binance sends at most one liquidation per symbol per second, so this is a sample, not a complete record. |
 
+### Pepperstone (cTrader)
+
+Candles of a broker's CFDs (forex, metals, indices) come through the **cTrader Open API** (Spotware), as exchange `Pepperstone`, market `Cfd`. Candles only: funding, open interest and liquidations are crypto-derivative data and are refused for it. The time frames are the ones cTrader has: 1m, 3m, 5m, 15m, 30m, 1h, 4h, 12h and 1d (no 1s, 2h, 6h or 8h).
+
+- **Setup:** register an application at connect.spotware.com, let the account owner authorise it with the **`accounts`** scope (read only), and set `CTRADER_CLIENT_ID`, `CTRADER_CLIENT_SECRET`, `CTRADER_ACCESS_TOKEN` and `CTRADER_ACCOUNT_ID` (cTrader's own account id) in `deploy/.env` (`CtraderExchangeConfigurations:*` elsewhere, from User Secrets or the environment, never appsettings or the database). With any of them missing the exchange is simply not served: a Pepperstone series is left alone, a symbol cannot be listed for it, and `ctrader-connection` in [health](health.md) says so. The collector and the API hold the token: it must never be one that can trade.
+- **What is stored:** the broker's tick volume is the candle's `volume`; quote volume, trade count and taker volumes are 0 (a broker has no order book). The collector's schema is shared, so those columns stay.
+- **The market closes.** A candle that was never made is no hole: the symbol's weekly trading hours (read from cTrader, in the broker's time zone with summer time) tell gap repair, the `candle-freshness` check and the "new gap" alert which candles are expected. A symbol whose hours are not known counts as always open: a weekend is then reported as a gap, but no candle is skipped. Holidays are not in the hours yet, so a holiday shows as a gap.
+- **Limits:** cTrader allows 5 historical requests per second per connection; the connection keeps to 4. One connection serves the whole process.
+- **Not done and not yet checked against the broker:** it has only been run against a stand-in server. The host (`demo.ctraderapi.com`, `live.ctraderapi.com`, port 5035), the longest range one request may ask for, the boundary of the daily candle and the depth of the history are taken from Spotware's documentation and still to be confirmed on a demo account. Live candles (a WebSocket-like stream) and tick data are not built.
+
 Highlights of the collection path:
 
 - **Idempotent, fast writes:** binary `COPY` into a temp table, then `INSERT ... ON CONFLICT DO NOTHING`, so re-fetching any range is always safe.
