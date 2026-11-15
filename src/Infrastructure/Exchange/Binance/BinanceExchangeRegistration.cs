@@ -1,4 +1,7 @@
 using Domain.Entities;
+using Domain.Enums;
+using Infrastructure.Exchange;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Application.Exchange;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Configuration;
@@ -18,7 +21,8 @@ public static class BinanceExchangeRegistration
         services.AddBinance();
         services.AddSingleton<BinanceRateLimiters>();
 
-        services.AddSingleton<ICandleGateway, BinanceCandleGateway>();
+        services.AddKeyedSingleton<ICandleGateway, BinanceCandleGateway>(ExchangeEnum.Binance);
+        services.TryAddSingleton<ICandleGateway, CandleGatewayRouter>();
         services.AddSingleton<IFundingRateGateway, BinanceFundingRateGateway>();
         services.AddSingleton<IHistoricalTradeGateway, BinanceHistoricalTradeGateway>();
         services.AddSingleton<IOpenInterestGateway, BinanceOpenInterestGateway>();
@@ -41,7 +45,8 @@ public static class BinanceExchangeRegistration
     public static IServiceCollection AddBinanceSymbolCatalog(this IServiceCollection services)
     {
         services.AddBinance();
-        services.AddSingleton<IExchangeSymbolCatalog, BinanceSymbolCatalog>();
+        services.AddKeyedSingleton<IExchangeSymbolCatalog, BinanceSymbolCatalog>(ExchangeEnum.Binance);
+        services.TryAddSingleton<IExchangeSymbolCatalog, ExchangeSymbolCatalogRouter>();
 
         return services;
     }

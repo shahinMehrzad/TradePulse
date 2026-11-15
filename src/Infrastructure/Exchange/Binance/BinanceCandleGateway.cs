@@ -14,6 +14,8 @@ public sealed class BinanceCandleGateway(IBinanceRestClient client, BinanceRateL
     /// <summary>The most candles one request returns. A full page means there may be more.</summary>
     internal const int MaxKlineLimit = 1000;
 
+    public bool Serves(ExchangeEnum exchange) => exchange == ExchangeEnum.Binance;
+
     public async Task<ExchangeResult<ExchangePage<Candle>>> GetCandlesAsync(CandleSeries series, DateTime from, DateTime? to, CancellationToken cancellationToken)
     {
         // Another exchange's series fetched from Binance would store the wrong prices under a right-looking name.

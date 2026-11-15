@@ -13,6 +13,7 @@ public class GetMarketDataSupportQueryHandlerTests
     private const int Binance = (int)ExchangeEnum.Binance;
     private const int Spot = (int)MarketTypeEnum.Spot;
     private const int Futures = (int)MarketTypeEnum.Futures;
+    private const int Cfd = (int)MarketTypeEnum.Cfd;
 
     [Fact]
     public async Task SpotOffersCandlesOnlyAndFuturesOffersEverything()
@@ -21,7 +22,19 @@ public class GetMarketDataSupportQueryHandlerTests
 
         Assert.Equal(["Candle"], all.Where(s => s.MarketId == Spot).Select(s => s.DataType));
         Assert.Equal(["Candle", "FundingRate", "OpenInterest", "Liquidation", "LongShortRatio", "TakerVolume"], all.Where(s => s.MarketId == Futures).Select(s => s.DataType));
-        Assert.All(all, s => Assert.Equal(Binance, s.ExchangeId));
+        Assert.All(all.Where(s => s.MarketId != Cfd), s => Assert.Equal(Binance, s.ExchangeId));
+    }
+
+    [Fact]
+    public async Task PepperstoneCfdsOfferCandlesOnlyOnTheirOwnTimeFrames()
+    {
+        var cfd = (await HandleAsync()).Where(s => s.MarketId == Cfd).ToList();
+
+        var candle = Assert.Single(cfd);
+        Assert.Equal((int)ExchangeEnum.Pepperstone, candle.ExchangeId);
+        Assert.Equal("Candle", candle.DataType);
+        Assert.DoesNotContain((int)TimeFrameEnum._1S, candle.TimeFrameIds!);
+        Assert.DoesNotContain((int)TimeFrameEnum._2H, candle.TimeFrameIds!);
     }
 
     [Fact]

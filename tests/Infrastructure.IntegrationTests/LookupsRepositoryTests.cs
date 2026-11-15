@@ -144,8 +144,8 @@ public class LookupsRepositoryTests(PostgresFixture postgres)
         await using var context = await MigratedContextAsync();
         var repository = new LookupsRepository(context);
 
-        Assert.Equal(["Binance"], (await repository.GetExchangeListAsync(Ct)).Select(x => x.Name));
-        Assert.Equal(["Spot", "Futures"], (await repository.GetMarketListAsync(Ct)).OrderBy(x => x.Id).Select(x => x.Name));
+        Assert.Equal(["Binance", "Pepperstone"], (await repository.GetExchangeListAsync(Ct)).Select(x => x.Name));
+        Assert.Equal(["Spot", "Futures", "Cfd"], (await repository.GetMarketListAsync(Ct)).OrderBy(x => x.Id).Select(x => x.Name));
     }
 
     [Theory]

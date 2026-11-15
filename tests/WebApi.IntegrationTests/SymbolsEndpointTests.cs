@@ -184,6 +184,28 @@ public class SymbolsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     }
 
     [Fact]
+    public async Task AnExchangeWithNoWayToCheckItsSymbolsIsRefusedAndNotAsked()
+    {
+        var client = await AdminAsync();
+        var symbol = await AddSymbolAsync(client, "EUR/USD");
+        var calls = api.ExchangeCatalog.Calls;
+        api.ExchangeCatalog.Unserved.Add(Domain.Enums.ExchangeEnum.Pepperstone);
+        try
+        {
+            var response = await client.PostAsJsonAsync(ListingsUrl,
+                new { ExchangeId = (int)Domain.Enums.ExchangeEnum.Pepperstone, MarketId = (int)Domain.Enums.MarketTypeEnum.Cfd, SymbolId = symbol, ExchangeSymbol = "EURUSD" }, Ct);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal(calls, api.ExchangeCatalog.Calls);
+            Assert.DoesNotContain(await ListingsAsync(client), l => l.SymbolId == symbol);
+        }
+        finally
+        {
+            api.ExchangeCatalog.Unserved.Remove(Domain.Enums.ExchangeEnum.Pepperstone);
+        }
+    }
+
+    [Fact]
     public async Task ANameThatCannotBeInATableNameIsRefusedBeforeTheExchangeIsAsked()
     {
         var client = await AdminAsync();

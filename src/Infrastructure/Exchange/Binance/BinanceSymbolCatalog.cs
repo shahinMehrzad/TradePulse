@@ -13,6 +13,8 @@ namespace Infrastructure.Exchange.Binance;
 /// </summary>
 public sealed class BinanceSymbolCatalog(IBinanceRestClient client) : IExchangeSymbolCatalog
 {
+    public bool Serves(ExchangeEnum exchange) => exchange == ExchangeEnum.Binance;
+
     public async Task<ExchangeResult<ExchangeSymbol?>> FindTradingAsync(
         ExchangeEnum exchange, MarketTypeEnum market, ExchangeSymbol symbol, CancellationToken cancellationToken)
     {

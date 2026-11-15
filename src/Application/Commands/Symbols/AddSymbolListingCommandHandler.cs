@@ -35,6 +35,10 @@ public sealed class AddSymbolListingCommandHandler(ISymbolCatalogRepository repo
         var exchange = (ExchangeEnum)request.ExchangeId;
         var market = (MarketTypeEnum)request.MarketId;
 
+        // Nothing could check the name at an exchange that has no catalog, and the collector could not fetch it either.
+        if (!exchangeCatalog.Serves(exchange))
+            throw new ConfigurationValidationException($"{exchange} symbols cannot be listed yet: there is no way to check them at the exchange.");
+
         var symbol = await repository.GetSymbol(request.SymbolId, cancellationToken)
             ?? throw new ConfigurationValidationException("Unknown symbol.");
 

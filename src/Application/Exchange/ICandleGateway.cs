@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Domain.Enums;
 using Domain.ValueObjects;
 
 namespace Application.Exchange;
@@ -9,6 +10,13 @@ namespace Application.Exchange;
 /// </summary>
 public interface ICandleGateway
 {
+    /// <summary>
+    /// Whether this gateway can serve the candles of <paramref name="exchange"/>. The one the program runs on is a router over the gateways
+    /// of every exchange it has; the collector only takes up the series of exchanges it can serve. The default (every exchange) is for a
+    /// gateway of a single exchange that is only ever asked about its own.
+    /// </summary>
+    bool Serves(ExchangeEnum exchange) => true;
+
     /// <summary>
     /// One page of candles of <paramref name="series"/>, oldest first, whose open time is at or after <paramref name="from"/> (and at
     /// or before <paramref name="to"/>, inclusive, when given). The newest candle may still be open: deciding which are closed is

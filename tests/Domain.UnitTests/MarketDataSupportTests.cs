@@ -81,6 +81,27 @@ public class MarketDataSupportTests
     }
 
     [Fact]
+    public void PepperstoneCfdsProvideCandlesOnlyAndNotOnEveryTimeFrame()
+    {
+        TimeFrameEnum[] supported = [TimeFrameEnum._1M, TimeFrameEnum._3M, TimeFrameEnum._5M, TimeFrameEnum._15M, TimeFrameEnum._30M,
+            TimeFrameEnum._1H, TimeFrameEnum._4H, TimeFrameEnum._12H, TimeFrameEnum._1D];
+
+        Assert.Equal(supported, MarketDataSupport.GetTimeFrames(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, MarketDataTypeEnum.Candle));
+        Assert.False(MarketDataSupport.IsSupported(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, MarketDataTypeEnum.Candle, TimeFrameEnum._2H));
+
+        foreach (var dataType in Enum.GetValues<MarketDataTypeEnum>().Where(d => d != MarketDataTypeEnum.Candle))
+            Assert.False(MarketDataSupport.IsSupported(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, dataType, TimeFrameEnum._1H));
+    }
+
+    [Fact]
+    public void ACombinationNoExchangeOffersIsRefused()
+    {
+        // Binance has no CFDs and Pepperstone has no futures: the pair decides, not the two enums alone.
+        Assert.False(MarketDataSupport.IsSupported(Binance, MarketTypeEnum.Cfd, MarketDataTypeEnum.Candle, TimeFrameEnum._1H));
+        Assert.False(MarketDataSupport.IsSupported(ExchangeEnum.Pepperstone, MarketTypeEnum.Futures, MarketDataTypeEnum.Candle, TimeFrameEnum._1H));
+    }
+
+    [Fact]
     public void ValuesThatAreNoEnumMembersAreRefusedWithAReason()
     {
         Assert.False(MarketDataSupport.TryValidate((ExchangeEnum)99, MarketTypeEnum.Futures, MarketDataTypeEnum.Candle, TimeFrameEnum._1H, out var exchange));
