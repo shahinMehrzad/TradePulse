@@ -32,7 +32,7 @@ public class ArchitectureTests
     public void TheCollectorKnowsNoExchangeLibraryAndNoDatabaseDriver()
     {
         // It asks ports (ICandleGateway, ILiveCandleStream, ...) and Infrastructure answers them.
-        AssertNoneOf(typeof(BackgroundWorker.Collection.Candles.BinanceCandleWorker).Assembly, ExchangeAndStorage);
+        AssertNoneOf(typeof(BackgroundWorker.Collection.Candles.CandleWorker).Assembly, ExchangeAndStorage);
     }
 
     [Fact]

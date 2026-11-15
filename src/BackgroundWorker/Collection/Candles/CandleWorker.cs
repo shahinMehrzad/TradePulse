@@ -16,8 +16,12 @@ using System.Threading.Channels;
 
 namespace BackgroundWorker.Collection.Candles;
 
-public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
-        ILogger<BinanceCandleWorker> logger,
+/// <summary>
+/// Fetches the candles of every series whose exchange the gateway serves (a series of an exchange without an adapter is left alone, not
+/// failed), keeps them gap-free and repairs holes. Nothing in it is specific to one exchange.
+/// </summary>
+public class CandleWorker(IServiceScopeFactory scopeFactory,
+        ILogger<CandleWorker> logger,
         CandleSeriesProvider seriesProvider,
         ICandleGateway candleGateway,
         CandleSyncCoordinator coordinator,
@@ -43,7 +47,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         PlanRunner.RunGroupedAsync(seriesProvider,
-            plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false, CollectMarketStatistics = false }).ToList(),
+            plans => plans.Where(p => candleGateway.Serves(p.Series.Exchange)).Select(p => p with { CollectOpenInterest = false, CollectMarketStatistics = false }).ToList(),
             plan => (int)plan.Series.Timeframe,
             CollectAsync, logger, "candle series", stoppingToken);
 

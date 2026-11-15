@@ -10,6 +10,12 @@ namespace Application.Exchange;
 public interface IExchangeSymbolCatalog
 {
     /// <summary>
+    /// Whether the exchange can be asked at all. An exchange without a catalog must be refused when a symbol is listed: nothing would check the
+    /// name. The default (every exchange) is for a catalog of a single exchange.
+    /// </summary>
+    bool Serves(ExchangeEnum exchange) => true;
+
+    /// <summary>
     /// The name exactly as the exchange spells it when <paramref name="symbol"/> (in any case) exists on <paramref name="market"/>
     /// of the exchange and is trading, otherwise null. A failed call is a result, not an exception: the caller must not guess the answer.
     /// </summary>

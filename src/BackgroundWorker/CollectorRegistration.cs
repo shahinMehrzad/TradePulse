@@ -54,7 +54,7 @@ public static class CollectorRegistration
         services.AddHostedService<AlertDispatcher>();
         services.AddHostedService<StartupAlert>();
 
-        services.AddHostedService<BinanceCandleWorker>();
+        services.AddHostedService<CandleWorker>();
         services.AddHostedService<BinanceLiveCandleWorker>();
         services.AddHostedService<BinanceFundingRateWorker>();
         services.AddHostedService<BinanceOpenInterestWorker>();

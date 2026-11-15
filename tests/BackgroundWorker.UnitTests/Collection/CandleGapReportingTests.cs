@@ -74,8 +74,8 @@ public class CandleGapReportingTests
         var openGaps = new OpenGaps();
         var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(table).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
         var provider = await CandleSeriesTestSupport.LoadedProviderAsync(TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
-        using var worker = new BinanceCandleWorker(
-            scopes, NullLogger<BinanceCandleWorker>.Instance, provider, gateway, new CandleSyncCoordinator(),
+        using var worker = new CandleWorker(
+            scopes, NullLogger<CandleWorker>.Instance, provider, gateway, new CandleSyncCoordinator(),
             new WorkerHealthState(TimeProvider.System), openGaps, new GapRepairSchedule(TimeProvider.System), new AlertQueue(), new CollectionStats(), calendar ?? MarketCalendar.AlwaysOpen);
 
         await worker.StartAsync(Ct);
@@ -89,6 +89,34 @@ public class CandleGapReportingTests
         await worker.StopAsync(CancellationToken.None);
         provider.Dispose();
         return openGaps;
+    }
+
+    private sealed class GatewayOfAnotherExchange : ICandleGateway
+    {
+        public bool Serves(ExchangeEnum exchange) => false;
+
+        public Task<ExchangeResult<ExchangePage<Candle>>> GetCandlesAsync(Domain.ValueObjects.CandleSeries series, DateTime from, DateTime? to, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("a series of an exchange the gateway does not serve must never be asked for");
+    }
+
+    [Fact]
+    public async Task ASeriesOfAnExchangeTheGatewayDoesNotServeIsLeftAlone()
+    {
+        var table = new FakeCandleTable([Gap(2, 5)]);
+        var openGaps = new OpenGaps();
+        var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(table).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+        var provider = await CandleSeriesTestSupport.LoadedProviderAsync(TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
+        using var worker = new CandleWorker(
+            scopes, NullLogger<CandleWorker>.Instance, provider, new GatewayOfAnotherExchange(), new CandleSyncCoordinator(),
+            new WorkerHealthState(TimeProvider.System), openGaps, new GapRepairSchedule(TimeProvider.System), new AlertQueue(), new CollectionStats(), MarketCalendar.AlwaysOpen);
+
+        await worker.StartAsync(Ct);
+        await Task.Delay(300, Ct);
+        await worker.StopAsync(CancellationToken.None);
+        provider.Dispose();
+
+        Assert.Equal(0, table.Looks);
+        Assert.Null(openGaps.Get(Table));
     }
 
     [Fact]
