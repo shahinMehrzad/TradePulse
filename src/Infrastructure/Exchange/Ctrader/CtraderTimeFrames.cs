@@ -6,8 +6,8 @@ namespace Infrastructure.Exchange.Ctrader;
 /// <summary>Which of cTrader's trendbar periods each of our time frames is, and how much time one request may ask for.</summary>
 internal static class CtraderTimeFrames
 {
-    // cTrader has more periods (2, 4 and 10 minutes, weekly, monthly) and lacks some of ours (1s, 2H, 6H, 8H). A test keeps this list equal to
-    // the time frames MarketDataSupport offers for Pepperstone.
+    // cTrader has more periods (2, 4 and 10 minutes, 4 and 12 hours, daily, weekly, monthly) and lacks some of ours (1s, 2H, 6H, 8H). 4H, 12H and 1D are
+    // left out on purpose (see MarketDataSupport). A test keeps this list equal to the time frames MarketDataSupport offers for Pepperstone.
     private static readonly Dictionary<TimeFrameEnum, ProtoOATrendbarPeriod> Periods = new()
     {
         [TimeFrameEnum._1M] = ProtoOATrendbarPeriod.M1,
@@ -16,9 +16,6 @@ internal static class CtraderTimeFrames
         [TimeFrameEnum._15M] = ProtoOATrendbarPeriod.M15,
         [TimeFrameEnum._30M] = ProtoOATrendbarPeriod.M30,
         [TimeFrameEnum._1H] = ProtoOATrendbarPeriod.H1,
-        [TimeFrameEnum._4H] = ProtoOATrendbarPeriod.H4,
-        [TimeFrameEnum._12H] = ProtoOATrendbarPeriod.H12,
-        [TimeFrameEnum._1D] = ProtoOATrendbarPeriod.D1,
     };
 
     public static IReadOnlyCollection<TimeFrameEnum> Supported => Periods.Keys;

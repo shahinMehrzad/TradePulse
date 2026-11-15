@@ -129,12 +129,12 @@ public class CtraderGatewayTests
         var from = new DateTime(2026, 11, 13, 0, 0, 0, DateTimeKind.Utc);
         var to = new DateTime(2026, 11, 13, 6, 0, 0, DateTimeKind.Utc);
 
-        await Build(connection).Gateway.GetCandlesAsync(EurUsdHourly with { Timeframe = TimeFrameEnum._4H }, from, to, Ct);
+        await Build(connection).Gateway.GetCandlesAsync(EurUsdHourly with { Timeframe = TimeFrameEnum._30M }, from, to, Ct);
 
         var request = Assert.Single(connection.TrendbarRequests);
         Assert.Equal(AccountId, request.CtidTraderAccountId);
         Assert.Equal(EurUsdId, request.SymbolId);
-        Assert.Equal(ProtoOATrendbarPeriod.H4, request.Period);
+        Assert.Equal(ProtoOATrendbarPeriod.M30, request.Period);
         Assert.Equal(Ms(from), request.FromTimestamp);
         Assert.Equal(Ms(to), request.ToTimestamp);
     }
@@ -250,6 +250,7 @@ public class CtraderGatewayTests
         await Assert.ThrowsAsync<ArgumentException>(() => gateway.GetCandlesAsync(EurUsdHourly with { Exchange = ExchangeEnum.Binance }, Now, null, Ct));
         await Assert.ThrowsAsync<ArgumentException>(() => gateway.GetCandlesAsync(EurUsdHourly with { MarketType = MarketTypeEnum.Futures }, Now, null, Ct));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => gateway.GetCandlesAsync(EurUsdHourly with { Timeframe = TimeFrameEnum._2H }, Now, null, Ct));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => gateway.GetCandlesAsync(EurUsdHourly with { Timeframe = TimeFrameEnum._1D }, Now, null, Ct));
         Assert.Empty(connection.TrendbarRequests);
         Assert.Equal(0, connection.SymbolListRequests);
     }
