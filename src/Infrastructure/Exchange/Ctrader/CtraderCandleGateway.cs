@@ -38,14 +38,31 @@ internal sealed class CtraderCandleGateway(ICtraderConnection connection, Ctrade
             for (var start = from; start <= end;)
             {
                 var stop = start + span < end ? start + span : end;
-                var answer = await connection.RequestAsync<ProtoOAGetTrendbarsRes>(ProtoOAPayloadType.ProtoOaGetTrendbarsReq, new ProtoOAGetTrendbarsReq
+                ProtoOAGetTrendbarsRes answer;
+
+                // An answer holds at most 14000 bars. When the range has more, cTrader sends the NEWEST ones and says hasMore: what is missing is the
+                // part at the start of the range, so passing the answer on would leave a hole before it that nothing asks for again. Seen against the
+                // broker; the windows are normally far below it, this is for a quiet period that is suddenly busy. A shorter range is asked instead.
+                while (true)
                 {
-                    CtidTraderAccountId = connection.AccountId,
-                    SymbolId = symbol.Id,
-                    Period = period,
-                    FromTimestamp = new DateTimeOffset(start, TimeSpan.Zero).ToUnixTimeMilliseconds(),
-                    ToTimestamp = new DateTimeOffset(stop, TimeSpan.Zero).ToUnixTimeMilliseconds(),
-                }, historical: true, cancellationToken);
+                    answer = await connection.RequestAsync<ProtoOAGetTrendbarsRes>(ProtoOAPayloadType.ProtoOaGetTrendbarsReq, new ProtoOAGetTrendbarsReq
+                    {
+                        CtidTraderAccountId = connection.AccountId,
+                        SymbolId = symbol.Id,
+                        Period = period,
+                        FromTimestamp = new DateTimeOffset(start, TimeSpan.Zero).ToUnixTimeMilliseconds(),
+                        ToTimestamp = new DateTimeOffset(stop, TimeSpan.Zero).ToUnixTimeMilliseconds(),
+                    }, historical: true, cancellationToken);
+
+                    if (!answer.HasMore)
+                        break;
+
+                    var half = (stop - start) / 2;
+                    if (half < series.Interval)
+                        throw new CtraderException("cTrader says there are more bars than one answer holds, even for the shortest range.");
+
+                    stop = start + half;
+                }
 
                 var candles = answer.Trendbar.Select(bar => ToCandle(bar, series.Interval, digits))
                     .Where(c => c.TimeRange.OpenTime >= from && c.TimeRange.OpenTime <= end)
@@ -53,7 +70,7 @@ internal sealed class CtraderCandleGateway(ICtraderConnection connection, Ctrade
                     .ToList();
 
                 if (candles.Count > 0)
-                    return ExchangeResult<ExchangePage<Candle>>.Ok(new ExchangePage<Candle>(candles, HasMore: answer.HasMore || stop < end));
+                    return ExchangeResult<ExchangePage<Candle>>.Ok(new ExchangePage<Candle>(candles, HasMore: stop < end));
 
                 // An answer with no bar in it: the next stretch.
                 start = stop.AddMilliseconds(1);

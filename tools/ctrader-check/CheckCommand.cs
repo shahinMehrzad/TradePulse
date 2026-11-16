@@ -34,7 +34,19 @@ internal static class CheckCommand
 
         var name = options.Get("symbol", "EURUSD");
         var days = int.Parse(options.Get("days", "14"));
-        var now = DateTime.UtcNow;
+        // --at looks at the days before another date (a summer day, the week the clocks changed): what the broker did then, not today.
+        var at = options.Values.TryGetValue("at", out var atText)
+            ? DateTime.SpecifyKind(DateTime.Parse(atText, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc)
+            : (DateTime?)null;
+        var now = at ?? DateTime.UtcNow;
+        var timeFrame = options.Get("timeframe", "1h").ToLowerInvariant() switch
+        {
+            "1m" => TimeFrameEnum._1M, "3m" => TimeFrameEnum._3M, "5m" => TimeFrameEnum._5M,
+            "15m" => TimeFrameEnum._15M, "30m" => TimeFrameEnum._30M, "1h" => TimeFrameEnum._1H,
+            var other => throw new ArgumentException($"--timeframe {other} is not one of 1m, 3m, 5m, 15m, 30m, 1h."),
+        };
+        var interval = TimeSpan.FromSeconds((int)timeFrame);
+        var lastClosed = Floor(now, interval) - interval;
 
         await using var connection = new CtraderConnection(Options.Create(settings), NullLogger<CtraderConnection>.Instance);
         var calendar = new MarketCalendar();
@@ -66,14 +78,17 @@ internal static class CheckCommand
         Console.WriteLine("weekly sessions (as the broker gives them, in its zone):");
         foreach (var session in full.Schedule)
             Console.WriteLine($"  {Moment(session.StartSecond)} -> {Moment(session.EndSecond)}");
+        Console.WriteLine("holidays (date, recurring each year, hours of that day the market is shut, zone):");
+        foreach (var holiday in full.Holiday)
+            Console.WriteLine($"  {DateTime.UnixEpoch.AddDays(holiday.HolidayDate):yyyy-MM-dd}  {holiday.Name,-24} recurring {holiday.IsRecurring,-5}  {Clock(holiday.StartSecond)} -> {Clock(holiday.EndSecond)}  {holiday.ScheduleTimeZone}");
 
-        var series = new CandleSeries(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, new ExchangeSymbol(symbol.Name), TimeFrameEnum._1H);
+        var series = new CandleSeries(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, new ExchangeSymbol(symbol.Name), timeFrame);
         var digits = await directory.GetDigitsAsync(symbol, CancellationToken.None);
 
         Console.WriteLine();
-        Console.WriteLine($"== Candles of the last {days} days through the collector's gateway (H1)");
-        var from = new DateTime(now.AddDays(-days).Ticks / TimeSpan.TicksPerHour * TimeSpan.TicksPerHour, DateTimeKind.Utc);
-        var candles = await FetchAllAsync(gateway, series, from);
+        Console.WriteLine($"== Candles of the {days} days before {now:u} through the collector's gateway ({timeFrame.ToString().TrimStart('_')})");
+        var from = Floor(now.AddDays(-days), interval);
+        var candles = await FetchAllAsync(gateway, series, from, lastClosed);
         Console.WriteLine($"{candles.Count} candles from {candles.FirstOrDefault()?.TimeRange.OpenTime:u} to {candles.LastOrDefault()?.TimeRange.OpenTime:u} (digits {digits})");
         foreach (var candle in candles.TakeLast(3))
             Console.WriteLine($"  {candle.TimeRange.OpenTime:u}  O {candle.Open.Value}  H {candle.High.Value}  L {candle.Low.Value}  C {candle.Close.Value}  volume {candle.Volume}");
@@ -81,11 +96,12 @@ internal static class CheckCommand
         Console.WriteLine();
         Console.WriteLine("== Does the trading calendar explain the holes?");
         var opens = candles.Select(c => c.TimeRange.OpenTime).ToHashSet();
-        var expectedParts = calendar.ExpectedPart(series, new CandleGap(from, new DateTime(now.Ticks / TimeSpan.TicksPerHour * TimeSpan.TicksPerHour, DateTimeKind.Utc).AddHours(-1)));
-        var expected = expectedParts.SelectMany(p => Hours(p.FirstMissingOpenTime, p.LastMissingOpenTime)).ToList();
+        var expectedHint = interval < TimeSpan.FromHours(1) ? " (every candle of a day is listed, so use a short --days)" : string.Empty;
+        var expectedParts = calendar.ExpectedPart(series, new CandleGap(from, lastClosed));
+        var expected = expectedParts.SelectMany(p => Steps(p.FirstMissingOpenTime, p.LastMissingOpenTime, interval)).ToList();
         var missing = expected.Where(t => !opens.Contains(t)).ToList();
         var unexpected = opens.Where(t => !expected.Contains(t)).Order().ToList();
-        Console.WriteLine($"the calendar expects {expected.Count} candles; {missing.Count} of them are missing, and {unexpected.Count} candles exist where the calendar says the market was closed");
+        Console.WriteLine($"the calendar expects {expected.Count} candles; {missing.Count} of them are missing, and {unexpected.Count} candles exist where the calendar says the market was closed{expectedHint}");
         foreach (var t in missing.Take(10))
             Console.WriteLine($"  missing {t:u}");
         foreach (var t in unexpected.Take(10))
@@ -106,29 +122,41 @@ internal static class CheckCommand
                 .Distinct().Order().ToList();
             Console.WriteLine($"{periodName,-4} {answer.Trendbar.Count,5} bars  offsets from the epoch grid: {(offsets.Count == 0 ? "no bars" : string.Join(", ", offsets.Select(o => o == TimeSpan.Zero ? "none" : o.ToString())))}"
                 + (offsets.Any(o => o != TimeSpan.Zero) ? "   <-- NOT on the grid" : string.Empty));
+
+            // A few real open times of the long periods, to see where a day starts (and whether it follows the clock of the broker).
+            if (length >= TimeSpan.FromHours(4))
+                Console.WriteLine("       e.g. " + string.Join("  ", answer.Trendbar.Take(4).Select(b => $"{Open(b):ddd HH:mm}")));
         }
 
         Console.WriteLine();
-        Console.WriteLine("== How long a range may one request ask for? (what the adapter assumes is in parentheses)");
-        foreach (var (periodName, period, assumed) in new[] { ("M1", ProtoOATrendbarPeriod.M1, 3.5), ("H1", ProtoOATrendbarPeriod.H1, 245.0) })
-            foreach (var askDays in new[] { assumed / 2, assumed, assumed * 2 })
-                await TryRangeAsync(connection, symbol.Id, periodName, period, now, askDays, assumed);
+        Console.WriteLine("== How long a range may one request ask for? (the adapter asks for 3.5 days of M1 and 245 days of H1 at a time)");
+        foreach (var (periodName, period, ranges) in new[]
+        {
+            ("M1", ProtoOATrendbarPeriod.M1, new[] { 7.0, 14, 30, 60 }),
+            ("H1", ProtoOATrendbarPeriod.H1, new[] { 245.0, 490, 1000, 2000 }),
+        })
+            foreach (var askDays in ranges)
+                await TryRangeAsync(connection, symbol.Id, periodName, period, now, askDays);
 
         Console.WriteLine();
-        Console.WriteLine("== Ticks (for later): the last hour, and the oldest hour that answers");
-        await TryTicksAsync(connection, symbol.Id, now.AddHours(-1), now);
-        foreach (var back in new[] { 30, 180, 365 })
-            await TryTicksAsync(connection, symbol.Id, now.AddDays(-back), now.AddDays(-back).AddHours(1));
+        Console.WriteLine("== Ticks (for later): the last hour, and how far back they go (a weekday at noon UTC each time: the weekend has none)");
+        if (at is null)
+            await TryTicksAsync(connection, symbol.Id, now.AddHours(-1), now);
+        foreach (var back in new[] { 30, 90, 180, 365, 730 })
+        {
+            var day = Weekday(now.AddDays(-back));
+            await TryTicksAsync(connection, symbol.Id, day, day.AddHours(1));
+        }
 
         return 0;
     }
 
-    private static async Task<List<Domain.Entities.Candle>> FetchAllAsync(CtraderCandleGateway gateway, CandleSeries series, DateTime from)
+    private static async Task<List<Domain.Entities.Candle>> FetchAllAsync(CtraderCandleGateway gateway, CandleSeries series, DateTime from, DateTime to)
     {
         var all = new List<Domain.Entities.Candle>();
         for (var start = from; ;)
         {
-            var result = await gateway.GetCandlesAsync(series, start, null, CancellationToken.None);
+            var result = await gateway.GetCandlesAsync(series, start, to, CancellationToken.None);
             if (!result.Success)
                 throw new CtraderException(result.Error ?? "The candle request failed.");
 
@@ -140,20 +168,24 @@ internal static class CheckCommand
         }
     }
 
-    private static async Task TryRangeAsync(CtraderConnection connection, long symbolId, string periodName, ProtoOATrendbarPeriod period, DateTime now, double askDays, double assumedDays)
+    private static async Task TryRangeAsync(CtraderConnection connection, long symbolId, string periodName, ProtoOATrendbarPeriod period, DateTime now, double askDays)
     {
+        var from = now.AddDays(-askDays);
         try
         {
             var answer = await connection.RequestAsync<ProtoOAGetTrendbarsRes>(ProtoOAPayloadType.ProtoOaGetTrendbarsReq, new ProtoOAGetTrendbarsReq
             {
-                CtidTraderAccountId = connection.AccountId, SymbolId = symbolId, Period = period,
-                FromTimestamp = Ms(now.AddDays(-askDays)), ToTimestamp = Ms(now),
+                CtidTraderAccountId = connection.AccountId, SymbolId = symbolId, Period = period, FromTimestamp = Ms(from), ToTimestamp = Ms(now),
             }, true, CancellationToken.None);
-            Console.WriteLine($"{periodName} over {askDays,6:F1} days (assumed limit {assumedDays}): answered with {answer.Trendbar.Count} bars, hasMore {answer.HasMore}");
+
+            // A range that is too long may be cut silently at either end, so say where the bars begin and end.
+            var first = answer.Trendbar.Count > 0 ? Open(answer.Trendbar.First()) : (DateTime?)null;
+            var last = answer.Trendbar.Count > 0 ? Open(answer.Trendbar.Last()) : (DateTime?)null;
+            Console.WriteLine($"{periodName} over {askDays,6:F1} days: {answer.Trendbar.Count,6} bars, hasMore {answer.HasMore}, first {first:yyyy-MM-dd HH:mm}, last {last:yyyy-MM-dd HH:mm} (asked from {from:yyyy-MM-dd HH:mm})");
         }
         catch (CtraderException ex)
         {
-            Console.WriteLine($"{periodName} over {askDays,6:F1} days (assumed limit {assumedDays}): refused: {ex.Message}");
+            Console.WriteLine($"{periodName} over {askDays,6:F1} days: refused: {ex.Message}");
         }
     }
 
@@ -173,11 +205,26 @@ internal static class CheckCommand
         }
     }
 
-    private static IEnumerable<DateTime> Hours(DateTime first, DateTime last)
+    private static DateTime Open(ProtoOATrendbar bar) => DateTime.UnixEpoch.AddMinutes(bar.UtcTimestampInMinutes);
+
+    private static DateTime Weekday(DateTime near)
     {
-        for (var t = first; t <= last; t = t.AddHours(1))
+        var day = new DateTime(near.Year, near.Month, near.Day, 12, 0, 0, DateTimeKind.Utc);
+        while (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday or DayOfWeek.Monday or DayOfWeek.Friday)
+            day = day.AddDays(-1);
+
+        return day;
+    }
+
+    private static string Clock(int seconds) => $"{seconds / 3600:00}:{seconds % 3600 / 60:00}";
+
+    private static IEnumerable<DateTime> Steps(DateTime first, DateTime last, TimeSpan step)
+    {
+        for (var t = first; t <= last; t += step)
             yield return t;
     }
+
+    private static DateTime Floor(DateTime time, TimeSpan interval) => new(time.Ticks / interval.Ticks * interval.Ticks, DateTimeKind.Utc);
 
     private static long Ms(DateTime time) => new DateTimeOffset(DateTime.SpecifyKind(time, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
 

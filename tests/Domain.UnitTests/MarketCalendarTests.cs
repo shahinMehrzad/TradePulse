@@ -168,4 +168,48 @@ public class MarketCalendarTests
 
         Assert.Equal(new DateTime(2026, 3, 8, 7, 30, 0, DateTimeKind.Utc), first.Start);
     }
+
+    // The weekly sessions the broker gave for EURUSD (2026-11-16): every day shut for two minutes (16:59 to 17:01 New York), Friday from 16:55.
+    private static readonly TradingHours BrokerWeek = new(
+    [
+        (TimeSpan.FromHours(17) + TimeSpan.FromMinutes(1), TimeSpan.FromDays(1) + TimeSpan.FromHours(16) + TimeSpan.FromMinutes(59)),
+        (TimeSpan.FromDays(1) + TimeSpan.FromHours(17) + TimeSpan.FromMinutes(1), TimeSpan.FromDays(2) + TimeSpan.FromHours(16) + TimeSpan.FromMinutes(59)),
+        (TimeSpan.FromDays(2) + TimeSpan.FromHours(17) + TimeSpan.FromMinutes(1), TimeSpan.FromDays(3) + TimeSpan.FromHours(16) + TimeSpan.FromMinutes(59)),
+        (TimeSpan.FromDays(3) + TimeSpan.FromHours(17) + TimeSpan.FromMinutes(1), TimeSpan.FromDays(4) + TimeSpan.FromHours(16) + TimeSpan.FromMinutes(59)),
+        (TimeSpan.FromDays(4) + TimeSpan.FromHours(17) + TimeSpan.FromMinutes(1), TimeSpan.FromDays(5) + TimeSpan.FromHours(16) + TimeSpan.FromMinutes(55)),
+    ], TimeZoneInfo.FindSystemTimeZoneById("America/New_York"));
+
+    [Fact]
+    public void TheTwoMinutesTheMarketIsShutEveryDayAreNoGapInOneMinuteCandles()
+    {
+        var calendar = new MarketCalendar();
+        calendar.SetHours(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, Eurusd, BrokerWeek);
+        var series = Series(TimeFrameEnum._1M);
+
+        // Monday 2026-11-09, winter time (UTC-5): shut from 16:59 to 17:01 New York = 21:59 to 22:01 UTC.
+        var parts = calendar.ExpectedPart(series, new CandleGap(new DateTime(2026, 11, 9, 21, 56, 0, DateTimeKind.Utc), new DateTime(2026, 11, 9, 22, 4, 0, DateTimeKind.Utc)));
+
+        Assert.Equal(
+        [
+            new CandleGap(new DateTime(2026, 11, 9, 21, 56, 0, DateTimeKind.Utc), new DateTime(2026, 11, 9, 21, 58, 0, DateTimeKind.Utc)),
+            new CandleGap(new DateTime(2026, 11, 9, 22, 1, 0, DateTimeKind.Utc), new DateTime(2026, 11, 9, 22, 4, 0, DateTimeKind.Utc)),
+        ], parts);
+    }
+
+    [Fact]
+    public void FridayClosesFiveMinutesEarlyAndTheWeekendIsOneBigHole()
+    {
+        var calendar = new MarketCalendar();
+        calendar.SetHours(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, Eurusd, BrokerWeek);
+        var series = Series(TimeFrameEnum._1M);
+
+        // Friday 2026-11-13 16:55 New York is 21:55 UTC; the market opens again on Sunday 2026-11-15 at 17:01 New York = 22:01 UTC.
+        var parts = calendar.ExpectedPart(series, new CandleGap(new DateTime(2026, 11, 13, 21, 52, 0, DateTimeKind.Utc), new DateTime(2026, 11, 15, 22, 3, 0, DateTimeKind.Utc)));
+
+        Assert.Equal(
+        [
+            new CandleGap(new DateTime(2026, 11, 13, 21, 52, 0, DateTimeKind.Utc), new DateTime(2026, 11, 13, 21, 54, 0, DateTimeKind.Utc)),
+            new CandleGap(new DateTime(2026, 11, 15, 22, 1, 0, DateTimeKind.Utc), new DateTime(2026, 11, 15, 22, 3, 0, DateTimeKind.Utc)),
+        ], parts);
+    }
 }

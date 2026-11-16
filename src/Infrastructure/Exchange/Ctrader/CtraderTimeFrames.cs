@@ -23,8 +23,9 @@ internal static class CtraderTimeFrames
     public static bool TryGetPeriod(TimeFrameEnum timeFrame, out ProtoOATrendbarPeriod period) => Periods.TryGetValue(timeFrame, out period);
 
     /// <summary>
-    /// The longest stretch one candle request may cover, by cTrader's documentation (it grows with the period). Written from the documentation,
-    /// not yet checked against the broker: a request that is too wide is refused by cTrader, which surfaces as a failed call, never as bad data.
+    /// The longest stretch one candle request may cover, by cTrader's documentation (it grows with the period). Against the broker (demo,
+    /// 2026-11-16) much longer ranges were answered too (7 days of M1, 490 days of H1): what limits an answer is its size, 14000 bars, and the
+    /// gateway handles that on its own. The documented values are kept: they only cost a few more requests.
     /// </summary>
     public static TimeSpan MaxRange(ProtoOATrendbarPeriod period) => period switch
     {
