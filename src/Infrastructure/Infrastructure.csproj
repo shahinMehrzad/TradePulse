@@ -9,10 +9,17 @@
   <ItemGroup>
     <PackageReference Include="Binance.Net" Version="13.8.0" />
     <PackageReference Include="Dapper" Version="2.1.89" />
+    <PackageReference Include="Google.Protobuf" Version="3.36.2" />
+    <PackageReference Include="Grpc.Tools" Version="2.85.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The cTrader Open API (Pepperstone) speaks protobuf; the messages are Spotware's own .proto files, compiled at build time. -->
+    <Protobuf Include="Exchange\Ctrader\Protocol\*.proto" ProtoRoot="Exchange\Ctrader\Protocol" GrpcServices="None" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +34,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Infrastructure.UnitTests" />
+    <InternalsVisibleTo Include="CtraderCheck" />
   </ItemGroup>
 
 </Project>

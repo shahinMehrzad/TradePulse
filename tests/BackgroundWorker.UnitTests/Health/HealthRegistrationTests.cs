@@ -2,6 +2,7 @@ using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
 using BackgroundWorker.UnitTests.SymbolData;
 using Domain.Enums;
+using Domain.Services;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,20 +22,26 @@ public class HealthRegistrationTests
             }.Concat(values).ToDictionary())
             .Build();
 
-    private static async Task<ServiceProvider> BuildAsync(IConfiguration configuration)
+    private static async Task<ServiceProvider> BuildAsync(IConfiguration configuration, bool pepperstoneSeries = false)
     {
         var services = new ServiceCollection();
         services.AddLogging();
 
         // The series are chosen at run time (in the database); a provider that already knows one futures and one spot series stands for that.
-        services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(
-            TimeProvider.System,
+        var plans = new List<Domain.ValueObjects.CandleSeriesPlan>
+        {
             TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H),
-            TestPlans.Binance(MarketTypeEnum.Spot, SeededSymbol.BTCUSDT, TimeFrameEnum._1H)));
+            TestPlans.Binance(MarketTypeEnum.Spot, SeededSymbol.BTCUSDT, TimeFrameEnum._1H),
+        };
+        if (pepperstoneSeries)
+            plans.Add(TestPlans.Pepperstone());
+
+        services.AddSingleton(await CandleSeriesTestSupport.LoadedProviderAsync(TimeProvider.System, [.. plans]));
 
         services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
             TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: true)));
 
+        services.AddSingleton(MarketCalendar.AlwaysOpen);
         services.AddWorkerHealth(configuration);
         return services.BuildServiceProvider();
     }
@@ -44,6 +51,27 @@ public class HealthRegistrationTests
         await using var provider = await BuildAsync(configuration);
         var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);
         return report.Entries.Keys.ToHashSet();
+    }
+
+    [Fact]
+    public async Task ThePepperstoneConnectionIsOnlyJudgedWhileAPepperstoneSeriesIsCollected()
+    {
+        await using var without = await BuildAsync(Config(new()));
+        await using var with = await BuildAsync(Config(new()), pepperstoneSeries: true);
+        foreach (var provider in new[] { without, with })
+        {
+            var state = provider.GetRequiredService<WorkerHealthState>();
+            for (var i = 0; i < 3; i++)
+                state.RecordFailure(HealthComponents.CtraderConnection, "the token has expired");
+        }
+
+        var unused = (await without.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken)).Entries["ctrader-connection"];
+        var used = (await with.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken)).Entries["ctrader-connection"];
+
+        Assert.Equal(HealthStatus.Healthy, unused.Status);
+        Assert.Equal("No Pepperstone series configured", unused.Description);
+        // Three failures in a row are unhealthy; right after the series was loaded the grace period of the start keeps it at degraded.
+        Assert.NotEqual(HealthStatus.Healthy, used.Status);
     }
 
     [Fact]
@@ -62,7 +90,7 @@ public class HealthRegistrationTests
             new[]
             {
                 "binance-candle-stream-futures", "binance-candle-stream-spot", "binance-futures-rest", "binance-futures-websocket",
-                "binance-liquidation-stream", "binance-spot-rest", "candle-freshness", "candle-gaps", "candle-requests", "candle-series", "database",
+                "binance-liquidation-stream", "binance-spot-rest", "candle-freshness", "candle-gaps", "candle-requests", "candle-series", "ctrader-connection", "ctrader-token", "database",
                 "funding-rate-requests", "long-short-ratio-requests", "open-interest-requests", "symbol-data", "taker-volume-requests",
             },
             report.Entries.Keys.Order());
@@ -77,6 +105,7 @@ public class HealthRegistrationTests
             TimeProvider.System, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H)));
         services.AddSingleton(await SymbolDataTestSupport.LoadedProviderAsync(
             TimeProvider.System, SymbolDataTestSupport.Binance(funding: true, liquidation: false)));
+        services.AddSingleton(MarketCalendar.AlwaysOpen);
         services.AddWorkerHealth(Config(new()));
         await using var provider = services.BuildServiceProvider();
 

@@ -37,6 +37,7 @@ public static class HealthRegistration
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<WorkerHealthState>();
         services.AddHostedService<BinanceConnectivityWorker>();
+        services.AddHostedService<CtraderConnectivityWorker>();
 
         var checks = services.AddHealthChecks();
         checks.AddTypeActivatedCheck<DatabaseHealthCheck>("database", connectionString);
@@ -46,6 +47,40 @@ public static class HealthRegistration
         checks.AddTypeActivatedCheck<WebSocketHealthCheck>(HealthComponents.FuturesWebSocket, HealthComponents.FuturesWebSocket,
             new WebSocketHealthOptions(StartupGrace, UnhealthyAfterDisconnected,
                 MaxSilence: TimeSpan.FromSeconds(60), SilenceStatus: HealthStatus.Unhealthy));
+
+        // The Pepperstone connection (cTrader) is only judged while a Pepperstone series is collected.
+        checks.Add(new HealthCheckRegistration(
+            HealthComponents.CtraderConnection,
+            provider =>
+            {
+                var series = provider.GetRequiredService<CandleSeriesProvider>();
+                return new GatedHealthCheck(
+                    ActivatorUtilities.CreateInstance<RequestHealthCheck>(provider, HealthComponents.CtraderConnection, 3),
+                    () => series.Current.ForExchange(ExchangeEnum.Pepperstone).Any(),
+                    "No Pepperstone series configured",
+                    () => series.LoadedAt,
+                    StartupGrace,
+                    provider.GetRequiredService<TimeProvider>());
+            },
+            failureStatus: null,
+            tags: null));
+
+        // The life of the access token, judged only while a Pepperstone series is collected (the token is of no use otherwise).
+        checks.Add(new HealthCheckRegistration(
+            HealthComponents.CtraderToken,
+            provider =>
+            {
+                var series = provider.GetRequiredService<CandleSeriesProvider>();
+                return new GatedHealthCheck(
+                    ActivatorUtilities.CreateInstance<CtraderTokenHealthCheck>(provider),
+                    () => series.Current.ForExchange(ExchangeEnum.Pepperstone).Any(),
+                    "No Pepperstone series configured",
+                    () => series.LoadedAt,
+                    StartupGrace,
+                    provider.GetRequiredService<TimeProvider>());
+            },
+            failureStatus: null,
+            tags: null));
 
         // Whether the worker knows what to collect, and the checks that only matter once it does. These are harmless while
         // idle: a request component that has not made a request is healthy, and the gated checks report "not in use".

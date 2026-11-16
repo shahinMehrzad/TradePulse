@@ -5,9 +5,9 @@ using BackgroundWorker.CandleSeries;
 using BackgroundWorker.Health;
 using BackgroundWorker.Plans;
 using BackgroundWorker.Scheduling;
-using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
+using Domain.Services;
 using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -16,8 +16,12 @@ using System.Threading.Channels;
 
 namespace BackgroundWorker.Collection.Candles;
 
-public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
-        ILogger<BinanceCandleWorker> logger,
+/// <summary>
+/// Fetches the candles of every series whose exchange the gateway serves (a series of an exchange without an adapter is left alone, not
+/// failed), keeps them gap-free and repairs holes. Nothing in it is specific to one exchange.
+/// </summary>
+public class CandleWorker(IServiceScopeFactory scopeFactory,
+        ILogger<CandleWorker> logger,
         CandleSeriesProvider seriesProvider,
         ICandleGateway candleGateway,
         CandleSyncCoordinator coordinator,
@@ -25,7 +29,8 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         OpenGaps openGaps,
         GapRepairSchedule schedule,
         IAlertSink alerts,
-        CollectionStats stats) : BackgroundService
+        CollectionStats stats,
+        IMarketCalendar calendar) : BackgroundService
 {
     private const int MaxParallelSymbols = 4;
     private const int MaxRetries = 5;
@@ -42,7 +47,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         PlanRunner.RunGroupedAsync(seriesProvider,
-            plans => plans.ForExchange(ExchangeEnum.Binance).Select(p => p with { CollectOpenInterest = false, CollectMarketStatistics = false }).ToList(),
+            plans => plans.Where(p => candleGateway.Serves(p.Series.Exchange)).Select(p => p with { CollectOpenInterest = false, CollectMarketStatistics = false }).ToList(),
             plan => (int)plan.Series.Timeframe,
             CollectAsync, logger, "candle series", stoppingToken);
 
@@ -251,7 +256,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
 
         // A failure here must surface, like in the full scan, and the table is not marked: it is tried again at the next wake-up.
         var since = schedule.RecentSince(plan.StartDate);
-        var gaps = await repository.GetRecentGapsAsync(tableName, plan.Series.Interval, since, ct);
+        var gaps = ExpectedGaps(plan, await repository.GetRecentGapsAsync(tableName, plan.Series.Interval, since, ct));
 
         foreach (var gap in gaps)
         {
@@ -285,6 +290,10 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         schedule.MarkRecentRepaired(tableName);
     }
 
+    /// <summary>Only what the market was open for: a weekend with no candles is not a hole, and asking the exchange for it would only be counted as one.</summary>
+    private IReadOnlyList<CandleGap> ExpectedGaps(CandleSeriesPlan plan, IReadOnlyList<CandleGap> gaps) =>
+        gaps.Count == 0 ? gaps : [.. gaps.SelectMany(g => calendar.ExpectedPart(plan.Series, g))];
+
     private async Task RepairSymbolGapsAsync(CandleSeriesPlan plan, CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
@@ -293,7 +302,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         var tableName = plan.Series.TableName;
         var intervalSpan = plan.Series.Interval;
 
-        var gaps = await repository.GetGapsAsync(tableName, intervalSpan, plan.StartDate, ct);
+        var gaps = ExpectedGaps(plan, await repository.GetGapsAsync(tableName, intervalSpan, plan.StartDate, ct));
         var filledSome = false;
         foreach (var gap in gaps)
         {
@@ -327,7 +336,7 @@ public class BinanceCandleWorker(IServiceScopeFactory scopeFactory,
         }
 
         // A hole filled in part leaves a smaller one behind, so after any insert the table is looked at again.
-        var open = filledSome ? await repository.GetGapsAsync(tableName, intervalSpan, plan.StartDate, ct) : gaps;
+        var open = filledSome ? ExpectedGaps(plan, await repository.GetGapsAsync(tableName, intervalSpan, plan.StartDate, ct)) : gaps;
 
         // The run in front of the first candle is where the series starts, not a hole in it.
         var beforeFirst = open.Where(g => g.BeforeFirstCandle).Select(g => (DateTime?)(g.LastMissingOpenTime + intervalSpan)).FirstOrDefault();

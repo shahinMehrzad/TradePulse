@@ -3,6 +3,7 @@ using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
+using Domain.Services;
 using Domain.ValueObjects;
 using Infrastructure.Configurations;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,7 +51,7 @@ public class CandleFreshnessTests
         services.AddSingleton<ICandleRepository>(_repository);
         var series = await CandleSeriesTestSupport.LoadedProviderAsync(
             _time, TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H));
-        var monitor = new CandleFreshnessMonitor(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), series, _time);
+        var monitor = new CandleFreshnessMonitor(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), series, _time, MarketCalendar.AlwaysOpen);
         return (monitor, new CandleFreshnessHealthCheck(monitor, _time));
     }
 
@@ -71,6 +72,20 @@ public class CandleFreshnessTests
         Assert.Equal(expected, CandleFreshnessMonitor.CandlesBehind(Noon.Date.AddHours(storedHour), Hour, now));
     }
 
+    [Theory]
+    [InlineData(true, 0)]    // the market is closed since the stored candle: nothing is expected
+    [InlineData(false, 3)]   // a market that never closes is behind
+    public void CandlesBehind_CountsOnlyTheCandlesTheMarketWasOpenFor(bool closedSince, int expected)
+    {
+        var series = TestPlans.Binance(MarketTypeEnum.Futures, SeededSymbol.BTCUSDT, TimeFrameEnum._1H).Series;
+        var calendar = new MarketCalendar();
+        // 2026-01-01 is a Thursday: open Sunday to Wednesday, closed from Thursday on, or open the whole week.
+        calendar.SetHours(series.Exchange, series.MarketType, series.Symbol,
+            new TradingHours([(TimeSpan.Zero, closedSince ? TimeSpan.FromDays(4) : TradingHours.Week)]));
+
+        Assert.Equal(expected, CandleFreshnessMonitor.CandlesBehind(calendar, series, Noon.AddHours(-4), Noon.AddMinutes(5)));
+    }
+
     [Fact]
     public async Task AnEmptyAnswerIsNotCachedSoSeriesThatAppearLaterAreMeasuredAtOnce()
     {
@@ -78,7 +93,7 @@ public class CandleFreshnessTests
         services.AddSingleton<ICandleRepository>(_repository);
         var source = new FakeCandleSeriesSource();
         var series = CandleSeriesTestSupport.NewProvider(source, _time);
-        var monitor = new CandleFreshnessMonitor(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), series, _time);
+        var monitor = new CandleFreshnessMonitor(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), series, _time, MarketCalendar.AlwaysOpen);
         _repository.Latest = Noon.AddHours(-1);
 
         Assert.Empty(await monitor.GetAsync(TestContext.Current.CancellationToken));

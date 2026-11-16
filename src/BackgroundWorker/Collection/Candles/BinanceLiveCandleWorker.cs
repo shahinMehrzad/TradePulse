@@ -17,7 +17,7 @@ namespace BackgroundWorker.Collection.Candles;
 
 /// <summary>
 /// Stores closed candles straight from the kline WebSocket, moments after they close, instead of waiting for the REST
-/// loop (<see cref="BinanceCandleWorker"/>). The REST loop stays on as the safety net: it still runs at every boundary
+/// loop (<see cref="CandleWorker"/>). The REST loop stays on as the safety net: it still runs at every boundary
 /// and, after a socket reconnect, is asked to resync immediately (<see cref="CandleSyncCoordinator"/>).
 /// <para>
 /// The socket callback only enqueues into a bounded <see cref="Channel{T}"/>; one writer drains it in batches, so the

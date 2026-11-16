@@ -5,6 +5,8 @@ public static class HealthComponents
 {
     public const string FuturesRest = "binance-futures-rest";
     public const string SpotRest = "binance-spot-rest";
+    public const string CtraderConnection = "ctrader-connection";
+    public const string CtraderToken = "ctrader-token";
     public const string FuturesWebSocket = "binance-futures-websocket";
     public const string LiquidationStream = "binance-liquidation-stream";
     public const string CandleRequests = "candle-requests";

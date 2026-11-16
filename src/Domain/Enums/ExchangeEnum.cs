@@ -2,6 +2,7 @@
 {
     public enum ExchangeEnum : byte
     {
-        Binance = 1
+        Binance = 1,
+        Pepperstone = 2
     }
 }

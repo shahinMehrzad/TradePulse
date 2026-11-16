@@ -13,7 +13,12 @@ public sealed class FakeExchangeSymbolCatalog : IExchangeSymbolCatalog
     /// <summary>When set, the exchange cannot be reached.</summary>
     public bool Down { get; set; }
 
+    /// <summary>Exchanges this catalog has no way to ask about (the real one is a router that knows only the exchanges with an adapter).</summary>
+    public HashSet<ExchangeEnum> Unserved { get; } = [];
+
     public int Calls { get; private set; }
+
+    public bool Serves(ExchangeEnum exchange) => !Unserved.Contains(exchange);
 
     public Task<ExchangeResult<ExchangeSymbol?>> FindTradingAsync(
         ExchangeEnum exchange, MarketTypeEnum market, ExchangeSymbol symbol, CancellationToken cancellationToken)

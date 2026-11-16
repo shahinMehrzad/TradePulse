@@ -9,6 +9,7 @@ using BackgroundWorker.UnitTests.CandleSeries;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
+using Domain.Services;
 using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -161,8 +162,8 @@ public class CandleRepairScopeTests
         public CandleSyncCoordinator Coordinator { get; } = new();
         public CandleSeriesProvider Provider { get; private set; } = null!;
         public GapRepairSchedule Schedule { get; private set; } = null!;
-        public BinanceCandleWorker Worker => _worker;
-        private BinanceCandleWorker _worker = null!;
+        public CandleWorker Worker => _worker;
+        private CandleWorker _worker = null!;
 
         public ICandleGateway AnyGateway { get; private set; } = null!;
 
@@ -181,9 +182,9 @@ public class CandleRepairScopeTests
 
             var scopes = new ServiceCollection().AddSingleton<ICandleRepository>(rig.Table).AddSingleton<IConfirmedGapStore>(rig.Confirmed).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
             rig.Schedule = new GapRepairSchedule(rig.Time);
-            rig._worker = new BinanceCandleWorker(
-                scopes, NullLogger<BinanceCandleWorker>.Instance, rig.Provider, rig.AnyGateway, rig.Coordinator,
-                new WorkerHealthState(TimeProvider.System), rig.Gaps, rig.Schedule, rig.Alerts, new CollectionStats())
+            rig._worker = new CandleWorker(
+                scopes, NullLogger<CandleWorker>.Instance, rig.Provider, rig.AnyGateway, rig.Coordinator,
+                new WorkerHealthState(TimeProvider.System), rig.Gaps, rig.Schedule, rig.Alerts, new CollectionStats(), MarketCalendar.AlwaysOpen)
             {
                 Backoff = _ => TimeSpan.Zero,   // a request that keeps failing must not make a test wait a minute
             };

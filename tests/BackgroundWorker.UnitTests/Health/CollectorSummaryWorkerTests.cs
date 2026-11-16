@@ -4,6 +4,7 @@ using BackgroundWorker.UnitTests.TestSupport;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
+using Domain.Services;
 using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -62,7 +63,7 @@ public class CollectorSummaryWorkerTests
 
             rig.Worker = new CollectorSummaryWorker(
                 rig.Log, Options.Create(new HealthConfigurations { SummaryIntervalMinutes = summaryMinutes }), rig.Stats, series,
-                new CandleFreshnessMonitor(scopes, series, rig.Time), rig.Health, rig.Time);
+                new CandleFreshnessMonitor(scopes, series, rig.Time, MarketCalendar.AlwaysOpen), rig.Health, rig.Time);
 
             await rig.Worker.StartAsync(Ct);
             return rig;

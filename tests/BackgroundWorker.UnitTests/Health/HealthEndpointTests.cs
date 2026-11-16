@@ -5,6 +5,7 @@ using BackgroundWorker.Health;
 using BackgroundWorker.UnitTests.CandleSeries;
 using BackgroundWorker.UnitTests.SymbolData;
 using Domain.Enums;
+using Domain.Services;
 using Infrastructure.Configurations;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -45,9 +46,11 @@ public class HealthEndpointTests
             {
                 services.AddSingleton<CandleSeriesProvider>(series);
                 services.AddSingleton(symbolData);
+                services.AddSingleton(MarketCalendar.AlwaysOpen);
                 services.AddWorkerHealth(configuration);
                 // The probe worker needs real Binance clients; only the endpoint and the checks are under test here.
                 services.Remove(services.Single(s => s.ImplementationType == typeof(BinanceConnectivityWorker)));
+                services.Remove(services.Single(s => s.ImplementationType == typeof(CtraderConnectivityWorker)));
             })
             .Build();
 

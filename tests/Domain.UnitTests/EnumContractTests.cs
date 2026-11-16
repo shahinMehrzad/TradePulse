@@ -1,4 +1,4 @@
-using Domain.Enums;
+﻿using Domain.Enums;
 
 namespace Domain.UnitTests;
 
@@ -11,11 +11,11 @@ public class EnumContractTests
 {
     [Fact]
     public void ExchangeValuesAreStable() =>
-        AssertContract<ExchangeEnum>(("Binance", 1));
+        AssertContract<ExchangeEnum>(("Binance", 1), ("Pepperstone", 2));
 
     [Fact]
     public void MarketTypeValuesAreStable() =>
-        AssertContract<MarketTypeEnum>(("Spot", 1), ("Futures", 2));
+        AssertContract<MarketTypeEnum>(("Spot", 1), ("Futures", 2), ("Cfd", 3));
 
     [Fact]
     public void OrderSideValuesAreStable() =>

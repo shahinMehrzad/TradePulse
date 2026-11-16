@@ -12,6 +12,8 @@ public sealed class BinanceExchangeProbe(IBinanceRestClient restClient, IBinance
     /// <summary>How often the mark price stream ticks; the shortest Binance offers.</summary>
     private const int MarkPriceIntervalMs = 3000;
 
+    public bool Serves(ExchangeEnum exchange) => exchange == ExchangeEnum.Binance;
+
     public async Task<ExchangeResult<TimeSpan>> PingAsync(ExchangeEnum exchange, MarketTypeEnum market, CancellationToken cancellationToken)
     {
         EnsureBinance(exchange);

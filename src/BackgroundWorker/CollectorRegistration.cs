@@ -8,8 +8,10 @@ using BackgroundWorker.Collection.MarketStatistics;
 using BackgroundWorker.Collection.OpenInterests;
 using BackgroundWorker.Health;
 using BackgroundWorker.SymbolData;
+using Domain.Services;
 using Infrastructure;
 using Infrastructure.Exchange.Binance;
+using Infrastructure.Exchange.Ctrader;
 using Infrastructure.Notifications;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +30,7 @@ public static class CollectorRegistration
         services.AddApplicationServices();
         services.AddInfrastructureServices(configuration);
         services.AddBinanceExchange(configuration);
+        services.AddCtraderExchange(configuration);
         services.Configure<LiveCandleSettings>(configuration.GetSection(LiveCandleSettings.SectionName));
 
         services.AddSingleton<ICandleSeriesSource, DatabaseCandleSeriesSource>();
@@ -37,6 +40,8 @@ public static class CollectorRegistration
         services.AddSingleton<SymbolDataProvider>();
         services.AddHostedService(provider => provider.GetRequiredService<SymbolDataProvider>());
 
+        services.AddSingleton<MarketCalendar>();
+        services.AddSingleton<IMarketCalendar>(provider => provider.GetRequiredService<MarketCalendar>());
         services.AddSingleton<CandleSyncCoordinator>();
         services.AddSingleton(configuration.GetSection(GapRepairSettings.SectionName).Get<GapRepairSettings>()?.Validate() ?? new GapRepairSettings());
         services.AddSingleton<GapRepairSchedule>();
@@ -51,7 +56,7 @@ public static class CollectorRegistration
         services.AddHostedService<AlertDispatcher>();
         services.AddHostedService<StartupAlert>();
 
-        services.AddHostedService<BinanceCandleWorker>();
+        services.AddHostedService<CandleWorker>();
         services.AddHostedService<BinanceLiveCandleWorker>();
         services.AddHostedService<BinanceFundingRateWorker>();
         services.AddHostedService<BinanceOpenInterestWorker>();

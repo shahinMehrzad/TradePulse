@@ -71,6 +71,16 @@ services:
       Email__UserName: ${SMTP_USER:-}
       Email__Password: ${SMTP_PASSWORD:-}
       Email__From: ${SMTP_FROM:-}
+      # Pepperstone through the cTrader Open API (docs/collector.md); the API only uses it to check that a symbol exists when the admin lists it. All four values are needed; any of them empty and the exchange is simply
+      # not served. The token must be a READ ONLY one (scope "accounts"): a token that can trade belongs to the key vault, never here.
+      CtraderExchangeConfigurations__Environment: ${CTRADER_ENVIRONMENT:-Demo}
+      CtraderExchangeConfigurations__ClientId: ${CTRADER_CLIENT_ID:-}
+      CtraderExchangeConfigurations__ClientSecret: ${CTRADER_CLIENT_SECRET:-}
+      CtraderExchangeConfigurations__AccessToken: ${CTRADER_ACCESS_TOKEN:-}
+      CtraderExchangeConfigurations__AccountId: ${CTRADER_ACCOUNT_ID:-}
+      # When the access token runs out (ctrader-check prints it with the token). The collector warns through its alert channels this long before.
+      CtraderExchangeConfigurations__AccessTokenExpiresAt: ${CTRADER_ACCESS_TOKEN_EXPIRES_AT:-}
+      CtraderExchangeConfigurations__AccessTokenWarnBefore: ${CTRADER_TOKEN_WARN_BEFORE:-1.00:00:00}
     volumes:
       - api-keys:/keys
     ports:
@@ -193,6 +203,13 @@ services:
       Alerts__Email__Password: ${SMTP_PASSWORD:-}
       Alerts__Email__From: ${SMTP_FROM:-}
       Alerts__Email__To: ${SMTP_TO:-}
+      # Pepperstone through the cTrader Open API (docs/collector.md). All four values are needed; any of them empty and the exchange is simply
+      # not served. The token must be a READ ONLY one (scope "accounts"): a token that can trade belongs to the key vault, never here.
+      CtraderExchangeConfigurations__Environment: ${CTRADER_ENVIRONMENT:-Demo}
+      CtraderExchangeConfigurations__ClientId: ${CTRADER_CLIENT_ID:-}
+      CtraderExchangeConfigurations__ClientSecret: ${CTRADER_CLIENT_SECRET:-}
+      CtraderExchangeConfigurations__AccessToken: ${CTRADER_ACCESS_TOKEN:-}
+      CtraderExchangeConfigurations__AccountId: ${CTRADER_ACCOUNT_ID:-}
     ports:
       - "127.0.0.1:${HEALTH_PORT:-8089}:8080"
     healthcheck:

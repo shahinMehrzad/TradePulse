@@ -21,8 +21,8 @@ public class LookupsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
     [Fact]
     public async Task ExchangesAndMarketsAreListedWithoutAToken()
     {
-        Assert.Equal(["Binance"], (await GetAsync<Lookup>("/api/lookups/exchanges")).Select(x => x.Name));
-        Assert.Equal(["Spot", "Futures"], (await GetAsync<Lookup>("/api/lookups/markets")).OrderBy(x => x.Id).Select(x => x.Name));
+        Assert.Equal(["Binance", "Pepperstone"], (await GetAsync<Lookup>("/api/lookups/exchanges")).Select(x => x.Name));
+        Assert.Equal(["Spot", "Futures", "Cfd"], (await GetAsync<Lookup>("/api/lookups/markets")).OrderBy(x => x.Id).Select(x => x.Name));
     }
 
     [Fact]
@@ -76,6 +76,6 @@ public class LookupsEndpointTests(ApiFixture api) : IClassFixture<ApiFixture>
         await connection.OpenAsync(Ct);
         await using var command = new Npgsql.NpgsqlCommand("select count(*) from config.exchanges", connection);
 
-        Assert.Equal(1L, await command.ExecuteScalarAsync(Ct));
+        Assert.Equal((long)Enum.GetValues<Domain.Enums.ExchangeEnum>().Length, await command.ExecuteScalarAsync(Ct));
     }
 }
