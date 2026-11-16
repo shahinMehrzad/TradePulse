@@ -78,9 +78,6 @@ services:
       CtraderExchangeConfigurations__ClientSecret: ${CTRADER_CLIENT_SECRET:-}
       CtraderExchangeConfigurations__AccessToken: ${CTRADER_ACCESS_TOKEN:-}
       CtraderExchangeConfigurations__AccountId: ${CTRADER_ACCOUNT_ID:-}
-      # When the access token runs out (ctrader-check prints it with the token). The collector warns through its alert channels this long before.
-      CtraderExchangeConfigurations__AccessTokenExpiresAt: ${CTRADER_ACCESS_TOKEN_EXPIRES_AT:-}
-      CtraderExchangeConfigurations__AccessTokenWarnBefore: ${CTRADER_TOKEN_WARN_BEFORE:-1.00:00:00}
     volumes:
       - api-keys:/keys
     ports:
@@ -210,6 +207,9 @@ services:
       CtraderExchangeConfigurations__ClientSecret: ${CTRADER_CLIENT_SECRET:-}
       CtraderExchangeConfigurations__AccessToken: ${CTRADER_ACCESS_TOKEN:-}
       CtraderExchangeConfigurations__AccountId: ${CTRADER_ACCOUNT_ID:-}
+      # When the access token runs out (ctrader-check prints it with the token). The collector warns through its alert channels this long before.
+      CtraderExchangeConfigurations__AccessTokenExpiresAt: ${CTRADER_ACCESS_TOKEN_EXPIRES_AT:-}
+      CtraderExchangeConfigurations__AccessTokenWarnBefore: ${CTRADER_TOKEN_WARN_BEFORE:-1.00:00:00}
     ports:
       - "127.0.0.1:${HEALTH_PORT:-8089}:8080"
     healthcheck:
