@@ -166,4 +166,48 @@ public class ExchangeRouterTests
         Assert.True(catalog.Serves(ExchangeEnum.Pepperstone));
         Assert.True(catalog.Serves(ExchangeEnum.Binance));
     }
+
+    [Fact]
+    public async Task TheEndOfTheTokenAndTheWarningPeriodAreReadFromSettingsTheWayComposeGivesThem()
+    {
+        // deploy/docker-compose.yml passes them as plain text: a date with an offset and days.hours:minutes:seconds.
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CtraderExchangeConfigurations:ClientId"] = "id",
+            ["CtraderExchangeConfigurations:ClientSecret"] = "secret",
+            ["CtraderExchangeConfigurations:AccessToken"] = "token",
+            ["CtraderExchangeConfigurations:AccountId"] = "1",
+            ["CtraderExchangeConfigurations:AccessTokenExpiresAt"] = "2026-12-16T23:58:57.7375540+00:00",
+            ["CtraderExchangeConfigurations:AccessTokenWarnBefore"] = "3.00:00:00",
+        }).Build();
+        var services = new ServiceCollection().AddLogging();
+        services.AddCtraderExchange(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        var settings = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<CtraderExchangeConfigurations>>().Value;
+
+        Assert.Equal(new DateTimeOffset(2026, 12, 16, 23, 58, 57, TimeSpan.Zero).AddTicks(7375540), settings.AccessTokenExpiresAt);
+        Assert.Equal(TimeSpan.FromDays(3), settings.AccessTokenWarnBefore);
+    }
+
+    [Fact]
+    public async Task AnEmptyEndOfTheTokenMeansNoneAndTheWarningPeriodStaysOneDayWhenNotGiven()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CtraderExchangeConfigurations:ClientId"] = "id",
+            ["CtraderExchangeConfigurations:ClientSecret"] = "secret",
+            ["CtraderExchangeConfigurations:AccessToken"] = "token",
+            ["CtraderExchangeConfigurations:AccountId"] = "1",
+            ["CtraderExchangeConfigurations:AccessTokenExpiresAt"] = "",
+        }).Build();
+        var services = new ServiceCollection().AddLogging();
+        services.AddCtraderExchange(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        var settings = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<CtraderExchangeConfigurations>>().Value;
+
+        Assert.Null(settings.AccessTokenExpiresAt);
+        Assert.Equal(TimeSpan.FromDays(1), settings.AccessTokenWarnBefore);
+    }
 }
