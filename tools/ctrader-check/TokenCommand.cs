@@ -43,7 +43,9 @@ internal static class TokenCommand
             ["CtraderCheck:RefreshToken"] = tokens.RefreshToken,
             ["CtraderCheck:Scope"] = scope.ToString(),
         });
-        Console.WriteLine($"Got tokens ({tokens}); the refresh token is kept in this tool's own secrets.");
+        // cTrader does not say again when the token ends, so it is written down here: the collector warns a day before.
+        var expiresAt = DateTimeOffset.UtcNow + tokens.ExpiresIn;
+        Console.WriteLine($"Got tokens ({tokens}); the access token runs out at {expiresAt:yyyy-MM-dd HH:mm} UTC. The refresh token is kept in this tool's own secrets.");
 
         var accounts = await ListAccountsAsync(live, clientId, clientSecret, tokens.AccessToken);
         Console.WriteLine($"The token opens {accounts.CtidTraderAccount.Count} account(s) ({accounts.PermissionScope}):");
@@ -58,7 +60,7 @@ internal static class TokenCommand
         if (scope == CtraderScope.Trading)
         {
             Console.WriteLine("This token can TRADE, so it is not written to the secrets of the collector or the API (they must never hold one). It is for the trading service.");
-            PrintIfAsked(options, tokens);
+            PrintIfAsked(options, tokens, expiresAt);
             return 0;
         }
 
@@ -67,7 +69,7 @@ internal static class TokenCommand
             Console.WriteLine(wanted.Count == 0
                 ? $"No {(live ? "live" : "demo")} account to use. Nothing was saved for the collector and the API."
                 : "More than one account fits: run again with --account <id>. Nothing was saved for the collector and the API.");
-            PrintIfAsked(options, tokens);
+            PrintIfAsked(options, tokens, expiresAt);
             return wanted.Count == 0 ? 1 : 0;
         }
 
@@ -78,21 +80,23 @@ internal static class TokenCommand
             ["CtraderExchangeConfigurations:ClientSecret"] = clientSecret,
             ["CtraderExchangeConfigurations:AccessToken"] = tokens.AccessToken,
             ["CtraderExchangeConfigurations:AccountId"] = wanted[0].CtidTraderAccountId.ToString(),
+            ["CtraderExchangeConfigurations:AccessTokenExpiresAt"] = expiresAt.ToString("O"),
         };
         Secrets.Set(Secrets.Collector, values);
         Secrets.Set(Secrets.Api, values);
         Console.WriteLine($"Saved to the secrets of the collector and the API: account {wanted[0].CtidTraderAccountId}, valid for about {tokens.ExpiresIn.TotalDays:F0} days. Run `refresh` before then.");
-        PrintIfAsked(options, tokens);
+        PrintIfAsked(options, tokens, expiresAt);
         return 0;
     }
 
-    private static void PrintIfAsked(CliOptions options, CtraderTokens tokens)
+    private static void PrintIfAsked(CliOptions options, CtraderTokens tokens, DateTimeOffset expiresAt)
     {
         if (!options.Has("print"))
             return;
 
         Console.WriteLine("--print was given, so here it is (for deploy/.env; do not paste it anywhere else, and do not give it to anybody or anything):");
         Console.WriteLine($"CTRADER_ACCESS_TOKEN={tokens.AccessToken}");
+        Console.WriteLine($"CTRADER_ACCESS_TOKEN_EXPIRES_AT={expiresAt:O}");
     }
 
     private static async Task<CtraderTokens> GetFromTheOwnerAsync(HttpClient http, string clientId, string clientSecret, string redirect, CtraderScope scope)

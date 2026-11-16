@@ -112,7 +112,8 @@ internal sealed class CtraderSymbolDirectory(ICtraderConnection connection, Time
         {
             var zone = string.IsNullOrWhiteSpace(full.ScheduleTimeZone) ? TimeZoneInfo.Utc : TimeZoneInfo.FindSystemTimeZoneById(full.ScheduleTimeZone);
             var sessions = full.Schedule.Select(i => (TimeSpan.FromSeconds(i.StartSecond), TimeSpan.FromSeconds(i.EndSecond)));
-            calendar.SetHours(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, exchangeSymbol, new TradingHours(sessions, zone));
+            var hours = new TradingHours(sessions, zone).WithClosures(Closures(symbol, full, zone));
+            calendar.SetHours(ExchangeEnum.Pepperstone, MarketTypeEnum.Cfd, exchangeSymbol, hours);
         }
         catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException or ArgumentException)
         {
@@ -120,6 +121,44 @@ internal sealed class CtraderSymbolDirectory(ICtraderConnection connection, Time
             logger.LogWarning(ex, "The trading hours of {Symbol} could not be understood (time zone {Zone}); it is treated as always open", symbol.Name, full.ScheduleTimeZone);
         }
     }
+
+    /// <summary>
+    /// The days the broker lists as holidays, as closures. An entry shuts the market from <c>startSecond</c> to <c>endSecond</c> of that day (00:00 to 00:00
+    /// is the whole day) in the time zone of the entry, which is not the zone of the weekly hours (Bucharest, Moscow). An early close ends at 23:59, which
+    /// means "for the rest of the day": the closure then lasts to the end of the session it ends in. The yearly ones are not understood yet (the broker has
+    /// listed none): they are left out, which only costs a gap that is reported.
+    /// </summary>
+    private IEnumerable<TradingClosure> Closures(CtraderSymbolInfo symbol, ProtoOASymbol full, TimeZoneInfo symbolZone)
+    {
+        foreach (var holiday in full.Holiday.Where(h => !h.IsRecurring))
+        {
+            TradingClosure closure;
+            try
+            {
+                var zone = string.IsNullOrWhiteSpace(holiday.ScheduleTimeZone) ? symbolZone : TimeZoneInfo.FindSystemTimeZoneById(holiday.ScheduleTimeZone);
+                var day = DateTime.SpecifyKind(DateTime.UnixEpoch.AddDays(holiday.HolidayDate), DateTimeKind.Unspecified);
+                int start = holiday.StartSecond, end = holiday.EndSecond;
+                if (start == 0 && end == 0)
+                    end = 86400;
+
+                var restOfTheDay = end >= 86340;
+                if (restOfTheDay)
+                    end = 86400;
+
+                closure = new TradingClosure(ToUtc(zone, day.AddSeconds(start)), ToUtc(zone, day.AddSeconds(end)), ThroughSession: restOfTheDay);
+            }
+            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException or ArgumentOutOfRangeException)
+            {
+                logger.LogWarning(ex, "The holiday {Holiday} of {Symbol} could not be understood and is left out", holiday.Name, symbol.Name);
+                continue;
+            }
+
+            yield return closure;
+        }
+    }
+
+    private static DateTime ToUtc(TimeZoneInfo zone, DateTime wallClock) =>
+        TimeZoneInfo.ConvertTimeToUtc(zone.IsInvalidTime(wallClock) ? wallClock.AddHours(1) : wallClock, zone);
 
     // EUR/USD, eurusd and EURUSD are one symbol; the broker's own spelling is kept in the info.
     private static string Key(string name) => name.Replace("/", "", StringComparison.Ordinal).ToUpperInvariant();

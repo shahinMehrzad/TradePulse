@@ -59,6 +59,11 @@ internal static class CheckCommand
         if (!probe.Success)
             return 1;
 
+        // What the token itself allows (not what the application is allowed to ask for): SCOPE_VIEW cannot trade, whatever the application's settings say.
+        var granted = await connection.RequestAsync<ProtoOAGetAccountListByAccessTokenRes>(ProtoOAPayloadType.ProtoOaGetAccountsByAccessTokenReq,
+            new ProtoOAGetAccountListByAccessTokenReq { AccessToken = settings.AccessToken }, false, CancellationToken.None);
+        Console.WriteLine($"the access token's permission: {granted.PermissionScope} ({(granted.PermissionScope == ProtoOAClientPermissionScope.ScopeView ? "view only, cannot trade" : "CAN TRADE")}), opens {granted.CtidTraderAccount.Count} account(s)");
+
         Console.WriteLine();
         Console.WriteLine($"== Symbol {name}");
         var symbol = await directory.FindAsync(new ExchangeSymbol(name), CancellationToken.None);
