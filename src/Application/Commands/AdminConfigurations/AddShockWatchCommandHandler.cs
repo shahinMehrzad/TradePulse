@@ -5,6 +5,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Domain.Exceptions;
 using Domain.Repositories;
+using Domain.Services;
 
 namespace Application.Commands.AdminConfigurations;
 
@@ -22,6 +23,9 @@ public sealed class AddShockWatchCommandHandler(
 
         var listing = await catalog.GetListing(request.SymbolListingId, cancellationToken)
             ?? throw new ConfigurationValidationException("Unknown symbol listing.");
+        if (!ShockWatchSupport.IsSupported(listing))
+            throw new ConfigurationValidationException(ShockWatchSupport.Refusal(listing));
+
         await ShockWatchRules.EnsureMinuteCandlesAsync(series, listing.Id, listing.ExchangeSymbol, cancellationToken);
 
         var configuration = new ShockWatchConfiguration { SymbolListingId = listing.Id, SymbolListing = listing, Reason = WatchReasonEnum.Manual, IsEnabled = true };
