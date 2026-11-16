@@ -11,6 +11,9 @@ dotnet run --project tools/ctrader-check -- token --env demo
 
 # 2. What the broker really does, with the settings that step 1 saved.
 dotnet run --project tools/ctrader-check -- check --symbol EURUSD --days 14
+# The same for another time frame, or for the days before a date (a summer day, the week the clocks changed):
+#   ... -- check --symbol EURUSD --days 3 --timeframe 1m
+#   ... -- check --symbol EURUSD --days 14 --at 2026-07-15
 
 # Every month or so (the access token lives about 30 days): a new pair of tokens, no browser.
 dotnet run --project tools/ctrader-check -- refresh --env demo

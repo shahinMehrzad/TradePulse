@@ -174,7 +174,7 @@ public class CtraderGatewayTests
     }
 
     [Fact]
-    public async Task APageSaysThereIsMoreWhenCTraderDoesOrWhenTheRangeWasCutShort()
+    public async Task APageSaysThereIsMoreWhenTheRangeWasCutShort()
     {
         var open = Now.AddDays(-9);
         var connection = new ScriptedConnection { Trendbars = _ => new ProtoOAGetTrendbarsRes { Trendbar = { Bar(open, 100_000, 0, 0, 0) } } };
@@ -184,13 +184,44 @@ public class CtraderGatewayTests
         var cut = await gateway.GetCandlesAsync(EurUsdHourly with { Timeframe = TimeFrameEnum._1M }, open, null, Ct);
         Assert.True(cut.Value.HasMore);
 
-        // A short range, cTrader says it has more.
-        connection.Trendbars = _ => new ProtoOAGetTrendbarsRes { HasMore = true, Trendbar = { Bar(open, 100_000, 0, 0, 0) } };
-        Assert.True((await gateway.GetCandlesAsync(EurUsdHourly, open, open.AddHours(2), Ct)).Value.HasMore);
-
         // A short range, nothing more.
-        connection.Trendbars = _ => new ProtoOAGetTrendbarsRes { Trendbar = { Bar(open, 100_000, 0, 0, 0) } };
         Assert.False((await gateway.GetCandlesAsync(EurUsdHourly, open, open.AddHours(2), Ct)).Value.HasMore);
+    }
+
+    [Fact]
+    public async Task WhenCTraderHasMoreBarsThanOneAnswerHoldsAShorterRangeIsAskedNotTheNewestBarsPassedOn()
+    {
+        // cTrader answers the NEWEST bars when the range holds too many and says hasMore: the oldest part is the part that is missing.
+        var from = Now.AddDays(-2);
+        var to = Now.AddDays(-1);
+        var connection = new ScriptedConnection
+        {
+            Trendbars = request => request.ToTimestamp - request.FromTimestamp > TimeSpan.FromHours(6).TotalMilliseconds
+                ? new ProtoOAGetTrendbarsRes { HasMore = true, Trendbar = { Bar(to.AddMinutes(-1), 100_000, 0, 0, 0) } }
+                : new ProtoOAGetTrendbarsRes { Trendbar = { Bar(from.AddHours(1), 100_000, 0, 0, 0) } },
+        };
+
+        var page = (await Build(connection).Gateway.GetCandlesAsync(EurUsdHourly, from, to, Ct)).Value;
+
+        // 24 hours, then 12, then 6: the first range that fits.
+        Assert.Equal(3, connection.TrendbarRequests.Count);
+        Assert.All(connection.TrendbarRequests, r => Assert.Equal(Ms(from), r.FromTimestamp));
+        Assert.Equal([Ms(to), Ms(from.AddHours(12)), Ms(from.AddHours(6))], connection.TrendbarRequests.Select(r => r.ToTimestamp));
+        // What comes back is the oldest part, and the worker is told to go on from after it.
+        Assert.Equal(from.AddHours(1), Assert.Single(page.Items).TimeRange.OpenTime);
+        Assert.True(page.HasMore);
+    }
+
+    [Fact]
+    public async Task ARangeThatNeverFitsIsAFailedCallNotAnEndlessLoop()
+    {
+        var connection = new ScriptedConnection { Trendbars = _ => new ProtoOAGetTrendbarsRes { HasMore = true, Trendbar = { Bar(Now.AddHours(-1), 100_000, 0, 0, 0) } } };
+
+        var result = await Build(connection).Gateway.GetCandlesAsync(EurUsdHourly, Now.AddDays(-1), Now.AddHours(-2), Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains("more bars than one answer holds", result.Error);
+        Assert.InRange(connection.TrendbarRequests.Count, 2, 20);
     }
 
     [Fact]
