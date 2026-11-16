@@ -430,4 +430,71 @@ public class CtraderGatewayTests
         var gap = new CandleGap(Now.AddDays(-5), Now.AddDays(-4));
         Assert.Equal([gap], calendar.ExpectedPart(EurUsdHourly, gap));
     }
+
+    private static ProtoOASymbol GoldDetails(params ProtoOAHoliday[] holidays)
+    {
+        // Sunday to Thursday 18:01 New York to the next day 16:59, Thursday to Friday 16:55.
+        var details = new ProtoOASymbol { SymbolId = EurUsdId, Digits = 2, ScheduleTimeZone = "America/New_York", Holiday = { holidays } };
+        for (var day = 0u; day < 5; day++)
+            details.Schedule.Add(new ProtoOAInterval { StartSecond = day * 86400 + 18 * 3600 + 60, EndSecond = (day + 1) * 86400 + 16 * 3600 + (day == 4 ? 55u : 59u) * 60 });
+
+        return details;
+    }
+
+    private static ProtoOAHoliday Holiday(string zone, DateTime date, int startSecond, int endSecond, bool recurring = false) => new()
+    {
+        HolidayId = 1, Name = "a holiday", ScheduleTimeZone = zone, IsRecurring = recurring,
+        HolidayDate = (long)(date - DateTime.UnixEpoch).TotalDays, StartSecond = startSecond, EndSecond = endSecond,
+    };
+
+    [Fact]
+    public async Task AnEarlyCloseTheBrokerListsInItsOwnTimeZoneShutsTheCalendarFromThen()
+    {
+        // As listed for gold on 2026-11-26 (Thanksgiving): 22:30 to 23:59 Moscow time, in the zone of the entry, not of the weekly hours.
+        var connection = new ScriptedConnection { Details = GoldDetails(Holiday("Europe/Moscow", new DateTime(2026, 11, 26), 22 * 3600 + 30 * 60, 23 * 3600 + 59 * 60)) };
+        var calendar = new MarketCalendar();
+        var (gateway, _, _) = Build(connection, calendar);
+        await gateway.GetCandlesAsync(EurUsdHourly, Now.AddHours(-2), null, Ct);
+        var series = EurUsdHourly with { Timeframe = TimeFrameEnum._1M };
+
+        // 22:30 Moscow (UTC+3) is 19:30 UTC; the session of that day lasts to 21:59 UTC, and the rest of it is shut with the early close.
+        var parts = calendar.ExpectedPart(series, new CandleGap(new DateTime(2026, 11, 26, 19, 25, 0, DateTimeKind.Utc), new DateTime(2026, 11, 26, 22, 30, 0, DateTimeKind.Utc)));
+
+        Assert.Equal([new CandleGap(new DateTime(2026, 11, 26, 19, 25, 0, DateTimeKind.Utc), new DateTime(2026, 11, 26, 19, 29, 0, DateTimeKind.Utc))], parts);
+    }
+
+    [Fact]
+    public async Task AHolidayWithoutHoursShutsTheWholeDay()
+    {
+        var connection = new ScriptedConnection { Details = GoldDetails(Holiday("Europe/Bucharest", new DateTime(2026, 12, 25), 0, 0)) };
+        var calendar = new MarketCalendar();
+        var (gateway, _, _) = Build(connection, calendar);
+        await gateway.GetCandlesAsync(EurUsdHourly, Now.AddHours(-2), null, Ct);
+
+        // Friday 2026-12-25 in Bucharest (UTC+2): the whole Friday session is gone.
+        var friday = new CandleGap(new DateTime(2026, 12, 24, 23, 0, 0, DateTimeKind.Utc), new DateTime(2026, 12, 25, 21, 0, 0, DateTimeKind.Utc));
+
+        Assert.Empty(calendar.ExpectedPart(EurUsdHourly, friday));
+    }
+
+    [Fact]
+    public async Task AYearlyHolidayAndOneInAnUnknownTimeZoneAreLeftOutAndTheRestStillCounts()
+    {
+        var connection = new ScriptedConnection
+        {
+            Details = GoldDetails(
+                Holiday("Europe/Moscow", new DateTime(2026, 11, 26), 0, 0, recurring: true),
+                Holiday("Mars/Olympus_Mons", new DateTime(2026, 11, 26), 0, 0),
+                Holiday("Europe/Bucharest", new DateTime(2026, 12, 25), 0, 0)),
+        };
+        var calendar = new MarketCalendar();
+        var (gateway, _, _) = Build(connection, calendar);
+        await gateway.GetCandlesAsync(EurUsdHourly, Now.AddHours(-2), null, Ct);
+
+        // The two that cannot be used leave 2026-11-26 as it was (a Thursday, open); the third still shuts 2026-12-25.
+        var thursday = new CandleGap(new DateTime(2026, 11, 26, 10, 0, 0, DateTimeKind.Utc), new DateTime(2026, 11, 26, 12, 0, 0, DateTimeKind.Utc));
+        Assert.Equal([thursday], calendar.ExpectedPart(EurUsdHourly, thursday));
+        Assert.Empty(calendar.ExpectedPart(EurUsdHourly,
+            new CandleGap(new DateTime(2026, 12, 24, 23, 0, 0, DateTimeKind.Utc), new DateTime(2026, 12, 25, 21, 0, 0, DateTimeKind.Utc))));
+    }
 }
