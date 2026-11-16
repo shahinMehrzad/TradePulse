@@ -231,4 +231,37 @@ public class ShockWatchHandlersTests
     {
         Assert.Empty(await new Application.Research.Watch.ConfiguredWatchedSymbols(_watch, new FakeTradedSymbolSource(), new FakeSymbolCatalog(Btc, Eth)).GetAsync(Ct));
     }
+
+    // ---- a symbol of an exchange the watch cannot follow --------------------------------------------------------------------
+
+    // Pepperstone gold: collected as candles, but a broker has no stream of trades for the watch to judge.
+    private static readonly SymbolListing Gold = new() { Id = 40, ExchangeId = (int)ExchangeEnum.Pepperstone, MarketId = (int)MarketTypeEnum.Cfd, SymbolId = 40, ExchangeSymbol = "XAUUSD" };
+
+    [Fact]
+    public async Task ASymbolOfAnExchangeWithNoTradeStreamCannotBeAddedEvenWithItsMinuteCandles()
+    {
+        CollectMinuteCandles(Gold);
+
+        var refused = await Assert.ThrowsAsync<ConfigurationValidationException>(() => AddAsync(Gold.Id, Gold));
+
+        Assert.Contains("only Binance has", refused.Message);
+        Assert.Contains("XAUUSD", refused.Message);
+        Assert.Empty(_watch.Rows);
+        Assert.Empty(_auditLog.Entries);
+    }
+
+    [Fact]
+    public async Task ARowOfSuchASymbolThatIsAlreadyThereCannotBeSwitchedOnButCanBeSwitchedOff()
+    {
+        CollectMinuteCandles(Gold);
+        OnTheList(Gold, enabled: false);
+        var handler = new SetShockWatchEnabledCommandHandler(_watch, _series, new FakeTradedSymbolSource(), Audit);
+
+        await Assert.ThrowsAsync<ConfigurationValidationException>(() => handler.HandleAsync(new SetShockWatchEnabledCommand(_watch.Rows[0].Id, true), Ct));
+        Assert.False(_watch.Rows[0].IsEnabled);
+
+        _watch.Rows[0].IsEnabled = true;
+        Assert.True(await handler.HandleAsync(new SetShockWatchEnabledCommand(_watch.Rows[0].Id, false), Ct));
+        Assert.False(_watch.Rows[0].IsEnabled);
+    }
 }

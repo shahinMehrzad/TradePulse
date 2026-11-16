@@ -1,6 +1,7 @@
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Repositories;
+using Domain.Services;
 using Domain.ValueObjects;
 
 namespace Application.Research.Watch;
@@ -33,7 +34,8 @@ public sealed class ConfiguredWatchedSymbols(
     {
         var rows = await repository.GetAll(cancellationToken);
         var tradedNames = await traded.GetEnabledAsync(cancellationToken);
-        var watched = rows.Where(c => IsWatched(c, IsTraded(c.SymbolListing!, tradedNames))).Select(c => Watched(c.SymbolListing!)).ToList();
+        // A row of an exchange the watch cannot follow (one added before this was refused) is passed over: asking a stream about a symbol it does not know would stop the whole watch.
+        var watched = rows.Where(c => ShockWatchSupport.IsSupported(c.SymbolListing!) && IsWatched(c, IsTraded(c.SymbolListing!, tradedNames))).Select(c => Watched(c.SymbolListing!)).ToList();
 
         if (tradedNames.Count > 0)
         {
