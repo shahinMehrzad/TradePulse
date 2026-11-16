@@ -65,6 +65,23 @@ public static class HealthRegistration
             failureStatus: null,
             tags: null));
 
+        // The life of the access token, judged only while a Pepperstone series is collected (the token is of no use otherwise).
+        checks.Add(new HealthCheckRegistration(
+            HealthComponents.CtraderToken,
+            provider =>
+            {
+                var series = provider.GetRequiredService<CandleSeriesProvider>();
+                return new GatedHealthCheck(
+                    ActivatorUtilities.CreateInstance<CtraderTokenHealthCheck>(provider),
+                    () => series.Current.ForExchange(ExchangeEnum.Pepperstone).Any(),
+                    "No Pepperstone series configured",
+                    () => series.LoadedAt,
+                    StartupGrace,
+                    provider.GetRequiredService<TimeProvider>());
+            },
+            failureStatus: null,
+            tags: null));
+
         // Whether the worker knows what to collect, and the checks that only matter once it does. These are harmless while
         // idle: a request component that has not made a request is healthy, and the gated checks report "not in use".
         checks.AddTypeActivatedCheck<CandleSeriesHealthCheck>(HealthComponents.CandleSeries);

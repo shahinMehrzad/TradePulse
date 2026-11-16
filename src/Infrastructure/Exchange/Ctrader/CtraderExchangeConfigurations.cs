@@ -34,6 +34,15 @@ public sealed class CtraderExchangeConfigurations
     /// </summary>
     public long? AccountId { get; set; }
 
+    /// <summary>
+    /// When the access token stops working (UTC): the day it was made plus its life of about 30 days. cTrader does not tell it again, so it is given with
+    /// the token (<c>ctrader-check</c> prints it); the collector's <c>ctrader-token</c> health check warns before it comes. Empty: no warning.
+    /// </summary>
+    public DateTimeOffset? AccessTokenExpiresAt { get; set; }
+
+    /// <summary>How long before <see cref="AccessTokenExpiresAt"/> the health check turns degraded and the alert channels say so.</summary>
+    public TimeSpan AccessTokenWarnBefore { get; set; } = TimeSpan.FromDays(1);
+
     /// <summary>Replaces the host of <see cref="Environment"/> (a proxy, or a test server).</summary>
     public string? Host { get; set; }
 
