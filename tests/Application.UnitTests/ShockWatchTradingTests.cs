@@ -304,4 +304,18 @@ public class ShockWatchTradingTests
 
         await Assert.ThrowsAsync<ConfigurationValidationException>(() => SetAsync(_watch.Rows[0].Id, true));
     }
+
+    [Fact]
+    public async Task ASwitchedOnRowOfAnExchangeWithNoTradeStreamIsNeverFollowed()
+    {
+        // The watch crashed on exactly this: a Pepperstone row that was switched on (added before it was refused) made it ask Binance's stream for it.
+        var gold = new SymbolListing { Id = 40, ExchangeId = (int)ExchangeEnum.Pepperstone, MarketId = (int)MarketTypeEnum.Cfd, SymbolId = 40, ExchangeSymbol = "XAUUSD" };
+        _watch.Rows.Add(new ShockWatchConfiguration { Id = 90, SymbolListingId = gold.Id, SymbolListing = gold, Reason = WatchReasonEnum.Manual, IsEnabled = true });
+        _watch.Rows.Add(new ShockWatchConfiguration { Id = 91, SymbolListingId = BtcFutures.Id, SymbolListing = BtcFutures, Reason = WatchReasonEnum.Manual, IsEnabled = true });
+
+        var followed = await FollowedAsync();
+
+        Assert.Equal(["BTCUSDT"], followed.Select(f => f.Symbol.Value));
+        Assert.DoesNotContain(followed, f => f.Exchange == ExchangeEnum.Pepperstone);
+    }
 }

@@ -5,6 +5,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Domain.Exceptions;
 using Domain.Repositories;
+using Domain.Services;
 
 namespace Application.Commands.AdminConfigurations;
 
@@ -46,7 +47,12 @@ public sealed class SetShockWatchEnabledCommandHandler(
         // Only a row of the admin's own needs the candles to be switched on: a traded symbol cannot be refused its watch, and the watch
         // tells the admin when it has no candles to start from. Switching off must always be possible.
         if (request.Enabled && !backToAutomatic)
+        {
+            if (!ShockWatchSupport.IsSupported(existing.SymbolListing!))
+                throw new ConfigurationValidationException(ShockWatchSupport.Refusal(existing.SymbolListing!));
+
             await ShockWatchRules.EnsureMinuteCandlesAsync(series, existing.SymbolListingId, existing.SymbolListing!.ExchangeSymbol, cancellationToken);
+        }
 
         // Both versions are copies made before the change: a repository may hand out the very object it then updates.
         var before = Copy(existing, existing.IsEnabled);
