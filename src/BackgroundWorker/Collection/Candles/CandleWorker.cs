@@ -185,10 +185,50 @@ public class CandleWorker(IServiceScopeFactory scopeFactory,
 
         var fetch = await FetchRangeAsync(plan, repository, tableName, from, to: null, ct);
 
+        // Nothing new stored although the pass completed: the newest candle is still the one we started from, so it may be late.
+        if (fetch is { Completed: true, Inserted: 0 } && lastOpen is { } newest)
+            await AskAgainForLateCandleAsync(plan, repository, newest.UtcDateTime, ct);
+
         // Only a complete pass makes the table safe for live candles (see CandleSyncCoordinator).
         if (fetch.Completed)
             coordinator.MarkReady(tableName);
     }
+
+    /// <summary>
+    /// A broker (cTrader) has no live stream and may not have closed its bar 3 s after the boundary; without this the candle would wait for
+    /// the next boundary, a whole hour for a 1h series. Asks again a few times, only while the newest expected candle is missing and the
+    /// market was open for it, and never past half the interval so the next boundary is not delayed. Costs nothing when the candle is there.
+    /// </summary>
+    private async Task AskAgainForLateCandleAsync(CandleSeriesPlan plan, ICandleRepository repository, DateTime latest, CancellationToken ct)
+    {
+        var interval = plan.Series.Interval;
+        var now = DateTime.UtcNow;
+        var expectedOpen = new DateTime(now.Ticks / interval.Ticks * interval.Ticks - interval.Ticks, DateTimeKind.Utc);
+
+        // Only the very newest candle is "late"; an older hole is a gap for the repair. A closed market owes nothing.
+        if (latest != expectedOpen - interval || !calendar.ExpectedPart(plan.Series, new CandleGap(expectedOpen, expectedOpen)).Any())
+            return;
+
+        var waited = TimeSpan.Zero;
+        for (var attempt = 1; attempt <= LateCandleRetries; attempt++)
+        {
+            var delay = LateCandleDelay(attempt);
+            if (waited + delay > interval / 2)
+                return;
+
+            await Task.Delay(delay, ct);
+            waited += delay;
+
+            var (inserted, completed) = await FetchRangeAsync(plan, repository, plan.Series.TableName, latest + interval, to: null, ct);
+            if (inserted > 0 || !completed)
+                return;
+        }
+    }
+
+    private const int LateCandleRetries = 6;
+
+    /// <summary>How long to wait before the n-th new question about a candle that is late (5, 10, 20, 40 ... seconds; a test sets it to nothing).</summary>
+    internal Func<int, TimeSpan> LateCandleDelay { get; init; } = static attempt => TimeSpan.FromSeconds(5 * Math.Pow(2, attempt - 1));
 
     private async Task RepairGapsAsync(List<CandleSeriesPlan> plans, bool force, CancellationToken ct)
     {

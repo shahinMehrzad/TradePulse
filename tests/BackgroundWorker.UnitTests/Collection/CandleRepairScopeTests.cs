@@ -57,10 +57,15 @@ public class CandleRepairScopeTests
             return Task.FromResult(RecentGapsFor(tableName));
         }
 
+        /// <summary>What the table says is its newest candle; by default nothing newer can be closed yet.</summary>
+        public Func<DateTimeOffset?> Latest { get; set; } = () => DateTimeOffset.UtcNow;
+        public int Stored => Volatile.Read(ref _stored);
+        private int _stored;
+
         public Task<DateTimeOffset?> GetLatestOpenDataTime(string tableName, CancellationToken cancellationToken)
         {
             Count(Syncs, tableName);
-            return Task.FromResult<DateTimeOffset?>(DateTimeOffset.UtcNow);   // nothing newer can be closed yet
+            return Task.FromResult(Latest());
         }
 
         public Task EnsureTableExistsAsync(string tableName, CancellationToken cancellationToken)
@@ -69,7 +74,12 @@ public class CandleRepairScopeTests
             return Task.CompletedTask;
         }
 
-        public Task<int> BulkInsert(string tableName, IEnumerable<Candle> candles, CancellationToken cancellationToken) => Task.FromResult(candles.Count());
+        public Task<int> BulkInsert(string tableName, IEnumerable<Candle> candles, CancellationToken cancellationToken)
+        {
+            var count = candles.Count();
+            Interlocked.Add(ref _stored, count);
+            return Task.FromResult(count);
+        }
         public Task<DateTimeOffset?> GetFirstOpenTimeAsync(string tableName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IEnumerable<Candle>> GetHistoryAsync(string tableName, DateTime? from, DateTime? to, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<Candle>> GetPageAsync(string tableName, DateTime? from, DateTime? to, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -87,6 +97,22 @@ public class CandleRepairScopeTests
             Interlocked.Increment(ref _calls);
             var items = candlesItHas.Where(o => o >= from && (to is null || o <= to))
                 .Select(open => new Candle(open, 1m, 2m, 0.5m, 1.5m, 10m, open.AddHours(1).AddMilliseconds(-1), 15m, 3, 5m, 7m)).ToList();
+            return Task.FromResult(ExchangeResult<ExchangePage<Candle>>.Ok(new ExchangePage<Candle>(items, HasMore: false)));
+        }
+    }
+
+    /// <summary>A broker that has the newest candle only from its n-th answer on (it had not closed the bar yet before that).</summary>
+    private sealed class LateGateway(DateTime open, int appearsOnCall) : ICandleGateway
+    {
+        private int _calls;
+        public int Calls => Volatile.Read(ref _calls);
+
+        public Task<ExchangeResult<ExchangePage<Candle>>> GetCandlesAsync(Domain.ValueObjects.CandleSeries series, DateTime from, DateTime? to, CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref _calls);
+            IReadOnlyList<Candle> items = call < appearsOnCall || open < from
+                ? []
+                : [new Candle(open, 1m, 2m, 0.5m, 1.5m, 10m, open.AddHours(1).AddMilliseconds(-1), 15m, 3, 5m, 7m)];
             return Task.FromResult(ExchangeResult<ExchangePage<Candle>>.Ok(new ExchangePage<Candle>(items, HasMore: false)));
         }
     }
@@ -170,9 +196,13 @@ public class CandleRepairScopeTests
         public static Task<Rig> StartAsync(Func<string, IReadOnlyList<CandleGap>>? gapsFor, CountingGateway? gateway, params CandleSeriesPlan[] series) =>
             StartAsync(gapsFor, (ICandleGateway)(gateway ?? new CountingGateway()), series);
 
-        public static async Task<Rig> StartAsync(Func<string, IReadOnlyList<CandleGap>>? gapsFor, ICandleGateway gateway, params CandleSeriesPlan[] series)
+        public static Task<Rig> StartAsync(Func<string, IReadOnlyList<CandleGap>>? gapsFor, ICandleGateway gateway, params CandleSeriesPlan[] series) =>
+            StartAsync(gapsFor, gateway, setup: null, series);
+
+        public static async Task<Rig> StartAsync(Func<string, IReadOnlyList<CandleGap>>? gapsFor, ICandleGateway gateway, Action<CountingTable>? setup, CandleSeriesPlan[] series)
         {
             var rig = new Rig { AnyGateway = gateway, Gateway = gateway as CountingGateway ?? new CountingGateway() };
+            setup?.Invoke(rig.Table);
             if (gapsFor is not null)
                 rig.Table.GapsFor = gapsFor;
 
@@ -187,6 +217,7 @@ public class CandleRepairScopeTests
                 new WorkerHealthState(TimeProvider.System), rig.Gaps, rig.Schedule, rig.Alerts, new CollectionStats(), MarketCalendar.AlwaysOpen)
             {
                 Backoff = _ => TimeSpan.Zero,   // a request that keeps failing must not make a test wait a minute
+                LateCandleDelay = _ => TimeSpan.Zero,
             };
             await rig._worker.StartAsync(Ct);
             return rig;
@@ -311,6 +342,35 @@ public class CandleRepairScopeTests
         await Task.Delay(150, Ct);
 
         Assert.Equal((1, 1), (rig.Table.Syncs[TableOf(Btc1h)], rig.Table.Ensures[TableOf(Btc1h)]));
+    }
+
+    // ---- a candle the exchange has not closed yet ----
+
+    [Fact]
+    public async Task ACandleThatIsLateAtTheBoundaryIsAskedForAgainInsteadOfWaitingForTheNextBoundary()
+    {
+        var hour = TimeSpan.FromHours(1);
+        var expected = new DateTime(DateTime.UtcNow.Ticks / hour.Ticks * hour.Ticks, DateTimeKind.Utc) - hour;
+        var gateway = new LateGateway(expected, appearsOnCall: 3);
+
+        await using var rig = await Rig.StartAsync(null, gateway, table => table.Latest = () => expected - hour, [Btc1h]);
+        await WaitUntilAsync(() => rig.Table.Stored == 1, "the late candle to be stored");
+
+        Assert.Equal(3, gateway.Calls);   // the first answer and two more, then it was there and nobody asked again
+    }
+
+    [Fact]
+    public async Task ACandleThatNeverComesIsAskedForAFewTimesOnly()
+    {
+        var hour = TimeSpan.FromHours(1);
+        var expected = new DateTime(DateTime.UtcNow.Ticks / hour.Ticks * hour.Ticks, DateTimeKind.Utc) - hour;
+        var gateway = new LateGateway(expected, appearsOnCall: int.MaxValue);
+
+        await using var rig = await Rig.StartAsync(null, gateway, table => table.Latest = () => expected - hour, [Btc1h]);
+        await WaitUntilAsync(() => rig.Gaps.Get(TableOf(Btc1h)) is not null, "the first repair");
+
+        Assert.Equal(1 + 6, gateway.Calls);   // the pass itself and the retries (6), not a loop
+        Assert.Equal(0, rig.Table.Stored);
     }
 
     // ---- the short repair of the newest candles ----
