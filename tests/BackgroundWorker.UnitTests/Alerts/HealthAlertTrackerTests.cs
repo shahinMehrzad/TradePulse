@@ -35,6 +35,33 @@ public class HealthAlertTrackerTests
     }
 
     [Fact]
+    public void ADegradedCheckWaitsLongerThanAnUnhealthyOne()
+    {
+        var tracker = new HealthAlertTracker(2, degradedConfirmations: 4);
+        var degraded = Report(Check("candle-freshness", HealthStatus.Degraded, "1 candles behind"));
+        var healthy = Report(Check("candle-freshness", HealthStatus.Healthy));
+
+        // A delay that heals within three reports is never mentioned, neither the problem nor the recovery.
+        Assert.Null(tracker.Observe(degraded));
+        Assert.Null(tracker.Observe(degraded));
+        Assert.Null(tracker.Observe(degraded));
+        Assert.Null(tracker.Observe(healthy));
+        Assert.Null(tracker.Observe(healthy));
+
+        // One that lasts is announced on the fourth.
+        Assert.Null(tracker.Observe(degraded));
+        Assert.Null(tracker.Observe(degraded));
+        Assert.Null(tracker.Observe(degraded));
+        Assert.NotNull(tracker.Observe(degraded));
+
+        // An outage still needs only the shorter confirmation.
+        var down = Report(Check("database", HealthStatus.Unhealthy, "Cannot connect"));
+        var outage = new HealthAlertTracker(2, 4);
+        Assert.Null(outage.Observe(down));
+        Assert.NotNull(outage.Observe(down));
+    }
+
+    [Fact]
     public void ACheckThatFlickersSaysNothing()
     {
         var tracker = new HealthAlertTracker(2);

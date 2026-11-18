@@ -8,9 +8,13 @@ namespace BackgroundWorker.Alerts;
 /// status was seen in <c>confirmations</c> reports in a row, so a check that flickers between two reports says nothing. Every check
 /// is judged on its own (a freshness problem is announced even if the database is already unhealthy), and the checks that changed in
 /// the same report share one message. A check that is healthy from the first report is never announced.
+/// A degraded status (a late candle, a slow answer) must hold for <c>degradedConfirmations</c> reports, which is longer than
+/// <c>confirmations</c>: a short delay at the exchange or here heals by itself, a real outage does not and is announced quickly.
 /// </summary>
-public sealed class HealthAlertTracker(int confirmations)
+public sealed class HealthAlertTracker(int confirmations, int? degradedConfirmations = null)
 {
+    private readonly int _degradedConfirmations = Math.Max(confirmations, degradedConfirmations ?? confirmations);
+
     private readonly Dictionary<string, HealthStatus> _announced = [];
     private readonly Dictionary<string, (HealthStatus Status, int Reports)> _pending = [];
 
@@ -27,7 +31,7 @@ public sealed class HealthAlertTracker(int confirmations)
             }
 
             var reports = _pending.TryGetValue(name, out var seen) && seen.Status == entry.Status ? seen.Reports + 1 : 1;
-            if (reports < confirmations)
+            if (reports < (entry.Status == HealthStatus.Degraded ? _degradedConfirmations : confirmations))
             {
                 _pending[name] = (entry.Status, reports);
                 continue;
