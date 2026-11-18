@@ -5,7 +5,8 @@ namespace BackgroundWorker.Alerts;
 
 public sealed class AlertHealthPublisher(IAlertSink sink, IOptions<AlertSettings> options) : IHealthCheckPublisher
 {
-    private readonly HealthAlertTracker _tracker = new(Math.Max(1, options.Value.ConfirmationsToAlert));
+    private readonly HealthAlertTracker _tracker = new(
+        Math.Max(1, options.Value.ConfirmationsToAlert), Math.Max(1, options.Value.ConfirmationsToAlertWhenDegraded));
 
     public Task PublishAsync(HealthReport report, CancellationToken cancellationToken)
     {
